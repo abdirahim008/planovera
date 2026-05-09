@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#__next {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  background: #eef2ff;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+code,
+pre,
+.font-mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.workspace-panel {
+  background:
+    linear-gradient(90deg, rgba(148, 163, 184, 0.16) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(0deg, rgba(148, 163, 184, 0.16) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 249, 0.94));
+}
+
+.paper-frame {
+  border-radius: 22px;
+  padding: 18px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(226, 232, 240, 0.92));
+  box-shadow:
+    0 24px 80px rgba(15, 23, 42, 0.12),
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.panel-shell {
+  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.04);
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition-all duration-150;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.btn:hover {
+  @apply border-slate-300 bg-slate-50 text-slate-900;
+}
+
+.btn:disabled {
+  @apply cursor-not-allowed opacity-45 shadow-none;
+}
+
+.btn-primary {
+  @apply border-slate-900 bg-slate-900 text-white;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22);
+}
+
+.btn-primary:hover {
+  @apply border-slate-800 bg-slate-800 text-white;
+}
+
+.btn-danger {
+  @apply border-red-200 bg-red-50 text-red-700;
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.08);
+}
+
+.btn-danger:hover {
+  @apply border-red-300 bg-red-100 text-red-800;
+}
+
+.btn-quiet {
+  @apply bg-slate-50 text-slate-600;
+}
+
+.icon-btn {
+  @apply inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-all duration-150;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.icon-btn:hover {
+  @apply border-slate-300 bg-slate-50 text-slate-900;
+}
+
+.icon-btn:disabled {
+  @apply cursor-not-allowed opacity-45 shadow-none;
+}
+
+.toolbar-group {
+  @apply flex flex-wrap items-center gap-2 rounded-[24px] border border-slate-200 bg-white/85 px-3 py-2;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.toolbar-label {
+  @apply mr-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500;
+}
+
+.input {
+  @apply w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 outline-none transition-all duration-150;
+}
+
+.input::placeholder {
+  color: #94a3b8;
+}
+
+.input:focus {
+  @apply border-slate-900 bg-white ring-4 ring-slate-900/5;
+}
+
+.label {
+  @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500;
+}
+
+@keyframes context-menu-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.context-menu {
+  @apply fixed z-[9999] min-w-[190px] rounded-2xl border border-slate-200 bg-white py-1.5 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl;
+  animation: context-menu-appear 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.context-menu-item {
+  @apply flex cursor-pointer items-center gap-2.5 px-4 py-2.5 text-[13px] text-slate-700 transition-colors duration-100;
+}
+
+.context-menu-item:hover {
+  @apply bg-slate-900 text-white;
+}
+
+.context-menu-separator {
+  @apply my-1 border-t border-slate-100;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.28);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.45);
+}

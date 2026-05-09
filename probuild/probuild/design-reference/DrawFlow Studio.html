@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DrawFlow Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117;
+  --surface: #161b27;
+  --surface-2: #1e2433;
+  --surface-3: #252d3e;
+  --border: #2a3347;
+  --border-light: #1f2840;
+  --text: #cdd9f0;
+  --text-dim: #6b7a99;
+  --text-muted: #404d68;
+  --accent: #3b82f6;
+  --accent-dim: rgba(59,130,246,0.15);
+  --accent-glow: rgba(59,130,246,0.25);
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --canvas-bg: #e8ecf4;
+  --paper: #ffffff;
+  --radius: 6px;
+  --radius-lg: 10px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+}
+html, body, #root { height: 100%; overflow: hidden; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--surface-3); }
+
+/* ── Layout shells ── */
+.app { display: flex; flex-direction: column; height: 100vh; background: var(--bg); }
+.app-body { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Toolbar ── */
+.toolbar {
+  height: 48px; display: flex; align-items: center; gap: 0;
+  background: var(--surface); border-bottom: 1px solid var(--border-light);
+  padding: 0 12px; flex-shrink: 0; position: relative; z-index: 100;
+}
+.toolbar-brand { display: flex; align-items: center; gap: 10px; padding-right: 14px; border-right: 1px solid var(--border); margin-right: 10px; }
+.brand-mark {
+  width: 28px; height: 28px; border-radius: 7px; background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.brand-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.project-name-input {
+  background: transparent; border: none; outline: none;
+  font: inherit; font-size: 12px; color: var(--text-dim); 
+  max-width: 200px; cursor: text;
+  padding: 2px 6px; border-radius: var(--radius);
+  transition: background 0.15s, color 0.15s;
+}
+.project-name-input:hover { background: var(--surface-2); color: var(--text); }
+.project-name-input:focus { background: var(--surface-3); color: var(--text); }
+
+.tb-divider { width: 1px; height: 24px; background: var(--border); margin: 0 8px; flex-shrink: 0; }
+.tb-group { display: flex; align-items: center; gap: 2px; }
+.tb-label { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; padding: 0 6px; }
+
+.tb-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 30px; padding: 0 9px; border-radius: var(--radius);
+  border: none; background: transparent; color: var(--text-dim);
+  cursor: pointer; font: inherit; font-size: 12px; font-weight: 500;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap; flex-shrink: 0; position: relative;
+}
+.tb-btn:hover { background: var(--surface-3); color: var(--text); }
+.tb-btn.active { background: var(--accent-dim); color: var(--accent); }
+.tb-btn.primary { background: var(--accent); color: #fff; font-weight: 600; }
+.tb-btn.primary:hover { background: #2563eb; color: #fff; }
+.tb-btn.danger:hover { background: rgba(239,68,68,0.15); color: var(--red); }
+.tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.tb-btn svg { flex-shrink: 0; }
+
+.tb-kbd { 
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; 
+  background: var(--surface-3); color: var(--text-muted); 
+  border-radius: 3px; padding: 1px 4px; letter-spacing: 0; 
+}
+
+.tb-spacer { flex: 1; }
+
+.tb-select {
+  height: 28px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); padding: 0 8px;
+  font: inherit; font-size: 12px; outline: none; cursor: pointer;
+}
+.tb-select:focus { border-color: var(--accent); }
+.tb-select option { background: var(--surface-2); }
+
+/* ── Left sidebar ── */
+.sidebar {
+  width: 52px; background: var(--surface); border-right: 1px solid var(--border-light);
+  display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 2px;
+  flex-shrink: 0; z-index: 50;
+}
+.sidebar-btn {
+  width: 36px; height: 36px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: var(--text-muted);
+  cursor: pointer; transition: background 0.12s, color 0.12s; position: relative;
+}
+.sidebar-btn:hover { background: var(--surface-3); color: var(--text-dim); }
+.sidebar-btn.active { background: var(--accent-dim); color: var(--accent); }
+.sidebar-btn.active::before {
+  content: ''; position: absolute; left: -8px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 18px; background: var(--accent); border-radius: 0 3px 3px 0;
+}
+.sidebar-sep { width: 28px; height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ── Panel ── */
+.panel {
+  width: 0; overflow: hidden; background: var(--surface);
+  border-right: 1px solid var(--border-light);
+  display: flex; flex-direction: column;
+  transition: width 0.2s cubic-bezier(0.4,0,0.2,1);
+  flex-shrink: 0;
+}
+.panel.open { width: 300px; }
+.panel-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
+.panel-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+.panel-subtitle { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 3px; }
+.panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+.panel-section { margin-bottom: 16px; }
+.panel-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 8px; }
+
+/* ── Form elements ── */
+.field { margin-bottom: 10px; }
+.field-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 5px; display: block; }
+.field-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 10px; color: var(--text);
+  font: inherit; font-size: 12px; outline: none; transition: border-color 0.12s;
+}
+.field-input:focus { border-color: var(--accent); }
+.field-input::placeholder { color: var(--text-muted); }
+.field-select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 10px; color: var(--text);
+  font: inherit; font-size: 12px; outline: none; cursor: pointer;
+}
+.field-select option { background: var(--surface); }
+.field-textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 10px; color: var(--text);
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none;
+  resize: vertical; min-height: 100px; transition: border-color 0.12s; line-height: 1.6;
+}
+.field-textarea:focus { border-color: var(--accent); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 12px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-dim);
+  cursor: pointer; font: inherit; font-size: 12px; font-weight: 500;
+  transition: all 0.12s; white-space: nowrap;
+}
+.btn:hover { border-color: var(--border); background: var(--surface-3); color: var(--text); }
+.btn-sm { height: 26px; padding: 0 9px; font-size: 11px; }
+.btn-full { width: 100%; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn-primary:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
+.btn-danger { border-color: rgba(239,68,68,0.3); color: var(--red); }
+.btn-danger:hover { background: rgba(239,68,68,0.1); border-color: var(--red); }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.btn-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.btn-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+
+/* ── Library cards ── */
+.lib-card {
+  background: var(--surface-2); border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg); padding: 12px; margin-bottom: 8px;
+  cursor: pointer; transition: border-color 0.12s, background 0.12s;
+}
+.lib-card:hover { border-color: var(--accent); background: var(--surface-3); }
+.lib-card-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.lib-card-meta { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.lib-card-desc { font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+.lib-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.lib-tag { font-size: 10px; background: var(--surface-3); border-radius: 4px; padding: 2px 6px; color: var(--text-muted); }
+
+/* ── Project cards ── */
+.proj-card {
+  background: var(--surface-2); border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg); padding: 12px; margin-bottom: 8px;
+  transition: border-color 0.12s;
+}
+.proj-card.active { border-color: var(--accent); background: var(--accent-dim); }
+.proj-card-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.proj-card-meta { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+
+/* ── Canvas area ── */
+.canvas-area {
+  flex: 1; overflow: auto; position: relative;
+  background-color: var(--canvas-bg);
+  background-image:
+    linear-gradient(rgba(100,116,139,0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,116,139,0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.canvas-inner { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 48px; }
+.paper-sheet {
+  background: var(--paper); position: relative; flex-shrink: 0;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.06);
+  border-radius: 2px;
+}
+.paper-content { width: 100%; height: 100%; position: relative; overflow: hidden; }
+
+/* ── Sheet tabs ── */
+.sheet-tabs {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 36px;
+  background: var(--surface); border-top: 1px solid var(--border-light);
+  display: flex; align-items: center; gap: 1px; padding: 0 12px; z-index: 20;
+  overflow-x: auto;
+}
+.sheet-tab {
+  height: 26px; padding: 0 12px; border-radius: 5px; display: flex; align-items: center;
+  font-size: 11px; font-weight: 500; cursor: pointer;
+  white-space: nowrap; border: none; background: transparent; color: var(--text-muted);
+  transition: background 0.1s, color 0.1s; gap: 6px;
+}
+.sheet-tab:hover { background: var(--surface-3); color: var(--text-dim); }
+.sheet-tab.active { background: var(--surface-3); color: var(--text); }
+.sheet-tab-add { color: var(--accent); }
+.sheet-tab-close { opacity: 0; width: 12px; height: 12px; border-radius: 3px; display: flex; align-items: center; justify-content: center; }
+.sheet-tab:hover .sheet-tab-close { opacity: 0.5; }
+.sheet-tab-close:hover { opacity: 1 !important; background: var(--red); }
+
+/* ── Status bar ── */
+.statusbar {
+  height: 26px; background: var(--surface); border-top: 1px solid var(--border-light);
+  display: flex; align-items: center; gap: 0; padding: 0 12px; flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted);
+}
+.sb-item { display: flex; align-items: center; gap: 5px; padding: 0 10px; border-right: 1px solid var(--border-light); height: 100%; }
+.sb-item:first-child { padding-left: 0; }
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.sb-spacer { flex: 1; }
+.sb-accent { color: var(--accent); }
+.sb-green { color: var(--green); }
+
+/* ── Notice / Toast ── */
+.toast {
+  position: fixed; bottom: 44px; left: 50%; transform: translateX(-50%);
+  background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 9px 16px; font-size: 12px; color: var(--text);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 9999;
+  animation: toast-in 0.2s ease; white-space: nowrap;
+}
+@keyframes toast-in { from { opacity:0; transform: translateX(-50%) translateY(8px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+
+/* ── Zoom badge ── */
+.zoom-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  min-width: 42px; text-align: center;
+}
+
+/* ── Tag chip ── */
+.chip { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 99px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; }
+.chip-blue { background: var(--accent-dim); color: var(--accent); }
+.chip-green { background: rgba(34,197,94,0.12); color: var(--green); }
+.chip-amber { background: rgba(245,158,11,0.12); color: var(--amber); }
+
+/* ── Color swatch ── */
+.color-row { display: flex; align-items: center; gap: 8px; }
+.color-swatch { width: 28px; height: 28px; border-radius: var(--radius); border: 1px solid var(--border); cursor: pointer; }
+
+/* ── Auth screen ── */
+.auth-overlay {
+  position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 999;
+}
+.auth-card {
+  width: 400px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 40px; position: relative;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset, 0 32px 80px rgba(0,0,0,0.4);
+}
+.auth-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+.auth-brand { width: 40px; height: 40px; border-radius: 10px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; }
+.auth-title { font-size: 22px; font-weight: 700; color: var(--text); }
+.auth-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.auth-tabs { display: flex; gap: 0; background: var(--bg); border-radius: var(--radius); padding: 3px; margin-bottom: 24px; }
+.auth-tab { flex: 1; height: 30px; border: none; background: transparent; border-radius: 5px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: all 0.15s; }
+.auth-tab.active { background: var(--surface-3); color: var(--text); }
+.auth-notice { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 11px; color: var(--text-dim); margin-bottom: 16px; }
+.auth-notice.error { border-color: rgba(239,68,68,0.4); color: var(--red); background: rgba(239,68,68,0.08); }
+.auth-notice.success { border-color: rgba(34,197,94,0.4); color: var(--green); background: rgba(34,197,94,0.08); }
+
+/* ── Misc ── */
+.empty-state { text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.divider { height: 1px; background: var(--border-light); margin: 12px 0; }
+.row { display: flex; align-items: center; gap: 8px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+const { useState, useCallback, useRef, useEffect } = React;
+
+/* ── SVG Icons ── */
+const icons = {
+  cursor: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 1l9 5-4.5 1.5L5 12 2 1z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>,
+  hand: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6 1v5M4 2.5V6M8 2.5V6M2.5 7a1.5 1.5 0 013 0v1a1.5 1.5 0 013 0V7a1.5 1.5 0 013 0v2a4.5 4.5 0 01-9 0V7z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  line: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><line x1="2" y1="11" x2="11" y2="2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+  dim: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 9h9M2 4h9M1 9V4M12 9V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  trim: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 4l4 4M11 2L6 8m0 0l-2 3m2-3l3 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  rect: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="2" y="3" width="9" height="7" rx="1" stroke="currentColor" strokeWidth="1.3"/></svg>,
+  circle: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/></svg>,
+  text: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 3h9M6.5 3v7M4 10h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  copy: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M2 8V2h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  paste: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M4 3V2h4v1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  delete: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M4 3V2h4v1M5 5.5v3M7 5.5v3M3 3l.5 7h5l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  front: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="6" height="6" rx="1" fill="currentColor" opacity="0.3"/><rect x="2" y="2" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none"/></svg>,
+  back: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" opacity="0.3"/><rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none"/></svg>,
+  dup: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M5 3V2h5v5h-1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  zoomIn: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5.5" cy="5.5" r="3.5" stroke="currentColor" strokeWidth="1.2"/><path d="M4.5 5.5h2M5.5 4.5v2M8.5 8.5l2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  zoomOut: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5.5" cy="5.5" r="3.5" stroke="currentColor" strokeWidth="1.2"/><path d="M4 5.5h3M8.5 8.5l2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  fit: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M8 1h3v3M3 11H1V8M11 8v3H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  save: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2h7l1 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1V2z" stroke="currentColor" strokeWidth="1.2"/><path d="M4 2v3h5V2M5 7v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  pdf: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V5L7 1z" stroke="currentColor" strokeWidth="1.2"/><path d="M7 1v4h3M4 7h4M4 9h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  plus: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+  search: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+  layers: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5l5.5 3L7 7.5 1.5 4.5 7 1.5zM1.5 8l5.5 3 5.5-3M1.5 11l5.5 3 5.5-3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>,
+  tool: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2a3.5 3.5 0 00-3.4 4.3L2 9.5 2.5 11.5l2 .5 3.2-3.1A3.5 3.5 0 008.5 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>,
+  folder: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 4h5l1.5-2H13a1 1 0 011 1v7a1 1 0 01-1 1H1a1 1 0 01-1-1V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>,
+  publish: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 11h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  user: <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="4.5" r="2.5" stroke="currentColor" strokeWidth="1.2"/><path d="M1.5 11c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  logout: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M5 2H2v8h3M8 4l2 2-2 2M10 6H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  group: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="4" height="4" rx="0.7" stroke="currentColor" strokeWidth="1.2"/><rect x="6.5" y="1.5" width="4" height="4" rx="0.7" stroke="currentColor" strokeWidth="1.2"/><rect x="1.5" y="6.5" width="4" height="4" rx="0.7" stroke="currentColor" strokeWidth="1.2"/><rect x="6.5" y="6.5" width="4" height="4" rx="0.7" stroke="currentColor" strokeWidth="1.2"/></svg>,
+  stroke: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 10L10 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+  title: <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M3 4h6M3 6h6M3 8h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>,
+};
+
+/* ── Seed data ── */
+const SEED_PROJECTS = [
+  { id: 'p1', name: 'Foundation Plan — Block A', pages: 3, updatedAt: '2026-04-20T09:12:00Z', active: true },
+  { id: 'p2', name: 'Structural Steel — Phase 2', pages: 5, updatedAt: '2026-04-18T14:30:00Z', active: false },
+  { id: 'p3', name: 'MEP Coordination Sheets', pages: 2, updatedAt: '2026-04-15T11:05:00Z', active: false },
+];
+
+const SEED_LIBRARY = [
+  { id: 'l1', name: 'Column Grid Layout', category: 'structural', desc: 'Standard 6m×6m column grid with load annotations.', tags: ['grid','column','structural'] },
+  { id: 'l2', name: 'Section Detail A', category: 'details', desc: 'Footing-to-slab connection with rebar callouts.', tags: ['footing','rebar','section'] },
+  { id: 'l3', name: 'Electrical Panel Layout', category: 'electrical', desc: 'Panel board layout with circuit labelling.', tags: ['panel','electrical','circuit'] },
+  { id: 'l4', name: 'Piping Isometric', category: 'mechanical', desc: '3D isometric piping diagram with valve symbols.', tags: ['pipe','isometric','valve'] },
+  { id: 'l5', name: 'Site Plan Reference', category: 'civil', desc: 'Site orientation block with north arrow and scale bar.', tags: ['site','civil','north'] },
+];
+
+const PAPER_SIZES = ['A0','A1','A2','A3','A4','Letter','Tabloid'];
+const SHEET_NAMES = ['Ground Floor Plan', 'Site Plan', 'Elevations', 'Sections', 'Details'];
+
+/* ── Toolbar Component ── */
+function Toolbar({ toolMode, setToolMode, zoom, onZoomIn, onZoomOut, onZoom100, onZoomFit, selectedCount, projectName, setProjectName, onSave, onExport, pages, currentPage, setCurrentPage, onAddPage, paperSize, setPaperSize, orientation, setOrientation, session, onLogout }) {
+  const hasSelection = selectedCount > 0;
+  const tools = [
+    { id: 'select', icon: icons.cursor, label: 'Select', kbd: 'V' },
+    { id: 'pan', icon: icons.hand, label: 'Pan', kbd: 'H' },
+    { id: 'line', icon: icons.line, label: 'Line', kbd: 'L' },
+    { id: 'dimension', icon: icons.dim, label: 'Dimension', kbd: 'D' },
+    { id: 'trim', icon: icons.trim, label: 'Trim', kbd: 'T' },
+  ];
+  return (
+    <div className="toolbar">
+      <div className="toolbar-brand">
+        <div className="brand-mark">DF</div>
+        <div>
+          <div className="brand-name">DrawFlow</div>
+        </div>
+      </div>
+      <input className="project-name-input" value={projectName} onChange={e => setProjectName(e.target.value)} />
+      <div className="tb-divider" />
+      <div className="tb-group">
+        {tools.map(t => (
+          <button key={t.id} className={`tb-btn ${toolMode === t.id ? 'active' : ''}`} title={`${t.label} (${t.kbd})`} onClick={() => setToolMode(t.id)}>
+            {t.icon}<span style={{fontSize:'11px'}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="tb-divider" />
+      <div className="tb-group">
+        <button className="tb-btn" title="Rectangle" onClick={() => {}}>{icons.rect}<span style={{fontSize:'11px'}}>Rect</span></button>
+        <button className="tb-btn" title="Circle" onClick={() => {}}>{icons.circle}<span style={{fontSize:'11px'}}>Circle</span></button>
+        <button className="tb-btn" title="Label" onClick={() => {}}>{icons.text}<span style={{fontSize:'11px'}}>Label</span></button>
+      </div>
+      <div className="tb-divider" />
+      <div className="tb-group">
+        <button className="tb-btn" title="Copy (Ctrl+C)" disabled={!hasSelection}>{icons.copy}</button>
+        <button className="tb-btn" title="Paste (Ctrl+V)">{icons.paste}</button>
+        <button className="tb-btn" title="Duplicate" disabled={!hasSelection}>{icons.dup}</button>
+        <button className="tb-btn" title="Bring to Front" disabled={!hasSelection}>{icons.front}</button>
+        <button className="tb-btn" title="Send to Back" disabled={!hasSelection}>{icons.back}</button>
+        <button className="tb-btn danger" title="Delete" disabled={!hasSelection}>{icons.delete}</button>
+      </div>
+      <div className="tb-divider" />
+      <div className="tb-group">
+        <button className="tb-btn" onClick={onZoomOut} title="Zoom Out">{icons.zoomOut}</button>
+        <button className="tb-btn zoom-badge" onClick={onZoom100} title="Reset to 100%">{Math.round(zoom * 100)}%</button>
+        <button className="tb-btn" onClick={onZoomIn} title="Zoom In">{icons.zoomIn}</button>
+        <button className="tb-btn" onClick={onZoomFit} title="Fit sheet">{icons.fit}</button>
+      </div>
+      <div className="tb-divider" />
+      <div className="tb-group">
+        <select className="tb-select" value={paperSize} onChange={e => setPaperSize(e.target.value)} style={{width:72}}>
+          {PAPER_SIZES.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select className="tb-select" value={orientation} onChange={e => setOrientation(e.target.value)} style={{width:96}}>
+          <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait</option>
+        </select>
+      </div>
+      <div className="tb-spacer" />
+      {selectedCount > 0 && <span className="chip chip-blue" style={{marginRight:8}}>{selectedCount} selected</span>}
+      <button className="tb-btn" onClick={onSave}>{icons.save}<span style={{fontSize:'11px'}}>Save</span></button>
+      <button className="tb-btn primary" onClick={onExport} style={{marginLeft:4}}>{icons.pdf}<span style={{fontSize:'11px'}}>Export PDF</span></button>
+      <div className="tb-divider" />
+      <button className="tb-btn" title={session.name} style={{gap:6}}>{icons.user}<span style={{fontSize:'11px',maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{session.name.split(' ')[0]}</span></button>
+      <button className="tb-btn danger" title="Sign out" onClick={onLogout} style={{marginLeft:2}}>{icons.logout}</button>
+    </div>
+  );
+}
+
+/* ── Left Panel ── */
+function LeftPanel({ activeTab, session, projectName, titleBlock, setTitleBlock, strokeColor, setStrokeColor, strokeWidth, setStrokeWidth, onApplyTitleBlock, selectedCount, statusMessage, toast }) {
+  const [libQuery, setLibQuery] = useState('');
+  const [libCat, setLibCat] = useState('all');
+  const [svgText, setSvgText] = useState('');
+  const [hatchColor, setHatchColor] = useState('#0f172a');
+  const [activeProject, setActiveProject] = useState('p1');
+
+  const filtered = SEED_LIBRARY.filter(item => {
+    const catOk = libCat === 'all' || item.category === libCat;
+    const q = libQuery.toLowerCase();
+    return catOk && (!q || (item.name + item.desc + item.tags.join(' ')).toLowerCase().includes(q));
+  });
+
+  if (!activeTab) return null;
+
+  return (
+    <div className="panel open" style={{width: 300}}>
+      {activeTab === 'library' && (
+        <>
+          <div className="panel-header">
+            <div className="panel-title">Symbol Library</div>
+            <div className="panel-subtitle">Ready-to-edit drawing blocks</div>
+          </div>
+          <div className="panel-body">
+            <div className="field" style={{position:'relative'}}>
+              <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--text-muted)'}}>{icons.search}</span>
+              <input className="field-input" style={{paddingLeft:28}} placeholder="Search layouts, symbols…" value={libQuery} onChange={e=>setLibQuery(e.target.value)} />
+            </div>
+            <div className="field">
+              <select className="field-select" value={libCat} onChange={e=>setLibCat(e.target.value)}>
+                <option value="all">All categories</option>
+                {['layouts','structural','mechanical','electrical','civil','details'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="divider" />
+            {filtered.map(item => (
+              <div className="lib-card" key={item.id}>
+                <div className="row-between">
+                  <div>
+                    <div className="lib-card-name">{item.name}</div>
+                    <div className="lib-card-meta">{item.category}</div>
+                  </div>
+                  <button className="btn btn-sm btn-primary" onClick={() => toast('Block inserted on canvas.')}>Insert</button>
+                </div>
+                <div className="lib-card-desc">{item.desc}</div>
+                <div className="lib-card-tags">{item.tags.map(t => <span key={t} className="lib-tag">{t}</span>)}</div>
+              </div>
+            ))}
+            {filtered.length === 0 && <div className="empty-state">No matching drawings found.<br/>Try adjusting the search or category.</div>}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'drafting' && (
+        <>
+          <div className="panel-header">
+            <div className="panel-title">Drafting Tools</div>
+            <div className="panel-subtitle">Sheet data, import, and styles</div>
+          </div>
+          <div className="panel-body">
+            {/* SVG Import */}
+            <div className="panel-section">
+              <div className="panel-section-title">SVG Import</div>
+              <div className="field">
+                <label className="field-label">SVG Code</label>
+                <textarea className="field-textarea" placeholder={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">…</svg>'} value={svgText} onChange={e=>setSvgText(e.target.value)} />
+              </div>
+              <div className="btn-grid-2">
+                <button className="btn btn-primary" onClick={() => svgText.trim() && toast('SVG inserted on canvas.')}>Insert SVG</button>
+                <button className="btn" onClick={()=>setSvgText('')}>Clear</button>
+              </div>
+            </div>
+            <div className="divider" />
+            {/* Stroke */}
+            <div className="panel-section">
+              <div className="panel-section-title">Stroke</div>
+              <div className="color-row" style={{marginBottom:8}}>
+                <input type="color" className="color-swatch" value={strokeColor} onChange={e=>setStrokeColor(e.target.value)} />
+                <input className="field-input" style={{flex:1}} value={strokeColor} onChange={e=>setStrokeColor(e.target.value)} />
+              </div>
+              <div className="row-between" style={{marginBottom:4}}>
+                <span style={{fontSize:11,color:'var(--text-muted)'}}>Width</span>
+                <span style={{fontSize:11,fontFamily:'JetBrains Mono',color:'var(--text-dim)'}}>{strokeWidth.toFixed(1)}px</span>
+              </div>
+              <input type="range" min="0.5" max="12" step="0.5" value={strokeWidth} onChange={e=>setStrokeWidth(parseFloat(e.target.value))} style={{width:'100%',accentColor:'var(--accent)'}} />
+            </div>
+            <div className="divider" />
+            {/* Fill / Hatch */}
+            <div className="panel-section">
+              <div className="panel-section-title">Fill &amp; Hatch</div>
+              <div className="color-row" style={{marginBottom:8}}>
+                <input type="color" className="color-swatch" value={hatchColor} onChange={e=>setHatchColor(e.target.value)} />
+                <input className="field-input" style={{flex:1}} value={hatchColor} onChange={e=>setHatchColor(e.target.value)} />
+              </div>
+              <div className="btn-grid-3" style={{gap:4}}>
+                {['Solid','Hatch 45°','Cross','Dot'].map(p=>(
+                  <button key={p} className="btn btn-sm" onClick={()=>toast(`${p} pattern applied.`)}>{p}</button>
+                ))}
+              </div>
+            </div>
+            <div className="divider" />
+            {/* Title Block */}
+            <div className="panel-section">
+              <div className="panel-section-title">Title Block</div>
+              {[['projectTitle','Project Title'],['drawingTitle','Drawing Title'],['client','Client'],['drawingNo','Drawing No.'],['revision','Revision'],['scale','Scale'],['drawnBy','Drawn By'],['checkedBy','Checked By']].map(([k,l])=>(
+                <div className="field" key={k}>
+                  <label className="field-label">{l}</label>
+                  <input className="field-input" value={titleBlock[k]||''} onChange={e=>setTitleBlock({...titleBlock,[k]:e.target.value})} />
+                </div>
+              ))}
+              <div className="btn-grid-2">
+                <button className="btn btn-primary" onClick={()=>{ onApplyTitleBlock(); toast('Title block applied.'); }}>Apply</button>
+                <button className="btn btn-danger" onClick={()=>toast('Title block removed.')}>Remove</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'projects' && (
+        <>
+          <div className="panel-header">
+            <div className="panel-title">Projects</div>
+            <div className="panel-subtitle">Saved drawing packages</div>
+          </div>
+          <div className="panel-body">
+            <button className="btn btn-primary btn-full" style={{marginBottom:12}} onClick={()=>toast('Project saved.')}>
+              {icons.save} Save current project
+            </button>
+            {SEED_PROJECTS.map(proj=>(
+              <div key={proj.id} className={`proj-card ${activeProject===proj.id?'active':''}`}>
+                <div className="row-between">
+                  <div>
+                    <div className="proj-card-name">{proj.name}</div>
+                    <div className="proj-card-meta">{proj.pages} sheet{proj.pages!==1?'s':''} · Updated {new Date(proj.updatedAt).toLocaleDateString()}</div>
+                  </div>
+                  <button className="btn btn-sm" onClick={()=>{setActiveProject(proj.id);toast(`Opened "${proj.name}".`);}}>Open</button>
+                </div>
+                <button className="btn btn-sm btn-danger" style={{marginTop:8}} onClick={()=>toast('Project deleted.')}>Delete</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'publish' && session.role === 'admin' && (
+        <>
+          <div className="panel-header">
+            <div className="panel-title">Publish</div>
+            <div className="panel-subtitle">Share to shared library</div>
+          </div>
+          <div className="panel-body">
+            <div style={{background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.25)',borderRadius:'var(--radius)',padding:'10px 12px',marginBottom:14,fontSize:11,color:'var(--amber)',lineHeight:1.6}}>
+              Admin only — publish approved drawings to the shared engineering library visible to all engineers.
+            </div>
+            <div className="field"><label className="field-label">Library Name</label><input className="field-input" defaultValue="Library Drawing" /></div>
+            <div className="field">
+              <label className="field-label">Category</label>
+              <select className="field-select">
+                {['layouts','structural','mechanical','electrical','civil','details'].map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="field"><label className="field-label">Description</label><textarea className="field-textarea" style={{minHeight:70}} defaultValue="Editable drawing block prepared by the admin studio." /></div>
+            <div className="field"><label className="field-label">Tags</label><input className="field-input" defaultValue="library, editable, drawing" /></div>
+            <div className="btn-grid-2">
+              <button className="btn btn-primary" onClick={()=>toast('Published to shared library.')}>Publish SVG</button>
+              <button className="btn" onClick={()=>toast('Canvas published to library.')}>Publish Canvas</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Canvas Area ── */
+function CanvasArea({ zoom, toolMode, pages, currentPage, setCurrentPage, onAddPage, onDeletePage }) {
+  const paperW = Math.round(1120 * zoom);
+  const paperH = Math.round(792 * zoom);
+  const [showGrid, setShowGrid] = useState(true);
+
+  return (
+    <div className="canvas-area" style={showGrid ? {} : {backgroundImage:'none',backgroundColor:'#d8dde8'}}>
+      <div className="canvas-inner" style={{paddingBottom:52}}>
+        <div className="paper-sheet" style={{width:paperW, height:paperH}}>
+          <div className="paper-content">
+            {/* Simulated drawing elements */}
+            <svg width="100%" height="100%" style={{position:'absolute',inset:0,opacity:0.6}}>
+              <rect x="40" y="40" width={paperW-80} height={paperH-80} fill="none" stroke="#94a3b8" strokeWidth="0.5" strokeDasharray="4,4"/>
+              {/* Column grid lines */}
+              {[0.2,0.4,0.6,0.8].map((f,i)=>(
+                <line key={`v${i}`} x1={paperW*f} y1="40" x2={paperW*f} y2={paperH-80} stroke="#cbd5e1" strokeWidth="0.4" strokeDasharray="2,6"/>
+              ))}
+              {[0.25,0.5,0.75].map((f,i)=>(
+                <line key={`h${i}`} x1="40" y1={paperH*f} x2={paperW-40} y2={paperH*f} stroke="#cbd5e1" strokeWidth="0.4" strokeDasharray="2,6"/>
+              ))}
+              {/* Title block */}
+              <rect x={paperW-290} y={paperH-90} width={250} height={70} fill="white" stroke="#64748b" strokeWidth="0.8"/>
+              <line x1={paperW-290} y1={paperH-65} x2={paperW-40} y2={paperH-65} stroke="#64748b" strokeWidth="0.5"/>
+              <line x1={paperW-180} y1={paperH-90} x2={paperW-180} y2={paperH-40} stroke="#64748b" strokeWidth="0.5"/>
+              <text x={paperW-280} y={paperH-75} fontSize={Math.max(7,zoom*10)} fill="#334155" fontFamily="DM Sans">Foundation Plan — Block A</text>
+              <text x={paperW-280} y={paperH-52} fontSize={Math.max(6,zoom*8)} fill="#64748b" fontFamily="DM Sans">Project Title</text>
+              <text x={paperW-170} y={paperH-75} fontSize={Math.max(6,zoom*8)} fill="#64748b" fontFamily="DM Sans">Sheet 1 of {pages.length}</text>
+              <text x={paperW-170} y={paperH-52} fontSize={Math.max(6,zoom*8)} fill="#64748b" fontFamily="DM Sans">Rev A · {new Date().toLocaleDateString()}</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      {/* Sheet tabs */}
+      <div className="sheet-tabs">
+        {pages.map((p,i)=>(
+          <button key={p.id} className={`sheet-tab ${currentPage===i?'active':''}`} onClick={()=>setCurrentPage(i)}>
+            <span>{i+1}. {p.name}</span>
+            {pages.length > 1 && <span className="sheet-tab-close" onClick={e=>{e.stopPropagation();onDeletePage(i);}}>
+              <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+            </span>}
+          </button>
+        ))}
+        <button className="sheet-tab sheet-tab-add" onClick={onAddPage}>{icons.plus} Add sheet</button>
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6}}>
+          <button className="sheet-tab" onClick={()=>setShowGrid(!showGrid)} style={{color:showGrid?'var(--accent)':'var(--text-muted)'}}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 4h8M1 7h8M4 1v8M7 1v8" stroke="currentColor" strokeWidth="1"/></svg>
+            Grid
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Auth Screen ── */
+function AuthScreen({ onLogin }) {
+  const [tab, setTab] = useState('signin');
+  const [notice, setNotice] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
+
+  const handleSubmit = e => {
+    e.preventDefault();
+    if (!email || !password) { setNotice({type:'error',msg:'Please fill in all required fields.'}); return; }
+    setNotice({type:'success',msg:'Signing in…'});
+    setTimeout(() => onLogin({ name: name || email.split('@')[0], company, email, role: email.includes('admin') ? 'admin' : 'engineer' }), 800);
+  };
+
+  return (
+    <div className="auth-overlay">
+      <div className="auth-card">
+        <div className="auth-logo">
+          <div className="auth-brand">DF</div>
+          <div>
+            <div className="auth-title">DrawFlow Studio</div>
+            <div className="auth-sub">Engineering drawing platform</div>
+          </div>
+        </div>
+        <div className="auth-tabs">
+          <button className={`auth-tab ${tab==='signin'?'active':''}`} onClick={()=>setTab('signin')}>Sign in</button>
+          <button className={`auth-tab ${tab==='signup'?'active':''}`} onClick={()=>setTab('signup')}>Create account</button>
+        </div>
+        {notice && <div className={`auth-notice ${notice.type}`}>{notice.msg}</div>}
+        <form onSubmit={handleSubmit}>
+          {tab === 'signup' && <>
+            <div className="field"><label className="field-label">Full name</label><input className="field-input" value={name} onChange={e=>setName(e.target.value)} placeholder="James Chen" /></div>
+            <div className="field"><label className="field-label">Company</label><input className="field-input" value={company} onChange={e=>setCompany(e.target.value)} placeholder="Apex Engineering Ltd." /></div>
+          </>}
+          <div className="field"><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" required /></div>
+          <div className="field" style={{marginBottom:20}}><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required /></div>
+          <button type="submit" className="btn btn-primary btn-full" style={{height:40,fontSize:13}}>{tab==='signin'?'Sign in to workspace':'Create account'}</button>
+        </form>
+        <div style={{marginTop:20,fontSize:11,color:'var(--text-muted)',textAlign:'center',lineHeight:1.8}}>
+          Backed by Supabase · Multi-sheet PDF export<br/>
+          <span style={{color:'var(--accent)',cursor:'pointer'}} onClick={()=>onLogin({name:'Demo User',company:'Demo Corp',email:'demo@drawflow.io',role:'engineer'})}>Continue with demo account →</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Status Bar ── */
+function StatusBar({ toolMode, zoom, selectedCount, statusMessage, pages, currentPage, lastSaved }) {
+  const toolHints = {
+    select: 'Click to select · Shift+click to multi-select · Drag to move',
+    pan: 'Drag to pan canvas · Scroll to zoom',
+    line: 'Click to set start point · Click again to place · Shift to constrain angle',
+    dimension: 'Click first point → second point → drag offset to place dimension',
+    trim: 'Click near end of line to trim to nearest intersection',
+  };
+  return (
+    <div className="statusbar">
+      <div className="sb-item"><div className="sb-dot" /><span className="sb-green">Connected</span></div>
+      <div className="sb-item"><span style={{color:'var(--text-dim)',fontSize:10}}>{toolHints[toolMode]}</span></div>
+      <div className="sb-spacer" />
+      {statusMessage && <div className="sb-item" style={{color:'var(--accent)'}}>{statusMessage}</div>}
+      <div className="sb-item">{selectedCount > 0 ? <span className="sb-accent">{selectedCount} obj</span> : <span>No selection</span>}</div>
+      <div className="sb-item">Sheet {currentPage+1}/{pages.length}</div>
+      <div className="sb-item" style={{fontFamily:'JetBrains Mono'}}>{Math.round(zoom*100)}%</div>
+      {lastSaved && <div className="sb-item">Saved {lastSaved}</div>}
+    </div>
+  );
+}
+
+/* ── Main App ── */
+const TWEAK_DEFAULS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "accentColor": "#3b82f6",
+  "density": "normal",
+  "showGrid": true
+}/*EDITMODE-END*/;
+
+function App() {
+  const tw = useTweaks(TWEAK_DEFAULS);
+  const tweaks = tw?.tweaks ?? TWEAK_DEFAULS;
+  const setTweak = tw?.setTweak ?? (() => {});
+  const [authed, setAuthed] = useState(false);
+  const [session, setSession] = useState(null);
+  const [toolMode, setToolMode] = useState('select');
+  const [zoom, setZoom] = useState(0.72);
+  const [selectedCount, setSelectedCount] = useState(0);
+  const [projectName, setProjectName] = useState('Foundation Plan — Block A');
+  const [paperSize, setPaperSize] = useState('A1');
+  const [orientation, setOrientation] = useState('landscape');
+  const [activeTab, setActiveTab] = useState('library');
+  const [toastMsg, setToastMsg] = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [statusMessage, setStatusMessage] = useState(null);
+  const [pages, setPages] = useState([
+    {id:'s1',name:'Ground Floor Plan'},
+    {id:'s2',name:'Site Plan'},
+    {id:'s3',name:'Sections'},
+  ]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [titleBlock, setTitleBlock] = useState({ projectTitle:'Foundation Plan',drawingTitle:'Ground Floor Plan',client:'City Infrastructure Dept.',drawingNo:'DWG-001',revision:'A',scale:'1:100',drawnBy:'J. Chen',checkedBy:'M. Park' });
+
+  const toastRef = useRef(null);
+  const toast = msg => {
+    setToastMsg(msg);
+    clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(()=>setToastMsg(null), 2600);
+  };
+
+  // Apply accent color
+  useEffect(()=>{
+    document.documentElement.style.setProperty('--accent', tweaks.accentColor);
+  },[tweaks.accentColor]);
+
+  const handleLogin = session => { setSession(session); setAuthed(true); };
+  const handleLogout = () => { setAuthed(false); setSession(null); };
+  const handleSave = () => { setLastSaved(new Date().toLocaleTimeString()); toast('Project saved.'); };
+  const handleExport = () => toast('Exporting to PDF…');
+
+  const sidebarTabs = [
+    { id:'library', icon: icons.layers, label:'Library' },
+    { id:'drafting', icon: icons.tool, label:'Drafting' },
+    { id:'projects', icon: icons.folder, label:'Projects' },
+    ...(session?.role==='admin' ? [{ id:'publish', icon: icons.publish, label:'Publish' }] : []),
+  ];
+
+  const handleSidebarTab = id => setActiveTab(prev => prev === id ? null : id);
+
+  return (
+    <div className="app">
+      {!authed && <AuthScreen onLogin={handleLogin} />}
+      {authed && session && <>
+        <Toolbar
+          toolMode={toolMode} setToolMode={setToolMode}
+          zoom={zoom} onZoomIn={()=>setZoom(v=>Math.min(4,+(v+0.1).toFixed(2)))}
+          onZoomOut={()=>setZoom(v=>Math.max(0.15,+(v-0.1).toFixed(2)))}
+          onZoom100={()=>setZoom(1)} onZoomFit={()=>setZoom(0.72)}
+          selectedCount={selectedCount}
+          projectName={projectName} setProjectName={setProjectName}
+          onSave={handleSave} onExport={handleExport}
+          pages={pages} currentPage={currentPage} setCurrentPage={setCurrentPage}
+          paperSize={paperSize} setPaperSize={setPaperSize}
+          orientation={orientation} setOrientation={setOrientation}
+          session={session} onLogout={handleLogout}
+        />
+        <div className="app-body">
+          {/* Icon Rail */}
+          <div className="sidebar">
+            {sidebarTabs.map(t=>(
+              <button key={t.id} className={`sidebar-btn ${activeTab===t.id?'active':''}`} title={t.label} onClick={()=>handleSidebarTab(t.id)}>
+                {t.icon}
+              </button>
+            ))}
+            <div className="sidebar-sep" />
+            <button className="sidebar-btn" title="Toggle selection (click canvas items)" onClick={()=>setSelectedCount(c=>c===0?2:0)}>
+              {icons.cursor}
+            </button>
+          </div>
+          {/* Slide-out Panel */}
+          <div className={`panel ${activeTab?'open':''}`}>
+            <LeftPanel
+              activeTab={activeTab} session={session}
+              projectName={projectName}
+              titleBlock={titleBlock} setTitleBlock={setTitleBlock}
+              strokeColor={'#0f172a'} setStrokeColor={()=>{}}
+              strokeWidth={1.2} setStrokeWidth={()=>{}}
+              onApplyTitleBlock={()=>{}}
+              selectedCount={selectedCount}
+              statusMessage={null}
+              toast={toast}
+            />
+          </div>
+          {/* Canvas */}
+          <CanvasArea
+            zoom={zoom} toolMode={toolMode}
+            pages={pages} currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            onAddPage={()=>{
+              const n = pages.length+1;
+              setPages(p=>[...p,{id:`s${Date.now()}`,name:SHEET_NAMES[n-1]||`Sheet ${n}`}]);
+              setCurrentPage(pages.length);
+              toast('New sheet added.');
+            }}
+            onDeletePage={i=>{
+              if(pages.length<=1) return;
+              setPages(p=>p.filter((_,idx)=>idx!==i));
+              if(currentPage>=i && currentPage>0) setCurrentPage(c=>c-1);
+            }}
+          />
+        </div>
+        <StatusBar toolMode={toolMode} zoom={zoom} selectedCount={selectedCount} statusMessage={statusMessage} pages={pages} currentPage={currentPage} lastSaved={lastSaved} />
+        {toastMsg && <div className="toast">{toastMsg}</div>}
+        <TweaksPanel tweaks={tweaks} setTweak={setTweak}>
+          <TweakSection title="Appearance">
+            <TweakColor id="accentColor" label="Accent color" />
+            <TweakRadio id="density" label="Density" options={['compact','normal','relaxed']} />
+          </TweakSection>
+          <TweakSection title="Canvas">
+            <TweakToggle id="showGrid" label="Show grid" />
+          </TweakSection>
+          <TweakSection title="Demo">
+            <TweakButton label="Simulate selection" onClick={()=>setSelectedCount(c=>c===0?3:0)} />
+            <TweakButton label="Show toast" onClick={()=>toast('Status message from DrawFlow.')} />
+          </TweakSection>
+        </TweaksPanel>
+      </>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

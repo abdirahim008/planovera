@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ProBuild — Construction Project Controls</title>
+<link rel="stylesheet" href="pb-styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="pb-icons.jsx"></script>
+<script type="text/babel" src="pb-data.jsx"></script>
+<script type="text/babel" src="pb-auth.jsx"></script>
+<script type="text/babel" src="pb-sidebar.jsx"></script>
+<script type="text/babel" src="pb-dashboard.jsx"></script>
+<script type="text/babel" src="pb-modules.jsx"></script>
+<script type="text/babel" src="pb-drawings.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ── Tweak defaults ── */
+const TWEAK_DEFAULS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#3b82f6",
+  "density": "normal",
+  "sidebarDefault": "expanded"
+}/*EDITMODE-END*/;
+
+/* ── Toast hook ── */
+function useToast() {
+  const [msg, setMsg] = useState(null);
+  const timer = useRef(null);
+  const toast = useCallback(m => {
+    setMsg(m);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setMsg(null), 2800);
+  }, []);
+  return [msg, toast];
+}
+
+/* ── Module renderer ── */
+function ModuleView({ module, project, session, toast, setModule }) {
+  if (!project) {
+    if (module === 'meetings') return <MeetingsModule project={null} toast={toast} />;
+    return null;
+  }
+  switch (module) {
+    case 'dashboard':      return <ProjectDashboard project={project} setModule={setModule} />;
+    case 'boq':            return <BOQModule project={project} toast={toast} />;
+    case 'progress':       return <ProgressModule project={project} toast={toast} />;
+    case 'payment':        return <PaymentModule project={project} toast={toast} />;
+    case 'workplan':       return <WorkPlanModule project={project} toast={toast} />;
+    case 'drawings':       return <DrawingsModule project={project} toast={toast} />;
+    case 'correspondence': return <CorrespondenceModule project={project} toast={toast} />;
+    case 'documents':      return <DocumentsModule project={project} toast={toast} />;
+    case 'meetings':       return <MeetingsModule project={project} toast={toast} />;
+    default:               return null;
+  }
+}
+
+/* ── Main App ── */
+function App() {
+  const tw = useTweaks(TWEAK_DEFAULS);
+  const tweaks  = tw?.tweaks  ?? TWEAK_DEFAULS;
+  const setTweak = tw?.setTweak ?? (() => {});
+
+  const [authed,  setAuthed]  = useState(false);
+  const [session, setSession] = useState(null);
+  const [projects, setProjects] = useState(DEMO_PROJECTS);
+  const [project, setProject] = useState(null);   // active project object
+  const [module,  setModule]  = useState('dashboard');
+  const [toastMsg, toast] = useToast();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Apply accent color tweak
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', tweaks.accentColor);
+    document.documentElement.style.setProperty('--accent-s', tweaks.accentColor + '1a');
+    document.documentElement.style.setProperty('--accent-g', tweaks.accentColor + '44');
+  }, [tweaks.accentColor]);
+
+  const handleLogin  = s => { setSession(s); setAuthed(true); };
+  const handleLogout = () => { setAuthed(false); setSession(null); setProject(null); setModule('dashboard'); };
+
+  const openProject = id => {
+    const p = projects.find(p => p.id === id);
+    if (p) { setProject(p); setModule('dashboard'); }
+  };
+
+  const clearProject = () => { setProject(null); setModule('dashboard'); };
+
+  const createProject = form => {
+    const newP = {
+      id: `p${Date.now()}`,
+      name: form.name, type: form.type, role: form.role,
+      code: form.code, clientName: form.clientName,
+      contractorName: '', consultantName: '', location: form.location,
+      contractTitle: '', contractAmount: form.contractAmount, currency: form.currency,
+      start_date: form.start_date, end_date: form.end_date,
+      physical: 0, financial: 0, plannedProgress: 0, actualProgress: 0, status: 'active',
+    };
+    setProjects(ps => [newP, ...ps]);
+    setProject(newP);
+    setModule('dashboard');
+    toast(`Project "${form.name}" created.`);
+  };
+
+  // Drawings module needs full height — no padding
+  const isDrawings = project && module === 'drawings';
+
+  if (!authed) return <AuthScreen onLogin={handleLogin} />;
+
+  return (
+    <div className="app">
+      <Sidebar
+        project={project}
+        activeModule={module}
+        setModule={setModule}
+        clearProject={clearProject}
+        session={session}
+        onLogout={handleLogout}
+      />
+
+      <div className="app-main">
+        <div className={`app-content`} style={{ padding: isDrawings ? 0 : undefined, display: isDrawings ? 'flex' : undefined, flexDirection: isDrawings ? 'column' : undefined }}>
+          {!project && module === 'dashboard' && (
+            <PortfolioDashboard
+              projects={projects}
+              onOpenProject={openProject}
+              onCreateProject={() => setShowCreateModal(true)}
+            />
+          )}
+          {!project && module === 'meetings' && <MeetingsModule project={null} toast={toast} />}
+          {project && (
+            <ModuleView
+              module={module} project={project} session={session}
+              toast={toast} setModule={setModule}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      <CreateProjectModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={createProject}
+      />
+
+      {/* Toast */}
+      {toastMsg && <div className="toast">{toastMsg}</div>}
+
+      {/* Tweaks panel */}
+      <TweaksPanel tweaks={tweaks} setTweak={setTweak}>
+        <TweakSection title="Brand">
+          <TweakColor id="accentColor" label="Accent colour" />
+        </TweakSection>
+        <TweakSection title="Layout">
+          <TweakRadio id="density" label="Density" options={['compact','normal','relaxed']} />
+        </TweakSection>
+        <TweakSection title="Demo actions">
+          <TweakButton label="Open first project" onClick={() => { openProject('p1'); toast('Opened Riverside Commercial Tower.'); }} />
+          <TweakButton label="Back to portfolio" onClick={() => { clearProject(); toast('Returned to portfolio.'); }} />
+          <TweakButton label="Open Drawings module" onClick={() => { if (!project) openProject('p1'); setModule('drawings'); }} />
+          <TweakButton label="Show toast" onClick={() => toast('ProBuild workspace is live.')} />
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
