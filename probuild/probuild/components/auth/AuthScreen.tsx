@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BarChart3,
   CheckCircle2,
+  X,
   Mail,
   ShieldCheck,
 } from "lucide-react";
@@ -53,10 +54,17 @@ export default function AuthScreen({
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState(inviteEmail || "");
   const [password, setPassword] = useState("");
+  const [showAuthPanel, setShowAuthPanel] = useState(Boolean(inviteEmail));
+
+  const openAuth = (nextMode: "signin" | "signup") => {
+    setMode(nextMode);
+    setShowAuthPanel(true);
+  };
 
   useEffect(() => {
     if (!inviteEmail) return;
     setEmail(inviteEmail);
+    setShowAuthPanel(true);
   }, [inviteEmail]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -75,7 +83,7 @@ export default function AuthScreen({
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(148,163,184,0.055)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.055)_1px,transparent_1px)] bg-[size:44px_44px]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-blue-500/10 to-transparent" />
 
-      <div className="relative z-10 mx-auto grid min-h-screen max-w-7xl grid-cols-1 gap-8 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_430px] lg:px-8 lg:py-8">
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <section className="flex flex-col gap-8 lg:min-h-[calc(100vh-4rem)] lg:justify-between">
           <div>
             <header className="flex items-center justify-between gap-4">
@@ -95,13 +103,26 @@ export default function AuthScreen({
                 </span>
               </a>
 
-              <div className="hidden items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-300 shadow-[0_18px_40px_rgba(16,185,129,0.08)] backdrop-blur md:flex">
-                <ShieldCheck size={15} />
-                Organization access ready
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="hidden rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-black text-slate-200 transition hover:border-blue-400/40 hover:bg-white/[0.08] md:inline-flex"
+                  onClick={() => openAuth("signin")}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex rounded-2xl bg-blue-500 px-4 py-2.5 text-sm font-black text-white shadow-[0_16px_36px_rgba(59,130,246,0.24)] transition hover:bg-blue-400"
+                  onClick={() => openAuth("signup")}
+                >
+                  Create account
+                </button>
               </div>
             </header>
 
-            <div className="mt-10 max-w-4xl sm:mt-12 lg:mt-14">
+            <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="max-w-4xl">
               <p className="inline-flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-blue-200 shadow-[0_18px_45px_rgba(37,99,235,0.12)] backdrop-blur">
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.9)]" />
                 Built for project delivery teams
@@ -111,6 +132,37 @@ export default function AuthScreen({
                 operating system for BOQs, progress, payments, meetings, documents, compliance,
                 field notes, and technical drawings.
               </p>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-[#12161f]/78 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.26)] backdrop-blur">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-emerald-300">
+                  <ShieldCheck size={15} />
+                  Organization access ready
+                </div>
+                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">
+                  Start managing projects with Planovera
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Sign in to your workspace or create an account for manual organization activation,
+                  seats, invites, and project controls.
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-blue-500 px-4 text-sm font-black text-white shadow-[0_16px_36px_rgba(59,130,246,0.24)] transition hover:bg-blue-400"
+                    onClick={() => openAuth("signin")}
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-slate-200 transition hover:border-blue-400/40 hover:bg-white/[0.08]"
+                    onClick={() => openAuth("signup")}
+                  >
+                    Create account
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -156,8 +208,9 @@ export default function AuthScreen({
           </div>
         </section>
 
-        <aside className="flex items-start lg:items-center">
-          <section className="w-full rounded-3xl border border-white/10 bg-[#12161f]/95 p-5 shadow-[0_34px_100px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-6">
+        {showAuthPanel ? (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#020617]/72 px-4 py-5 backdrop-blur-md sm:py-8">
+            <section className="w-full max-w-[460px] rounded-3xl border border-white/10 bg-[#12161f]/95 p-5 shadow-[0_34px_100px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
@@ -175,6 +228,16 @@ export default function AuthScreen({
                   {configured ? "Ready" : "Offline"}
                 </div>
               </div>
+              {!inviteEmail ? (
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:border-blue-400/40 hover:text-white"
+                  onClick={() => setShowAuthPanel(false)}
+                  aria-label="Close sign in panel"
+                >
+                  <X size={18} />
+                </button>
+              ) : null}
             </div>
 
             {!configured ? (
@@ -306,8 +369,9 @@ export default function AuthScreen({
                 </button>
               </form>
             )}
-          </section>
-        </aside>
+            </section>
+          </div>
+        ) : null}
 
         <section className="lg:col-span-2">
           <div className="grid gap-5 border-t border-white/10 py-6 md:grid-cols-[1fr_0.8fr]">
