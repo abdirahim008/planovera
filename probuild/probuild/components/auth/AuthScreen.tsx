@@ -4,20 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   BarChart3,
-  CheckCircle2,
   X,
   Mail,
-  ShieldCheck,
 } from "lucide-react";
-
-const operatingHighlights = [
-  "Manual organization activation",
-  "Team seats and employee invites",
-  "BOQ-weighted progress reports",
-  "Technical drawing studio",
-  "Meeting minutes and action tracking",
-  "Document compliance checklist",
-];
 
 const dashboardMetrics = [
   { value: "12", label: "Active projects", accent: "text-blue-400" },
@@ -84,7 +73,7 @@ export default function AuthScreen({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-blue-500/10 to-transparent" />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <section className="flex flex-col gap-8 lg:min-h-[calc(100vh-4rem)] lg:justify-between">
+        <section className="flex flex-col gap-6 lg:min-h-[calc(100vh-4rem)]">
           <div>
             <header className="flex items-center justify-between gap-4">
               <a href="/" className="flex min-w-0 items-center gap-3">
@@ -121,8 +110,7 @@ export default function AuthScreen({
               </div>
             </header>
 
-            <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="max-w-4xl">
+            <div className="mt-10 max-w-4xl">
               <p className="inline-flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-blue-200 shadow-[0_18px_45px_rgba(37,99,235,0.12)] backdrop-blur">
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.9)]" />
                 Built for project delivery teams
@@ -132,37 +120,6 @@ export default function AuthScreen({
                 operating system for BOQs, progress, payments, meetings, documents, compliance,
                 field notes, and technical drawings.
               </p>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-[#12161f]/78 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.26)] backdrop-blur">
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-emerald-300">
-                  <ShieldCheck size={15} />
-                  Organization access ready
-                </div>
-                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">
-                  Start managing projects with Planovera
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Sign in to your workspace or create an account for manual organization activation,
-                  seats, invites, and project controls.
-                </p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <button
-                    type="button"
-                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-blue-500 px-4 text-sm font-black text-white shadow-[0_16px_36px_rgba(59,130,246,0.24)] transition hover:bg-blue-400"
-                    onClick={() => openAuth("signin")}
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-slate-200 transition hover:border-blue-400/40 hover:bg-white/[0.08]"
-                    onClick={() => openAuth("signup")}
-                  >
-                    Create account
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -171,7 +128,7 @@ export default function AuthScreen({
               <img
                 src="/brand/planovera-hero-dashboard.png"
                 alt="Planovera project control dashboard preview"
-                className="h-[260px] w-full object-cover object-center opacity-95 sm:h-[360px] lg:h-[420px]"
+                className="h-[360px] w-full object-cover object-center opacity-95 sm:h-[520px] lg:h-[640px] xl:h-[700px]"
               />
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_84%,rgba(37,99,235,0.24),transparent_24%),linear-gradient(180deg,transparent_45%,rgba(5,9,20,0.88)_100%)]" />
               <div className="absolute left-4 top-4 hidden items-center gap-2 rounded-2xl border border-white/10 bg-[#0b0e14]/80 px-3 py-2 text-xs font-black text-blue-100 shadow-[0_18px_40px_rgba(0,0,0,0.34)] backdrop-blur sm:flex">
@@ -373,28 +330,6 @@ export default function AuthScreen({
           </div>
         ) : null}
 
-        <section className="lg:col-span-2">
-          <div className="grid gap-5 border-t border-white/10 py-6 md:grid-cols-[1fr_0.8fr]">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {operatingHighlights.map((item) => (
-                <div key={item} className="flex items-center gap-2 text-sm font-bold text-slate-300">
-                  <CheckCircle2 size={16} className="text-emerald-400" />
-                  {item}
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-[#12161f]/75 p-4">
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                Built for organizations
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Start with manual activation for pilots, then grow into organization seats,
-                employee invites, program dashboards, and project-level delivery controls.
-              </p>
-            </div>
-          </div>
-        </section>
       </div>
     </main>
   );
