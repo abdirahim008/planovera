@@ -170,20 +170,9 @@ export default function AuthScreen({
             <section className="w-full max-w-[460px] rounded-3xl border border-white/10 bg-[#12161f]/95 p-5 shadow-[0_34px_100px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
-                  {configured ? "Secure access" : "Setup required"}
-                </p>
-                <h2 className="mt-2 text-2xl font-black tracking-[-0.02em] text-white">
+                <h2 className="text-2xl font-black tracking-[-0.02em] text-white">
                   {configured ? "Open your workspace" : "Connect Supabase first"}
                 </h2>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0e14] px-3 py-2 text-right">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Account
-                </div>
-                <div className={`mt-1 text-sm font-black ${configured ? "text-emerald-300" : "text-amber-300"}`}>
-                  {configured ? "Ready" : "Offline"}
-                </div>
               </div>
               {!inviteEmail ? (
                 <button
@@ -304,11 +293,6 @@ export default function AuthScreen({
                     placeholder="Enter your password"
                     autoComplete={mode === "signin" ? "current-password" : "new-password"}
                   />
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-slate-400">
-                  New accounts start with a personal workspace. Organization owners can add
-                  seats, reserve employee emails, and activate teams manually from admin.
                 </div>
 
                 {notice ? (
