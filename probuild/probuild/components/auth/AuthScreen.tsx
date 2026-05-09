@@ -4,32 +4,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   BarChart3,
-  Building2,
-  CalendarDays,
   CheckCircle2,
-  CheckSquare,
-  ClipboardList,
-  FileSpreadsheet,
-  FileText,
   Mail,
-  MessageSquareText,
-  PenTool,
   ShieldCheck,
-  UsersRound,
 } from "lucide-react";
-
-const platformModules = [
-  { label: "Portfolio", icon: Building2, tone: "blue" },
-  { label: "BOQ", icon: FileSpreadsheet, tone: "cyan" },
-  { label: "Progress", icon: ClipboardList, tone: "green" },
-  { label: "Payments", icon: ShieldCheck, tone: "amber" },
-  { label: "Work Plan", icon: CalendarDays, tone: "blue" },
-  { label: "Drawings", icon: PenTool, tone: "cyan" },
-  { label: "Documents", icon: FileText, tone: "green" },
-  { label: "Checklist", icon: CheckSquare, tone: "amber" },
-  { label: "Site Notes", icon: MessageSquareText, tone: "blue" },
-  { label: "Meetings", icon: UsersRound, tone: "cyan" },
-];
 
 const operatingHighlights = [
   "Manual organization activation",
@@ -46,12 +24,7 @@ const dashboardMetrics = [
   { value: "37", label: "Open actions", accent: "text-amber-400" },
 ];
 
-const toneClasses: Record<string, string> = {
-  blue: "bg-blue-500/10 text-blue-300 ring-blue-400/15",
-  cyan: "bg-cyan-500/10 text-cyan-300 ring-cyan-400/15",
-  green: "bg-emerald-500/10 text-emerald-300 ring-emerald-400/15",
-  amber: "bg-amber-500/10 text-amber-300 ring-amber-400/15",
-};
+const heroChips = ["Portfolio", "BOQ", "Progress", "Drawings", "Documents", "Checklist"];
 
 export default function AuthScreen({
   configured,
@@ -144,84 +117,44 @@ export default function AuthScreen({
             </div>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-            <div className="rounded-3xl border border-white/10 bg-[#12161f]/80 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
-                    Operating modules
-                  </p>
-                  <h2 className="mt-1 text-lg font-black text-white">One project delivery stack</h2>
-                </div>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-400">
-                  10 tools
-                </span>
+          <div className="rounded-[2rem] border border-white/10 bg-[#12161f]/80 p-3 shadow-[0_34px_120px_rgba(0,0,0,0.42)] backdrop-blur">
+            <div className="relative overflow-hidden rounded-[1.6rem] border border-blue-400/15 bg-[#050914] shadow-[0_0_80px_rgba(37,99,235,0.18)]">
+              <img
+                src="/brand/planovera-hero-dashboard.png"
+                alt="Planovera project control dashboard preview"
+                className="h-[260px] w-full object-cover object-center opacity-95 sm:h-[360px] lg:h-[420px]"
+              />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_84%,rgba(37,99,235,0.24),transparent_24%),linear-gradient(180deg,transparent_45%,rgba(5,9,20,0.88)_100%)]" />
+              <div className="absolute left-4 top-4 hidden items-center gap-2 rounded-2xl border border-white/10 bg-[#0b0e14]/80 px-3 py-2 text-xs font-black text-blue-100 shadow-[0_18px_40px_rgba(0,0,0,0.34)] backdrop-blur sm:flex">
+                <BarChart3 size={15} className="text-blue-300" />
+                Live command view
               </div>
-
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {platformModules.map((item) => {
-                  const Icon = item.icon;
-                  return (
+              <div className="absolute bottom-4 left-4 right-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {dashboardMetrics.map((item) => (
                     <div
                       key={item.label}
-                      className="group flex items-center gap-3 rounded-2xl border border-white/8 bg-[#0f141f] px-3 py-3 transition hover:border-blue-400/30 hover:bg-[#151c2a]"
+                      className="rounded-2xl border border-white/10 bg-[#0b0e14]/78 px-3 py-3 text-center shadow-[0_16px_40px_rgba(0,0,0,0.28)] backdrop-blur"
                     >
-                      <span
-                        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ring-1 ${
-                          toneClasses[item.tone]
-                        }`}
-                      >
-                        <Icon size={17} />
-                      </span>
-                      <span className="text-sm font-black text-slate-200">{item.label}</span>
+                      <div className={`text-xl font-black sm:text-2xl ${item.accent}`}>{item.value}</div>
+                      <div className="mt-1 text-[8px] font-black uppercase tracking-[0.15em] text-slate-500 sm:text-[9px]">
+                        {item.label}
+                      </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-[#12161f]/80 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
-                    Live command view
-                  </p>
-                  <h2 className="mt-1 text-lg font-black text-white">Portfolio snapshot</h2>
-                </div>
-                <BarChart3 size={20} className="text-blue-300" />
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                {dashboardMetrics.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-2xl border border-white/10 bg-[#0b0e14] px-3 py-3 text-center"
-                  >
-                    <div className={`text-2xl font-black ${item.accent}`}>{item.value}</div>
-                    <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                      {item.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {[
-                  ["Physical progress", "68%", "bg-blue-400", "w-[68%]"],
-                  ["Checklist compliance", "91%", "bg-emerald-400", "w-[91%]"],
-                  ["Open action closure", "54%", "bg-amber-400", "w-[54%]"],
-                ].map(([label, value, color, width]) => (
-                  <div key={label}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs font-bold">
-                      <span className="text-slate-400">{label}</span>
-                      <span className="text-slate-200">{value}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white/8">
-                      <div className={`h-full rounded-full ${color} ${width}`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {heroChips.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-300"
+                >
+                  {item}
+                </span>
+              ))}
             </div>
           </div>
         </section>
