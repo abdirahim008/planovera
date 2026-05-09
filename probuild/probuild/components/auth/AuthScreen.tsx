@@ -101,15 +101,12 @@ export default function AuthScreen({
               </div>
             </header>
 
-            <div className="mt-12 max-w-4xl sm:mt-16 lg:mt-20">
+            <div className="mt-10 max-w-4xl sm:mt-12 lg:mt-14">
               <p className="inline-flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-blue-200 shadow-[0_18px_45px_rgba(37,99,235,0.12)] backdrop-blur">
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.9)]" />
                 Built for project delivery teams
               </p>
-              <h1 className="mt-6 max-w-5xl text-4xl font-black leading-[1.02] tracking-[-0.04em] text-white sm:text-5xl lg:text-7xl">
-                Project controls, drawings, payments, and reports in one workspace.
-              </h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-400 sm:text-lg">
+              <p className="mt-5 max-w-3xl text-base leading-8 text-slate-400 sm:text-lg">
                 Planovera gives NGOs, government agencies, consultants, and contractors one
                 operating system for BOQs, progress, payments, meetings, documents, compliance,
                 field notes, and technical drawings.
