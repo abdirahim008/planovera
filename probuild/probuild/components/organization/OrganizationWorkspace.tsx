@@ -13,7 +13,6 @@ import {
   MailPlus,
   Pencil,
   Plus,
-  ShieldCheck,
   Sparkles,
   Trash2,
   TrendingUp,
@@ -1317,24 +1316,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   })}
                 </div>
               </div>
-
-              <div className="rounded-3xl border border-border bg-bg-surface p-5">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                  <Sparkles size={14} className="text-accent" />
-                  Suggested setup
-                </div>
-                <p className="mt-3 text-sm leading-7 text-txt-muted">
-                  Keep solo users on the personal plan and only upgrade to an organization when
-                  they need shared seats, centralized templates, and delegated access. It feels
-                  simpler than forcing every signup into a company structure.
-                </p>
-              </div>
             </section>
 
             <section className="space-y-6">
               {selectedOrganization ? (
                 <>
-                  <div className="grid gap-4 xl:grid-cols-3">
+                  <div className="grid gap-4 xl:grid-cols-2">
                     <div className="rounded-3xl border border-border bg-bg-surface p-5">
                       <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
                         <CreditCard size={14} className="text-accent" />
@@ -1381,21 +1368,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         Active members: {activeMembers.length} · Reserved invites: {reservedSeats}
                       </div>
                     </div>
-
-                    <div className="rounded-3xl border border-border bg-bg-surface p-5">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                        <ShieldCheck size={14} className="text-accent" />
-                        Access model
-                      </div>
-                      <div className="mt-4 text-xl font-semibold text-white">
-                        {selectedOrganization.personal ? "Individual-first" : "Organization-first"}
-                      </div>
-                      <div className="mt-2 text-sm text-txt-muted">
-                        {selectedOrganization.personal
-                          ? "One person owns the workspace, but it can still be upgraded into a team later."
-                          : "Seats can be reserved before employees sign up, which keeps onboarding cleaner."}
-                      </div>
-                    </div>
                   </div>
 
                   <div className="rounded-3xl border border-border bg-bg-surface p-6">
@@ -1408,11 +1380,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         <h2 className="mt-2 text-xl font-semibold text-white">
                           Project performance across {selectedOrganization.name}
                         </h2>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-txt-muted">
-                          Aggregates project value, latest progress reports, payment certificates,
-                          and team assignments so organization admins can see what employees are
-                          delivering without opening every project one by one.
-                        </p>
                       </div>
                       <Badge color={portfolio.variance >= 0 ? "ok" : "warn"}>
                         {portfolio.variance >= 0 ? "+" : ""}
@@ -1718,20 +1685,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-border bg-bg-surface p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                          Official program catalog
+                          Programs
                         </div>
-                        <h2 className="mt-2 text-xl font-semibold text-white">
-                          Standard program names for employee project setup
-                        </h2>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-txt-muted">
-                          These organization programs appear in employee project dropdowns and keep
-                          portfolio filters consistent. Employees can still create private programs,
-                          but private names will not become organization-wide options.
-                        </p>
+                        <h2 className="mt-1 text-xl font-semibold text-white">Official program catalog</h2>
                       </div>
                       {canManageSelectedOrganization ? (
                         <Button variant="primary" onClick={openCreateProgram}>
@@ -1742,12 +1702,10 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       )}
                     </div>
 
-                    <div className="mt-5 grid gap-3">
+                    <div className="grid gap-3">
                       {selectedPrograms.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-border px-4 py-6 text-sm text-txt-muted">
-                          No official programs yet. Add programs such as SURP2, health facilities,
-                          or municipal roads so employee-created projects use the same reporting
-                          categories.
+                        <div className="rounded-2xl border border-dashed border-border bg-bg-surface/50 px-4 py-5 text-sm text-txt-muted">
+                          No official programs yet.
                         </div>
                       ) : null}
 
@@ -1827,19 +1785,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-border bg-bg-surface p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                          Official category catalog
+                          Categories
                         </div>
-                        <h2 className="mt-2 text-xl font-semibold text-white">
-                          Standard project sectors and asset categories
-                        </h2>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-txt-muted">
-                          Add categories such as WASH, Roads, Buildings, Drainage, Health, and
-                          Solar / Energy so employee-created projects can be filtered consistently.
-                        </p>
+                        <h2 className="mt-1 text-xl font-semibold text-white">Official category catalog</h2>
                       </div>
                       {canManageSelectedOrganization ? (
                         <div className="flex flex-wrap gap-2">
@@ -1859,11 +1811,10 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       )}
                     </div>
 
-                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-2">
                       {selectedCategories.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-border px-4 py-6 text-sm text-txt-muted md:col-span-2">
-                          No official categories yet. Add the default catalog or create a custom
-                          category for your organization.
+                        <div className="rounded-2xl border border-dashed border-border bg-bg-surface/50 px-4 py-5 text-sm text-txt-muted md:col-span-2">
+                          No official categories yet.
                         </div>
                       ) : null}
 
