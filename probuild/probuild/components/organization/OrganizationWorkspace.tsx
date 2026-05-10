@@ -11,6 +11,7 @@ import {
   FolderKanban,
   Link2,
   MailPlus,
+  Minus,
   Pencil,
   Plus,
   Sparkles,
@@ -356,6 +357,24 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const seatsUsed = activeMembers.length + reservedSeats;
   const seatsAvailable = Math.max(totalSeats - seatsUsed, 0);
   const currentPlanCode = selectedSubscription?.plan_code ?? null;
+  const currentPlan = plans.find((plan) => plan.code === currentPlanCode) ?? null;
+  const seatMinimum = Math.max(1, seatsUsed, currentPlan?.included_seats ?? 1);
+  const resolveSeatCount = (value: string | number, minimum = seatMinimum) => {
+    const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
+    return Math.max(Number.isFinite(parsed) ? parsed : minimum, minimum);
+  };
+  const selectedSeatCount = resolveSeatCount(seatCount);
+  const handleSeatInputChange = (value: string) => {
+    const cleaned = value.replace(/[^\d]/g, "");
+    if (!cleaned) {
+      setSeatCount("");
+      return;
+    }
+    setSeatCount(String(resolveSeatCount(cleaned)));
+  };
+  const adjustSeatCount = (delta: number) => {
+    setSeatCount(String(Math.max(selectedSeatCount + delta, seatMinimum)));
+  };
   const selectedAccessState = getSubscriptionAccessState(selectedSubscription);
   const selectedSubscriptionUsable = isSubscriptionUsable(selectedSubscription);
   const selectedLocations = uniqueFilterValues(selectedProjects.map((project) => project.location));
@@ -812,7 +831,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const handlePlanChange = async (plan: BillingPlanRecord) => {
     if (!selectedOrganization) return;
 
-    const requestedSeats = Number(seatCount);
+    const requestedSeats = resolveSeatCount(seatCount, Math.max(1, seatsUsed, plan.included_seats));
+    setSeatCount(String(requestedSeats));
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setNotice("Supabase environment variables are missing.");
@@ -824,7 +844,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     const { error } = await supabase.rpc("configure_organization_subscription", {
       org_uuid: selectedOrganization.id,
       plan_code_param: plan.code,
-      seat_count_param: Number.isFinite(requestedSeats) ? requestedSeats : null,
+      seat_count_param: requestedSeats,
     });
 
     if (error) {
@@ -1226,7 +1246,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               Back to workspace
             </a>
             <div className="mt-4 inline-flex rounded-full border border-border bg-bg-surface px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
-              Organization Console
+              Organization owner/admin workspace
             </div>
             <h1 className="mt-4 text-3xl font-semibold text-white">
               Billing, seats, and team access in one place
@@ -1238,10 +1258,27 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap justify-end gap-3">
             <Button variant="ghost" onClick={() => setCreateOrgOpen(true)}>
               <Building2 size={15} /> New organization
             </Button>
+            {selectedOrganization && canManageSelectedOrganization ? (
+              <>
+                <Button variant="ghost" onClick={openCreateProgram}>
+                  <Plus size={15} /> Add program
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSeedDefaultCategories}
+                  disabled={busyAction === "seed-categories"}
+                >
+                  <Sparkles size={15} /> Add defaults
+                </Button>
+                <Button variant="ghost" onClick={openCreateCategory}>
+                  <Plus size={15} /> Add category
+                </Button>
+              </>
+            ) : null}
             {selectedOrganization && canManageRole(selectedMembership?.role || "viewer") ? (
               <Button
                 variant="primary"
@@ -1693,13 +1730,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                         <h2 className="mt-1 text-xl font-semibold text-white">Official program catalog</h2>
                       </div>
-                      {canManageSelectedOrganization ? (
-                        <Button variant="primary" onClick={openCreateProgram}>
-                          <Plus size={15} /> Add program
-                        </Button>
-                      ) : (
-                        <Badge color="warn">READ ONLY</Badge>
-                      )}
+                      {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
                     <div className="grid gap-3">
@@ -1793,22 +1824,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                         <h2 className="mt-1 text-xl font-semibold text-white">Official category catalog</h2>
                       </div>
-                      {canManageSelectedOrganization ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="ghost"
-                            onClick={handleSeedDefaultCategories}
-                            disabled={busyAction === "seed-categories"}
-                          >
-                            <Sparkles size={15} /> Add defaults
-                          </Button>
-                          <Button variant="primary" onClick={openCreateCategory}>
-                            <Plus size={15} /> Add category
-                          </Button>
-                        </div>
-                      ) : (
-                        <Badge color="warn">READ ONLY</Badge>
-                      )}
+                      {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
@@ -1892,24 +1908,47 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           Monthly and yearly pricing built for individuals and teams
                         </h2>
                       </div>
-                      <div className="w-full max-w-[180px]">
+                      <div className="w-full max-w-[240px]">
                         <label className="label">Seats</label>
-                        <input
-                          className="input"
-                          value={seatCount}
-                          onChange={(event) => setSeatCount(event.target.value)}
-                          placeholder="Enter seats"
-                          disabled={!canManageRole(selectedMembership?.role || "viewer")}
-                        />
+                        <div className="flex items-center overflow-hidden rounded-2xl border border-border bg-bg-input">
+                          <button
+                            type="button"
+                            className="flex h-12 w-12 items-center justify-center border-r border-border text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={() => adjustSeatCount(-1)}
+                            disabled={!canManageSelectedOrganization || selectedSeatCount <= seatMinimum}
+                            aria-label="Decrease seats"
+                          >
+                            <Minus size={15} />
+                          </button>
+                          <input
+                            className="h-12 min-w-0 flex-1 bg-transparent px-3 text-center text-sm font-semibold text-txt outline-none"
+                            value={seatCount}
+                            onChange={(event) => handleSeatInputChange(event.target.value)}
+                            onBlur={() => setSeatCount(String(selectedSeatCount))}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            disabled={!canManageSelectedOrganization}
+                            aria-label="Selected seats"
+                          />
+                          <button
+                            type="button"
+                            className="flex h-12 w-12 items-center justify-center border-l border-border text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={() => adjustSeatCount(1)}
+                            disabled={!canManageSelectedOrganization}
+                            aria-label="Increase seats"
+                          >
+                            <Plus size={15} />
+                          </button>
+                        </div>
+                        <div className="mt-2 text-xs text-txt-dim">
+                          Seats: {seatsUsed} used / {selectedSeatCount} selected
+                        </div>
                       </div>
                     </div>
 
                     <div className="mt-5 grid gap-4 xl:grid-cols-2">
                       {plans.map((plan) => {
-                        const effectiveSeats = Math.max(
-                          Number(seatCount) || plan.included_seats,
-                          plan.included_seats,
-                        );
+                        const effectiveSeats = Math.max(selectedSeatCount, plan.included_seats);
                         const extraSeats = Math.max(effectiveSeats - plan.included_seats, 0);
                         const estimated = plan.base_price_cents + extraSeats * plan.per_seat_price_cents;
 
