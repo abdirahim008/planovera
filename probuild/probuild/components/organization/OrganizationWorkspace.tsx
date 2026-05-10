@@ -11,7 +11,6 @@ import {
   FolderKanban,
   Link2,
   MailPlus,
-  Minus,
   Pencil,
   Plus,
   Sparkles,
@@ -26,7 +25,6 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import type {
-  BillingPlanRecord,
   PaymentCertificate,
   ProjectCategoryRecord,
   ProgramRecord,
@@ -134,14 +132,6 @@ const getOne = <T,>(value: T | T[] | null | undefined): T | null =>
 const canManageRole = (role: OrganizationMembershipRecord["role"]) =>
   role === "owner" || role === "admin";
 
-const formatMoney = (cents: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-
 const parseAmount = (value?: string | number | null) => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (!value) return 0;
@@ -240,7 +230,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   );
   const [memberships, setMemberships] = useState<OrganizationMembershipRecord[]>([]);
   const [members, setMembers] = useState<MemberDirectoryEntry[]>([]);
-  const [plans, setPlans] = useState<BillingPlanRecord[]>([]);
   const [subscriptions, setSubscriptions] = useState<OrganizationSubscriptionRecord[]>([]);
   const [invites, setInvites] = useState<OrganizationInviteRecord[]>([]);
   const [programs, setPrograms] = useState<ProgramRecord[]>([]);
@@ -265,7 +254,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     useState<OrganizationInviteRecord["role"]>("member");
   const [inviteMode, setInviteMode] =
     useState<OrganizationInviteRecord["delivery_method"]>("email");
-  const [seatCount, setSeatCount] = useState("5");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [freshInviteLink, setFreshInviteLink] = useState<string | null>(null);
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
@@ -356,25 +344,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const totalSeats = selectedSubscription?.seat_count ?? 1;
   const seatsUsed = activeMembers.length + reservedSeats;
   const seatsAvailable = Math.max(totalSeats - seatsUsed, 0);
-  const currentPlanCode = selectedSubscription?.plan_code ?? null;
-  const currentPlan = plans.find((plan) => plan.code === currentPlanCode) ?? null;
-  const seatMinimum = Math.max(1, seatsUsed, currentPlan?.included_seats ?? 1);
-  const resolveSeatCount = (value: string | number, minimum = seatMinimum) => {
-    const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
-    return Math.max(Number.isFinite(parsed) ? parsed : minimum, minimum);
-  };
-  const selectedSeatCount = resolveSeatCount(seatCount);
-  const handleSeatInputChange = (value: string) => {
-    const cleaned = value.replace(/[^\d]/g, "");
-    if (!cleaned) {
-      setSeatCount("");
-      return;
-    }
-    setSeatCount(String(resolveSeatCount(cleaned)));
-  };
-  const adjustSeatCount = (delta: number) => {
-    setSeatCount(String(Math.max(selectedSeatCount + delta, seatMinimum)));
-  };
   const selectedAccessState = getSubscriptionAccessState(selectedSubscription);
   const selectedSubscriptionUsable = isSubscriptionUsable(selectedSubscription);
   const selectedLocations = uniqueFilterValues(selectedProjects.map((project) => project.location));
@@ -482,12 +451,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   }, [filteredProjects, selectedProjectMembers]);
 
   useEffect(() => {
-    if (selectedSubscription) {
-      setSeatCount(String(selectedSubscription.seat_count));
-    }
-  }, [selectedSubscription?.id, selectedSubscription?.seat_count]);
-
-  useEffect(() => {
     if (!configured) {
       setLoading(false);
       return;
@@ -541,7 +504,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
       const allOrgIds = nextMemberships.map((membership) => membership.organization_id);
 
       const [
-        { data: planRows, error: planError },
         { data: subscriptionRows, error: subscriptionError },
         { data: memberRows, error: membersError },
         { data: inviteRows, error: invitesError },
@@ -549,7 +511,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         { data: categoryRows, error: categoriesError },
         { data: projectRows, error: projectsError },
       ] = await Promise.all([
-        supabase.from("billing_plans").select("*").eq("active", true).order("base_price_cents"),
         allOrgIds.length > 0
           ? supabase.from("organization_subscriptions").select("*").in("organization_id", allOrgIds)
           : Promise.resolve({ data: [], error: null }),
@@ -634,7 +595,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
       if (!active) return;
 
       setMemberships(nextMemberships);
-      setPlans((planRows ?? []) as BillingPlanRecord[]);
       setSubscriptions((subscriptionRows ?? []) as OrganizationSubscriptionRecord[]);
       setMembers((memberRows ?? []) as MemberDirectoryEntry[]);
       setInvites((inviteRows ?? []) as OrganizationInviteRecord[]);
@@ -652,7 +612,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
       const firstError =
         membershipError ||
-        planError ||
         subscriptionError ||
         membersError ||
         invitesError ||
@@ -824,46 +783,18 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     setOrgName("");
     setSelectedOrgId(createdOrg?.id ?? null);
     setBusyAction(null);
-    setNotice("Organization workspace created. Configure billing and start inviting teammates.");
-    await reloadData();
-  };
-
-  const handlePlanChange = async (plan: BillingPlanRecord) => {
-    if (!selectedOrganization) return;
-
-    const requestedSeats = resolveSeatCount(seatCount, Math.max(1, seatsUsed, plan.included_seats));
-    setSeatCount(String(requestedSeats));
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setNotice("Supabase environment variables are missing.");
-      return;
-    }
-
-    setBusyAction(`plan:${plan.code}`);
-    setNotice(null);
-    const { error } = await supabase.rpc("configure_organization_subscription", {
-      org_uuid: selectedOrganization.id,
-      plan_code_param: plan.code,
-      seat_count_param: requestedSeats,
-    });
-
-    if (error) {
-      setBusyAction(null);
-      setNotice(error.message);
-      return;
-    }
-
-    setBusyAction(null);
-    setNotice(
-      "Billing configuration updated. Platform admins can manually activate or extend access from Billing Ops.",
-    );
+    setNotice("Organization workspace created. A platform admin can assign seats and activate access from Billing Ops.");
     await reloadData();
   };
 
   const handleInvite = async () => {
     if (!selectedOrganization) return;
     if (!selectedSubscriptionUsable) {
-      setNotice("This organization subscription has expired. Reactivate it before reserving new seats.");
+      setNotice("This organization does not have active access. A platform admin can activate or extend it from Billing Ops.");
+      return;
+    }
+    if (seatsAvailable <= 0) {
+      setNotice("No seats available. Ask a platform admin to increase the assigned seat count.");
       return;
     }
     if (!inviteEmail.trim()) {
@@ -1288,9 +1219,14 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               <Button
                 variant="primary"
                 onClick={() => setInviteOpen(true)}
-                disabled={!selectedSubscriptionUsable}
+                disabled={!selectedSubscriptionUsable || seatsAvailable <= 0}
+                title={
+                  seatsAvailable <= 0
+                    ? "No seats available. Ask a platform admin to increase the assigned seat count."
+                    : undefined
+                }
               >
-                <MailPlus size={15} /> Invite teammate
+                <MailPlus size={15} /> {seatsAvailable <= 0 ? "No seats available" : "Invite teammate"}
               </Button>
             ) : null}
           </div>
@@ -1309,7 +1245,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
           </div>
         ) : loading ? (
           <div className="mt-8 rounded-3xl border border-border bg-bg-surface p-8 text-sm text-txt-muted">
-            Loading your organizations, plan settings, seats, and pending invites...
+            Loading your organizations, assigned seats, and pending invites...
           </div>
         ) : (
           <div className="mt-8 grid gap-6 lg:grid-cols-[300px,minmax(0,1fr)]">
@@ -1382,7 +1318,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       <div className="mt-2 text-sm text-txt-muted">
                         {selectedSubscription
                           ? `${selectedSubscription.billing_interval} billing · ${selectedSubscription.status}`
-                          : "Create a plan to unlock seats and invite teammates."}
+                          : "A platform admin must assign seats and activate access before invites can be sent."}
                       </div>
                       <div className="mt-4 text-xs text-txt-dim">
                         Access expires: {formatSubscriptionExpiry(selectedSubscription)}
@@ -1894,125 +1830,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
                   </div>
                   ) : null}
-
-                  <div className="rounded-3xl border border-border bg-bg-surface p-6">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                          Plan catalog
-                        </div>
-                        <h2 className="mt-2 text-xl font-semibold text-white">
-                          Monthly and yearly pricing built for individuals and teams
-                        </h2>
-                      </div>
-                      <div className="w-full max-w-[240px]">
-                        <label className="label">Seats</label>
-                        <div className="flex items-center overflow-hidden rounded-2xl border border-border bg-bg-input">
-                          <button
-                            type="button"
-                            className="flex h-12 w-12 items-center justify-center border-r border-border text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                            onClick={() => adjustSeatCount(-1)}
-                            disabled={!canManageSelectedOrganization || selectedSeatCount <= seatMinimum}
-                            aria-label="Decrease seats"
-                          >
-                            <Minus size={15} />
-                          </button>
-                          <input
-                            className="h-12 min-w-0 flex-1 bg-transparent px-3 text-center text-sm font-semibold text-txt outline-none"
-                            value={seatCount}
-                            onChange={(event) => handleSeatInputChange(event.target.value)}
-                            onBlur={() => setSeatCount(String(selectedSeatCount))}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            disabled={!canManageSelectedOrganization}
-                            aria-label="Selected seats"
-                          />
-                          <button
-                            type="button"
-                            className="flex h-12 w-12 items-center justify-center border-l border-border text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                            onClick={() => adjustSeatCount(1)}
-                            disabled={!canManageSelectedOrganization}
-                            aria-label="Increase seats"
-                          >
-                            <Plus size={15} />
-                          </button>
-                        </div>
-                        <div className="mt-2 text-xs text-txt-dim">
-                          Seats: {seatsUsed} used / {selectedSeatCount} selected
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                      {plans.map((plan) => {
-                        const effectiveSeats = Math.max(selectedSeatCount, plan.included_seats);
-                        const extraSeats = Math.max(effectiveSeats - plan.included_seats, 0);
-                        const estimated = plan.base_price_cents + extraSeats * plan.per_seat_price_cents;
-
-                        return (
-                          <div
-                            key={plan.id}
-                            className={`rounded-3xl border p-5 ${
-                              plan.code === currentPlanCode
-                                ? "border-accent/35 bg-accent/10"
-                                : "border-border bg-bg-raised"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-lg font-semibold text-white">{plan.name}</div>
-                                <div className="mt-1 text-sm text-txt-muted">{plan.description}</div>
-                              </div>
-                              <Badge color={plan.audience === "organization" ? "accent" : "ok"}>
-                                {plan.audience.toUpperCase()}
-                              </Badge>
-                            </div>
-
-                            <div className="mt-4 text-3xl font-semibold text-white">
-                              {formatMoney(estimated)}
-                              <span className="ml-2 text-sm font-medium text-txt-dim">
-                                / {plan.billing_interval === "yearly" ? "year" : "month"}
-                              </span>
-                            </div>
-                            <div className="mt-2 text-xs text-txt-dim">
-                              Includes {plan.included_seats} seat{plan.included_seats === 1 ? "" : "s"}.
-                              {plan.per_seat_price_cents > 0
-                                ? ` Extra seats estimated at ${formatMoney(plan.per_seat_price_cents)} each.`
-                                : " No extra seat charge on this plan."}
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {(plan.features || []).map((feature) => (
-                                <span
-                                  key={feature}
-                                  className="rounded-full border border-border px-3 py-1 text-xs text-txt-muted"
-                                >
-                                  {feature}
-                                </span>
-                              ))}
-                            </div>
-
-                            <div className="mt-5">
-                              <Button
-                                variant={plan.code === currentPlanCode ? "ghost" : "primary"}
-                                disabled={
-                                  busyAction === `plan:${plan.code}` ||
-                                  !canManageRole(selectedMembership?.role || "viewer")
-                                }
-                                onClick={() => handlePlanChange(plan)}
-                              >
-                                {busyAction === `plan:${plan.code}`
-                                  ? "Updating..."
-                                  : plan.code === currentPlanCode
-                                    ? "Current plan"
-                                    : "Use this plan"}
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
 
                   <div className="grid gap-6 xl:grid-cols-2">
                     <div className="rounded-3xl border border-border bg-bg-surface p-6">
