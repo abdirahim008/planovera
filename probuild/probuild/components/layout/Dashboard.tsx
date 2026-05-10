@@ -1984,9 +1984,10 @@ function ProjectLocationMap({
           attributionControl: large,
         }).setView([5.15, 46.2], 5);
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
           maxZoom: 19,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
         }).addTo(mapRef.current);
 
         markerLayerRef.current = L.layerGroup().addTo(mapRef.current);
@@ -2044,7 +2045,7 @@ function ProjectLocationMap({
   }, [large, points]);
 
   return (
-    <div className={`relative ${height} overflow-hidden bg-[#0b1424]`}>
+    <div className={`planovera-dark-map relative ${height} overflow-hidden bg-[#181a25]`}>
       <div ref={mapContainerRef} className="h-full w-full" />
 
       <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-white/10 bg-[#0f172a]/85 px-4 py-3 shadow-soft backdrop-blur">
