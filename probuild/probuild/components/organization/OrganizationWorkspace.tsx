@@ -1727,6 +1727,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
                   </div>
 
+                  {selectedPrograms.length > 0 ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -1739,12 +1740,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
 
                     <div className="grid gap-3">
-                      {selectedPrograms.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-border bg-bg-surface/50 px-4 py-5 text-sm text-txt-muted">
-                          No official programs yet.
-                        </div>
-                      ) : null}
-
                       {selectedPrograms.map((program) => {
                         const usageCount = programUsageCounts.get(program.id) ?? 0;
                         const archived = program.status !== "active";
@@ -1820,7 +1815,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       })}
                     </div>
                   </div>
+                  ) : null}
 
+                  {selectedCategories.length > 0 ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -1833,12 +1830,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
-                      {selectedCategories.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-border bg-bg-surface/50 px-4 py-5 text-sm text-txt-muted md:col-span-2">
-                          No official categories yet.
-                        </div>
-                      ) : null}
-
                       {selectedCategories.map((category) => {
                         const usageCount = categoryUsageCounts.get(category.id) ?? 0;
                         const archived = category.status !== "active";
@@ -1902,6 +1893,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       })}
                     </div>
                   </div>
+                  ) : null}
 
                   <div className="rounded-3xl border border-border bg-bg-surface p-6">
                     <div className="flex flex-wrap items-center justify-between gap-3">
