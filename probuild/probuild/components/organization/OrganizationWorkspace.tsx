@@ -1259,7 +1259,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
           </div>
 
           <div className="flex flex-wrap justify-end gap-3">
-            <Button variant="ghost" onClick={() => setCreateOrgOpen(true)}>
+            <Button
+              variant="ghost"
+              onClick={() => setCreateOrgOpen(true)}
+              title="Create a shared organization workspace. You will become the organization owner and can invite teammates."
+              aria-label="Create a shared organization workspace. You will become the organization owner and can invite teammates."
+            >
               <Building2 size={15} /> New organization
             </Button>
             {selectedOrganization && canManageSelectedOrganization ? (
