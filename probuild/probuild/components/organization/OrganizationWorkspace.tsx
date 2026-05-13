@@ -74,11 +74,14 @@ type ProjectPayloadRecord<TPayload> = {
 };
 
 type PortfolioFilters = {
+  userId: string;
   programId: string;
   categoryId: string;
   location: string;
   client: string;
 };
+
+type OrganizationConsoleTab = "dashboard" | "team" | "programs" | "categories";
 
 type CategoryEditorState = {
   id: string | null;
@@ -167,6 +170,22 @@ const programLabel = (programs: ProgramRecord[], programId?: string | null) =>
 const categoryLabel = (categories: ProjectCategoryRecord[], categoryId?: string | null, fallback?: string | null) =>
   categories.find((category) => category.id === categoryId)?.name || fallback || "Uncategorized";
 
+const memberDisplayName = (member?: MemberDirectoryEntry | null) =>
+  member?.profiles?.full_name || member?.profiles?.email || "Unassigned";
+
+const projectResponsibleName = (
+  project: ProjectRecord,
+  organizationMembers: MemberDirectoryEntry[],
+  projectMemberships: ProjectMembershipEntry[],
+) => {
+  const owner = organizationMembers.find((member) => member.user_id === project.owner_id);
+  if (owner) return memberDisplayName(owner);
+
+  const assignment = projectMemberships.find((membership) => membership.project_id === project.id);
+  const assignedMember = organizationMembers.find((member) => member.user_id === assignment?.user_id);
+  return memberDisplayName(assignedMember);
+};
+
 const roleBadgeColor = (role: OrganizationMembershipRecord["role"]) => {
   if (role === "owner" || role === "admin") return "accent";
   if (role === "manager") return "ok";
@@ -241,6 +260,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const [certificateRecords, setCertificateRecords] =
     useState<ProjectPayloadRecord<PaymentCertificate>[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [activeOrgTab, setActiveOrgTab] = useState<OrganizationConsoleTab>("dashboard");
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [programOpen, setProgramOpen] = useState(false);
@@ -257,6 +277,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [freshInviteLink, setFreshInviteLink] = useState<string | null>(null);
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
+    userId: "",
     programId: "",
     categoryId: "",
     location: "",
@@ -295,6 +316,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     (category) => category.organization_id === selectedOrganization?.id,
   );
   const canManageSelectedOrganization = canManageRole(selectedMembership?.role || "viewer");
+  const selectedProjectIds = selectedProjects.map((project) => project.id);
+  const selectedProjectMembers = projectMembers.filter(
+    (membership) =>
+      membership.organization_id === selectedOrganization?.id ||
+      selectedProjectIds.includes(membership.project_id),
+  );
   const programUsageCounts = useMemo(() => {
     const counts = new Map<string, number>();
     selectedProjects.forEach((project) => {
@@ -328,16 +355,17 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         const matchesClient =
           !portfolioFilters.client ||
           normalizeFilterValue(project.client_name) === normalizeFilterValue(portfolioFilters.client);
+        const matchesUser =
+          !portfolioFilters.userId ||
+          project.owner_id === portfolioFilters.userId ||
+          selectedProjectMembers.some(
+            (membership) =>
+              membership.project_id === project.id && membership.user_id === portfolioFilters.userId,
+          );
 
-        return matchesProgram && matchesCategory && matchesLocation && matchesClient;
+        return matchesUser && matchesProgram && matchesCategory && matchesLocation && matchesClient;
       }),
-    [portfolioFilters, selectedProjects],
-  );
-  const selectedProjectIds = selectedProjects.map((project) => project.id);
-  const selectedProjectMembers = projectMembers.filter(
-    (membership) =>
-      membership.organization_id === selectedOrganization?.id ||
-      selectedProjectIds.includes(membership.project_id),
+    [portfolioFilters, selectedProjectMembers, selectedProjects],
   );
   const activeMembers = selectedMembers.filter((membership) => membership.status === "active");
   const reservedSeats = selectedInvites.filter((invite) => invite.seat_reserved).length;
@@ -351,6 +379,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const hasUnassignedProjects = selectedProjects.some((project) => !project.program_id);
   const hasUncategorizedProjects = selectedProjects.some((project) => !project.category_id && !project.category_name);
   const activeFilterCount = [
+    portfolioFilters.userId,
     portfolioFilters.programId,
     portfolioFilters.categoryId,
     portfolioFilters.location,
@@ -416,6 +445,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         : 0;
     const earned = projectCards.reduce((sum, item) => sum + item.progress.earned, 0);
     const certified = projectCards.reduce((sum, item) => sum + item.certifiedValue, 0);
+    const financial = portfolioValue > 0 ? (certified / portfolioValue) * 100 : 0;
     const delayedProjects = projectCards.filter((item) => item.progress.variance < -5).length;
 
     return {
@@ -426,7 +456,10 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
       variance: actual - planned,
       earned,
       certified,
+      financial,
       delayedProjects,
+      openActions: 0,
+      overdueActions: 0,
     };
   }, [boqRecords, certificateRecords, filteredProjects, progressRecords]);
 
@@ -1164,6 +1197,38 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     await reloadData();
   };
 
+  const organizationConsoleTabs: Array<{
+    id: OrganizationConsoleTab;
+    label: string;
+    description: string;
+    icon: typeof BarChart3;
+  }> = [
+    {
+      id: "dashboard",
+      label: "Dashboard",
+      description: "Organization-wide project performance",
+      icon: BarChart3,
+    },
+    {
+      id: "team",
+      label: "Team & Seats",
+      description: "Assigned seats, members, and invites",
+      icon: Users,
+    },
+    {
+      id: "programs",
+      label: "Programs",
+      description: "Official program names for projects",
+      icon: FolderKanban,
+    },
+    {
+      id: "categories",
+      label: "Categories",
+      description: "Official sectors and asset categories",
+      icon: Sparkles,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-bg px-6 py-8">
       <div className="mx-auto max-w-7xl">
@@ -1180,12 +1245,11 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               Organization owner/admin workspace
             </div>
             <h1 className="mt-4 text-3xl font-semibold text-white">
-              Billing, seats, and team access in one place
+              Organization command centre
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-txt-muted">
-              Individuals keep a personal workspace. Teams can switch to a seat-based
-              organization plan, reserve seats for employees, and share invite links that
-              feel straightforward for both admins and first-time users.
+              Track every project your team is delivering, then manage members, official
+              program names, and category standards from one organization workspace.
             </p>
           </div>
 
@@ -1200,9 +1264,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
             </Button>
             {selectedOrganization && canManageSelectedOrganization ? (
               <>
+                {activeOrgTab === "programs" ? (
                 <Button variant="ghost" onClick={openCreateProgram}>
                   <Plus size={15} /> Add program
                 </Button>
+                ) : null}
+                {activeOrgTab === "categories" ? (
+                <>
                 <Button
                   variant="ghost"
                   onClick={handleSeedDefaultCategories}
@@ -1213,9 +1281,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                 <Button variant="ghost" onClick={openCreateCategory}>
                   <Plus size={15} /> Add category
                 </Button>
+                </>
+                ) : null}
               </>
             ) : null}
-            {selectedOrganization && canManageRole(selectedMembership?.role || "viewer") ? (
+            {selectedOrganization &&
+            canManageRole(selectedMembership?.role || "viewer") &&
+            activeOrgTab === "team" ? (
               <Button
                 variant="primary"
                 onClick={() => setInviteOpen(true)}
@@ -1294,11 +1366,45 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   })}
                 </div>
               </div>
+
+              <div className="rounded-3xl border border-border bg-bg-surface p-3">
+                <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
+                  Console
+                </div>
+                <div className="space-y-1">
+                  {organizationConsoleTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const active = activeOrgTab === tab.id;
+
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveOrgTab(tab.id)}
+                        className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                          active
+                            ? "border-accent/40 bg-accent/10 text-white"
+                            : "border-transparent text-txt-muted hover:border-border hover:bg-bg-raised hover:text-txt"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon size={16} className={active ? "text-accent" : "text-txt-dim"} />
+                          <div>
+                            <div className="text-sm font-semibold">{tab.label}</div>
+                            <div className="mt-1 text-[11px] leading-4 text-txt-dim">{tab.description}</div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </section>
 
             <section className="space-y-6">
               {selectedOrganization ? (
                 <>
+                  {activeOrgTab === "team" ? (
                   <div className="grid gap-4 xl:grid-cols-2">
                     <div className="rounded-3xl border border-border bg-bg-surface p-5">
                       <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
@@ -1347,7 +1453,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
                     </div>
                   </div>
+                  ) : null}
 
+                  {activeOrgTab === "dashboard" ? (
                   <div className="rounded-3xl border border-border bg-bg-surface p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
@@ -1366,7 +1474,26 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     </div>
 
                     <div className="mt-5 rounded-2xl border border-border bg-bg-raised p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
+                        <label className="space-y-2">
+                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                            User
+                          </span>
+                          <select
+                            className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm font-semibold text-txt outline-none focus:border-accent"
+                            value={portfolioFilters.userId}
+                            onChange={(event) =>
+                              setPortfolioFilters((prev) => ({ ...prev, userId: event.target.value }))
+                            }
+                          >
+                            <option value="">All users</option>
+                            {activeMembers.map((member) => (
+                              <option key={member.user_id} value={member.user_id}>
+                                {memberDisplayName(member)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <label className="space-y-2">
                           <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
                             Program
@@ -1457,7 +1584,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             size="sm"
                             disabled={activeFilterCount === 0}
                             onClick={() =>
-                              setPortfolioFilters({ programId: "", categoryId: "", location: "", client: "" })
+                              setPortfolioFilters({
+                                userId: "",
+                                programId: "",
+                                categoryId: "",
+                                location: "",
+                                client: "",
+                              })
                             }
                           >
                             <X size={14} /> Clear
@@ -1468,6 +1601,14 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         <span className="rounded-full border border-border bg-black/10 px-3 py-1">
                           Showing {filteredProjects.length} of {selectedProjects.length} projects
                         </span>
+                        {portfolioFilters.userId ? (
+                          <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-accent">
+                            User:{" "}
+                            {memberDisplayName(
+                              activeMembers.find((member) => member.user_id === portfolioFilters.userId),
+                            )}
+                          </span>
+                        ) : null}
                         {portfolioFilters.programId ? (
                           <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-accent">
                             Program:{" "}
@@ -1536,20 +1677,59 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           )}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
-                          Earned {formatCurrency(portfolio.earned, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
+                          Contract and BOQ-derived value
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                          <CreditCard size={14} className="text-accent" />
+                          Financial progress
+                        </div>
+                        <div className="mt-3 text-2xl font-semibold text-white">
+                          {portfolio.financial.toFixed(1)}%
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          Certified {formatCurrency(portfolio.certified, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                          <DollarSign size={14} className="text-ok" />
+                          Earned / certified
+                        </div>
+                        <div className="mt-3 text-2xl font-semibold text-white">
+                          {formatCurrency(portfolio.earned, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          Certified {formatCurrency(portfolio.certified, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                          <TrendingUp size={14} className="text-warn" />
+                          Delayed projects
+                        </div>
+                        <div className="mt-3 text-2xl font-semibold text-white">
+                          {portfolio.delayedProjects}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          Variance worse than -5%
                         </div>
                       </div>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
                           <Users size={14} className="text-accent" />
-                          Employee activity
+                          Actions
                         </div>
                         <div className="mt-3 text-2xl font-semibold text-white">
-                          {memberUsage.activeContributors}
+                          {portfolio.openActions}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
-                          contributors assigned to active projects
+                          {portfolio.overdueActions} overdue where available
                         </div>
                       </div>
                     </div>
@@ -1567,6 +1747,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                               <div className="text-sm font-semibold text-white">{item.project.name}</div>
                               <div className="mt-1 text-xs text-txt-muted">
                                 {programLabel(selectedPrograms, item.project.program_id)} · {categoryLabel(selectedCategories, item.project.category_id, item.project.category_name)} · {item.project.code || item.project.role} · {item.project.type}
+                              </div>
+                              <div className="mt-2 text-xs text-txt-dim">
+                                Responsible: {projectResponsibleName(item.project, selectedMembers, selectedProjectMembers)}
                               </div>
                               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                                 <div className="rounded-xl border border-border bg-bg-surface p-3">
@@ -1598,11 +1781,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         )}
                       </div>
                       <div className="hidden lg:block">
-                      <div className="grid grid-cols-[minmax(220px,1.6fr)_120px_120px_130px_120px] bg-bg-raised px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                      <div className="grid grid-cols-[minmax(220px,1.4fr)_140px_140px_105px_95px_105px_105px] bg-bg-raised px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                         <div>Project</div>
+                        <div>Responsible</div>
+                        <div>Program / category</div>
                         <div className="text-right">Value</div>
                         <div className="text-right">Physical</div>
-                        <div className="text-right">Earned / Certified</div>
+                        <div className="text-right">Financial</div>
                         <div className="text-right">Updated</div>
                       </div>
                       {portfolio.projectCards.length === 0 ? (
@@ -1614,12 +1799,23 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         portfolio.projectCards.slice(0, 8).map((item) => (
                           <div
                             key={item.project.id}
-                            className="grid grid-cols-[minmax(220px,1.6fr)_120px_120px_130px_120px] items-center border-t border-border px-4 py-3 text-sm"
+                            className="grid grid-cols-[minmax(220px,1.4fr)_140px_140px_105px_95px_105px_105px] items-center border-t border-border px-4 py-3 text-sm"
                           >
                             <div>
                               <div className="font-semibold text-white">{item.project.name}</div>
                               <div className="mt-1 text-xs text-txt-muted">
-                                {programLabel(selectedPrograms, item.project.program_id)} · {categoryLabel(selectedCategories, item.project.category_id, item.project.category_name)} · {item.project.code || item.project.role} · {item.project.type}
+                                {item.project.code || item.project.role} · {item.project.location || "No location"}
+                              </div>
+                            </div>
+                            <div className="text-sm text-txt-muted">
+                              {projectResponsibleName(item.project, selectedMembers, selectedProjectMembers)}
+                            </div>
+                            <div className="text-xs text-txt-muted">
+                              <div className="font-semibold text-txt">
+                                {programLabel(selectedPrograms, item.project.program_id)}
+                              </div>
+                              <div className="mt-1">
+                                {categoryLabel(selectedCategories, item.project.category_id, item.project.category_name)}
                               </div>
                             </div>
                             <div className="text-right font-mono text-txt">
@@ -1641,10 +1837,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                               </div>
                             </div>
                             <div className="text-right font-mono text-txt">
-                              {formatCurrency(
-                                item.progress.earned,
-                                item.project.currency || selectedProjects[0]?.currency || "USD",
-                              )}
+                              {item.commercialValue > 0
+                                ? `${((item.certifiedValue / item.commercialValue) * 100).toFixed(1)}%`
+                                : "0.0%"}
                               <div className="text-[11px] text-txt-dim">
                                 cert{" "}
                                 {formatCurrency(
@@ -1662,8 +1857,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
                     </div>
                   </div>
+                  ) : null}
 
-                  {selectedPrograms.length > 0 ? (
+                  {activeOrgTab === "programs" ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -1675,6 +1871,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
+                    {selectedPrograms.length === 0 ? (
+                      <div className="rounded-3xl border border-dashed border-border bg-bg-surface px-5 py-8 text-sm text-txt-muted">
+                        No official programs yet. Use `Add program` to create shared program names
+                        that employees can select during project setup.
+                      </div>
+                    ) : (
                     <div className="grid gap-3">
                       {selectedPrograms.map((program) => {
                         const usageCount = programUsageCounts.get(program.id) ?? 0;
@@ -1750,10 +1952,11 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         );
                       })}
                     </div>
+                    )}
                   </div>
                   ) : null}
 
-                  {selectedCategories.length > 0 ? (
+                  {activeOrgTab === "categories" ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -1765,6 +1968,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
+                    {selectedCategories.length === 0 ? (
+                      <div className="rounded-3xl border border-dashed border-border bg-bg-surface px-5 py-8 text-sm text-txt-muted">
+                        No official categories yet. Add defaults or create a custom category so
+                        organization projects can be filtered consistently.
+                      </div>
+                    ) : (
                     <div className="grid gap-3 md:grid-cols-2">
                       {selectedCategories.map((category) => {
                         const usageCount = categoryUsageCounts.get(category.id) ?? 0;
@@ -1828,9 +2037,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         );
                       })}
                     </div>
+                    )}
                   </div>
                   ) : null}
 
+                  {activeOrgTab === "team" ? (
+                  <>
                   <div className="grid gap-6 xl:grid-cols-2">
                     <div className="rounded-3xl border border-border bg-bg-surface p-6">
                       <div className="flex items-center justify-between gap-3">
@@ -1963,6 +2175,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </Button>
                       </div>
                     </div>
+                  ) : null}
+                  </>
                   ) : null}
                 </>
               ) : (
