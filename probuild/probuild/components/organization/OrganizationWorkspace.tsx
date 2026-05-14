@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
   Building2,
+  CheckCircle2,
+  ClipboardCheck,
   Copy,
   CreditCard,
   DollarSign,
   FolderKanban,
   Link2,
   MailPlus,
+  MapPin,
+  Maximize2,
   Pencil,
   Plus,
   Sparkles,
@@ -24,18 +28,24 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
-import type {
-  PaymentCertificate,
-  ProjectCategoryRecord,
-  ProgramRecord,
-  ProgressReport,
-  ProjectRecord,
-  SavedBOQ,
-  OrganizationInviteRecord,
-  OrganizationMembershipRecord,
-  OrganizationRecord,
-  OrganizationSubscriptionRecord,
+import {
+  normalizeConstructionWorkspacePayload,
+  type ChecklistItem,
+  type ConstructionWorkspacePayload,
+  type MeetingMinute,
+  type PaymentCertificate,
+  type ProjectCategoryRecord,
+  type ProgramRecord,
+  type ProgressReport,
+  type ProjectRecord,
+  type SavedBOQ,
+  type OrganizationInviteRecord,
+  type OrganizationMembershipRecord,
+  type OrganizationRecord,
+  type OrganizationSubscriptionRecord,
 } from "@/lib/supabase";
+import { findSomaliaTown } from "@/lib/somaliaLocations";
+import { getLiveMeetingActionItems, type MeetingActionSnapshot } from "@/lib/store";
 import { DEFAULT_PROJECT_CATEGORIES } from "@/lib/projectCategories";
 import {
   formatSubscriptionExpiry,
@@ -71,6 +81,22 @@ type ProjectPayloadRecord<TPayload> = {
   payload: TPayload;
   created_at: string;
   updated_at: string;
+};
+
+type WorkspaceOwnedPayloadRecord<TPayload> = {
+  id: string;
+  owner_id: string;
+  name: string;
+  payload: TPayload;
+  created_at: string;
+  updated_at: string;
+};
+
+type WorkspaceSnapshotRecord = {
+  owner_id: string;
+  payload: ConstructionWorkspacePayload;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type PortfolioFilters = {
@@ -241,6 +267,412 @@ const newestByProject = <TPayload,>(records: ProjectPayloadRecord<TPayload>[]) =
   return grouped;
 };
 
+const todayAtStart = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
+
+const isPastDate = (value?: string | null) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  date.setHours(0, 0, 0, 0);
+  return date < todayAtStart();
+};
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+
+const projectLocationLabel = (project: ProjectRecord) =>
+  [project.town, project.region].filter(Boolean).join(", ") || project.location || "";
+
+const parseCoordinate = (value?: string | null) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const resolveProjectCoordinates = (project: ProjectRecord) => {
+  const latitude = parseCoordinate(project.latitude);
+  const longitude = parseCoordinate(project.longitude);
+
+  if (latitude !== null && longitude !== null) {
+    return { latitude, longitude, source: "Exact coordinates" };
+  }
+
+  const town = findSomaliaTown(project.region || undefined, project.town || undefined);
+  if (!town) return null;
+  return { latitude: town.latitude, longitude: town.longitude, source: "Town fallback" };
+};
+
+const checklistStatusColor = (status: ChecklistItem["status"]) => {
+  if (status === "verified") return "ok";
+  if (status === "submitted") return "accent";
+  if (status === "rejected") return "err";
+  if (status === "waived") return "purple";
+  return "warn";
+};
+
+const actionStatusColor = (status: MeetingActionSnapshot["status"]) => {
+  if (status === "closed") return "ok";
+  if (status === "in-progress") return "accent";
+  return "warn";
+};
+
+const escapeMapHtml = (value: string | number) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+type OrganizationProjectCard = {
+  project: ProjectRecord;
+  progress: ReturnType<typeof progressMetrics>;
+  contractValue: number;
+  boqValue: number;
+  commercialValue: number;
+  certifiedValue: number;
+  updatedAt?: string | null;
+};
+
+type OrganizationMapPoint = {
+  id: string;
+  label: string;
+  subtitle: string;
+  latitude: number;
+  longitude: number;
+  source: string;
+  count: number;
+  projects: Array<{
+    id: string;
+    name: string;
+    code: string;
+    contractNumber: string;
+    value: number;
+    currency: string;
+    physical: number;
+    financial: number;
+  }>;
+};
+
+const buildOrganizationMapPoints = (cards: OrganizationProjectCard[]) => {
+  const grouped = new Map<string, OrganizationMapPoint>();
+
+  cards.forEach((card) => {
+    const coordinates = resolveProjectCoordinates(card.project);
+    if (!coordinates) return;
+
+    const label = projectLocationLabel(card.project) || card.project.name;
+    const key = `${coordinates.latitude.toFixed(3)}:${coordinates.longitude.toFixed(3)}:${label}`;
+    const projectEntry = {
+      id: card.project.id,
+      name: card.project.name,
+      code: card.project.code || "",
+      contractNumber: card.project.contract_number || "",
+      value: card.commercialValue,
+      currency: card.project.currency || "USD",
+      physical: card.progress.actual,
+      financial: card.commercialValue > 0 ? (card.certifiedValue / card.commercialValue) * 100 : 0,
+    };
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.count += 1;
+      existing.subtitle = `${existing.count} projects in this location`;
+      existing.projects.push(projectEntry);
+      return;
+    }
+
+    grouped.set(key, {
+      id: key,
+      label,
+      subtitle: card.project.name,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      source: coordinates.source,
+      count: 1,
+      projects: [projectEntry],
+    });
+  });
+
+  return Array.from(grouped.values());
+};
+
+function organizationMapPopupHtml(point: OrganizationMapPoint) {
+  const projectRows = point.projects
+    .map(
+      (project) => `
+        <div class="planovera-map-project">
+          <div class="planovera-map-project-title">${escapeMapHtml(project.name)}</div>
+          <div class="planovera-map-project-meta">
+            ${escapeMapHtml(project.contractNumber || project.code || "No reference")} · ${escapeMapHtml(formatCurrency(project.value, project.currency))}
+          </div>
+          <div class="planovera-map-project-meta">
+            Physical ${escapeMapHtml(project.physical.toFixed(1))}% · Financial ${escapeMapHtml(project.financial.toFixed(1))}%
+          </div>
+        </div>
+      `,
+    )
+    .join("");
+
+  return `
+    <div class="planovera-map-popup">
+      <div class="planovera-map-popup-label">${escapeMapHtml(point.label)}</div>
+      <div class="planovera-map-popup-source">${escapeMapHtml(point.source)}</div>
+      ${projectRows}
+    </div>
+  `;
+}
+
+function OrganizationLocationMap({
+  points,
+  missingCount,
+  large = false,
+}: {
+  points: OrganizationMapPoint[];
+  missingCount: number;
+  large?: boolean;
+}) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<import("leaflet").Map | null>(null);
+  const markerLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const height = large ? "h-[560px]" : "h-[280px]";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initMap() {
+      if (!mapContainerRef.current) return;
+      const L = await import("leaflet");
+      if (cancelled || !mapContainerRef.current) return;
+
+      if (!mapRef.current) {
+        mapRef.current = L.map(mapContainerRef.current, {
+          zoomControl: large,
+          scrollWheelZoom: large,
+          attributionControl: large,
+        }).setView([5.15, 46.2], 5);
+
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+          maxZoom: 19,
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        }).addTo(mapRef.current);
+
+        markerLayerRef.current = L.layerGroup().addTo(mapRef.current);
+      }
+
+      const map = mapRef.current;
+      const markerLayer = markerLayerRef.current;
+      markerLayer?.clearLayers();
+
+      const bounds: Array<[number, number]> = [];
+      points.forEach((point) => {
+        const marker = L.marker([point.latitude, point.longitude], {
+          icon: L.divIcon({
+            className: "planovera-map-marker",
+            html: `<span>${point.count}</span>`,
+            iconAnchor: [18, 18],
+            iconSize: [36, 36],
+          }),
+          title: `${point.label} - ${point.subtitle}`,
+        }).bindPopup(organizationMapPopupHtml(point), {
+          className: "planovera-map-popup-shell",
+          maxWidth: large ? 340 : 280,
+        });
+
+        marker.addTo(markerLayer!);
+        bounds.push([point.latitude, point.longitude]);
+      });
+
+      if (bounds.length > 0) {
+        map.fitBounds(bounds, {
+          padding: large ? [64, 64] : [36, 36],
+          maxZoom: large ? 13 : 9,
+        });
+      } else {
+        map.setView([5.15, 46.2], 5);
+      }
+
+      window.setTimeout(() => map.invalidateSize(), 0);
+    }
+
+    initMap().catch(() => {
+      if (!cancelled) setMapError("Map tiles could not be loaded. Project locations are still listed below.");
+    });
+
+    return () => {
+      cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markerLayerRef.current = null;
+      }
+    };
+  }, [large, points]);
+
+  return (
+    <div className={`planovera-dark-map relative ${height} overflow-hidden bg-[#181a25]`}>
+      <div ref={mapContainerRef} className="h-full w-full" />
+      <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-white/10 bg-[#0f172a]/85 px-4 py-3 shadow-soft backdrop-blur">
+        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
+          Organization map
+        </div>
+        <div className="mt-1 text-sm font-bold text-white">
+          {points.reduce((sum, point) => sum + point.count, 0)} plotted projects
+        </div>
+      </div>
+      {missingCount > 0 ? (
+        <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-warn/30 bg-[#0f172a]/85 px-3 py-1 text-xs font-bold text-warn backdrop-blur">
+          {missingCount} missing location
+        </div>
+      ) : null}
+      {mapError ? (
+        <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-warn/30 bg-[#0f172a]/90 px-4 py-3 text-sm text-warn shadow-soft backdrop-blur">
+          {mapError}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OrganizationMapCard({ cards }: { cards: OrganizationProjectCard[] }) {
+  const [open, setOpen] = useState(false);
+  const points = useMemo(() => buildOrganizationMapPoints(cards), [cards]);
+  const plottedCount = points.reduce((sum, point) => sum + point.count, 0);
+  const missingCount = Math.max(cards.length - plottedCount, 0);
+
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") setOpen(true);
+        }}
+        className="mt-5 w-full overflow-hidden rounded-[24px] border border-border bg-bg-surface text-left shadow-soft transition hover:border-accent/50"
+      >
+        <div className="grid gap-0 lg:grid-cols-[0.72fr_1.28fr]">
+          <div className="border-b border-border p-5 lg:border-b-0 lg:border-r">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
+                  <MapPin size={14} className="text-accent" /> Project locations
+                </div>
+                <div className="mt-2 text-xl font-black text-white">Portfolio map</div>
+                <p className="mt-2 text-sm leading-6 text-txt-muted">
+                  Location dots update with organization user, program, client, and location filters.
+                </p>
+              </div>
+              <span className="rounded-xl border border-border bg-black/15 p-2 text-txt-muted">
+                <Maximize2 size={16} />
+              </span>
+            </div>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-border bg-black/10 p-3">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Dots</div>
+                <div className="mt-1 text-2xl font-black text-white">{points.length}</div>
+              </div>
+              <div className="rounded-2xl border border-border bg-black/10 p-3">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Projects</div>
+                <div className="mt-1 text-2xl font-black text-ok">{plottedCount}</div>
+              </div>
+              <div className="rounded-2xl border border-border bg-black/10 p-3">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Missing</div>
+                <div className="mt-1 text-2xl font-black text-warn">{missingCount}</div>
+              </div>
+            </div>
+          </div>
+          <OrganizationLocationMap points={points} missingCount={missingCount} />
+        </div>
+      </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} title="Organization Project Locations" width={1080}>
+        <div className="space-y-4">
+          <OrganizationLocationMap points={points} missingCount={missingCount} large />
+          <div className="grid gap-3 md:grid-cols-2">
+            {points.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-black/10 p-4 text-sm text-txt-muted">
+                No projects in the current filter have region/town or exact coordinates yet.
+              </div>
+            ) : (
+              points.map((point) => (
+                <div key={point.id} className="rounded-2xl border border-border bg-black/10 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-white">{point.label}</div>
+                      <div className="mt-1 text-xs text-txt-muted">{point.subtitle}</div>
+                    </div>
+                    <Badge color="accent">{point.count}</Badge>
+                  </div>
+                  <div className="mt-3 text-[11px] text-txt-dim">
+                    {point.source} - {point.latitude.toFixed(4)}, {point.longitude.toFixed(4)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function ProgressGaugeCard({
+  title,
+  value,
+  subtitle,
+  accentClass,
+  accentHex,
+  children,
+}: {
+  title: string;
+  value: number;
+  subtitle: string;
+  accentClass: string;
+  accentHex: string;
+  children: ReactNode;
+}) {
+  const percent = clampPercent(value);
+
+  return (
+    <div className="rounded-3xl border border-border bg-bg-raised p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">{title}</div>
+          <p className="mt-2 text-sm text-txt-muted">{subtitle}</p>
+        </div>
+        <div
+          className="grid h-28 w-28 shrink-0 place-items-center rounded-full"
+          style={{
+            background: `conic-gradient(${accentHex} ${percent * 3.6}deg, rgba(148, 163, 184, 0.16) 0deg)`,
+          }}
+        >
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-bg-surface">
+            <div className="text-center">
+              <div className={`text-2xl font-black ${accentClass}`}>{percent.toFixed(0)}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-txt-dim">%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-black/10 p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
+      <div className="mt-1 text-lg font-black text-white">{value}</div>
+    </div>
+  );
+}
+
 export default function OrganizationWorkspace({ joined = false }: { joined?: boolean }) {
   const configured = isSupabaseConfigured();
   const [loading, setLoading] = useState(true);
@@ -259,8 +691,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const [progressRecords, setProgressRecords] = useState<ProjectPayloadRecord<ProgressReport>[]>([]);
   const [certificateRecords, setCertificateRecords] =
     useState<ProjectPayloadRecord<PaymentCertificate>[]>([]);
+  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<WorkspaceSnapshotRecord[]>([]);
+  const [meetingMinuteRecords, setMeetingMinuteRecords] =
+    useState<WorkspaceOwnedPayloadRecord<MeetingMinute>[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [activeOrgTab, setActiveOrgTab] = useState<OrganizationConsoleTab>("dashboard");
+  const [complianceModalOpen, setComplianceModalOpen] = useState(false);
+  const [actionModalOpen, setActionModalOpen] = useState(false);
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [programOpen, setProgramOpen] = useState(false);
@@ -351,7 +788,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
             : project.category_id === portfolioFilters.categoryId);
         const matchesLocation =
           !portfolioFilters.location ||
-          normalizeFilterValue(project.location) === normalizeFilterValue(portfolioFilters.location);
+          normalizeFilterValue(projectLocationLabel(project)) ===
+            normalizeFilterValue(portfolioFilters.location);
         const matchesClient =
           !portfolioFilters.client ||
           normalizeFilterValue(project.client_name) === normalizeFilterValue(portfolioFilters.client);
@@ -374,7 +812,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const seatsAvailable = Math.max(totalSeats - seatsUsed, 0);
   const selectedAccessState = getSubscriptionAccessState(selectedSubscription);
   const selectedSubscriptionUsable = isSubscriptionUsable(selectedSubscription);
-  const selectedLocations = uniqueFilterValues(selectedProjects.map((project) => project.location));
+  const selectedLocations = uniqueFilterValues(selectedProjects.map(projectLocationLabel));
   const selectedClients = uniqueFilterValues(selectedProjects.map((project) => project.client_name));
   const hasUnassignedProjects = selectedProjects.some((project) => !project.program_id);
   const hasUncategorizedProjects = selectedProjects.some((project) => !project.category_id && !project.category_name);
@@ -443,6 +881,24 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
             0,
           )
         : 0;
+    const filteredProjectIdSet = new Set(projectCards.map((item) => item.project.id));
+    const checklistItems = workspaceSnapshots
+      .flatMap((snapshot) => snapshot.payload.checklistItems)
+      .filter((item) => filteredProjectIdSet.has(item.project_id));
+    const overdueChecklistItems = checklistItems.filter(
+      (item) => item.status === "pending" && isPastDate(item.dueDate),
+    );
+    const submittedChecklistItems = checklistItems.filter((item) => item.status === "submitted");
+    const verifiedChecklistItems = checklistItems.filter((item) => item.status === "verified");
+    const actionItems = getLiveMeetingActionItems(
+      meetingMinuteRecords
+        .map((record) => record.payload)
+        .filter((minute) =>
+          minute.actionGroups.some((group) => filteredProjectIdSet.has(group.project_id)),
+        ),
+    ).filter((action) => filteredProjectIdSet.has(action.project_id));
+    const openActionItems = actionItems.filter((action) => action.status !== "closed");
+    const overdueActionItems = openActionItems.filter((action) => isPastDate(action.deadline));
     const earned = projectCards.reduce((sum, item) => sum + item.progress.earned, 0);
     const certified = projectCards.reduce((sum, item) => sum + item.certifiedValue, 0);
     const financial = portfolioValue > 0 ? (certified / portfolioValue) * 100 : 0;
@@ -458,10 +914,17 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
       certified,
       financial,
       delayedProjects,
-      openActions: 0,
-      overdueActions: 0,
+      checklistItems,
+      overdueChecklistItems,
+      submittedChecklistItems,
+      verifiedChecklistItems,
+      actionItems,
+      openActionItems,
+      overdueActionItems,
+      openActions: openActionItems.length,
+      overdueActions: overdueActionItems.length,
     };
-  }, [boqRecords, certificateRecords, filteredProjects, progressRecords]);
+  }, [boqRecords, certificateRecords, filteredProjects, meetingMinuteRecords, progressRecords, workspaceSnapshots]);
 
   const memberUsage = useMemo(() => {
     const createdCounts = new Map<string, number>();
@@ -579,7 +1042,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
           ? supabase
               .from("projects")
               .select(
-                "id, owner_id, organization_id, program_id, category_id, category_name, name, type, role, code, client_name, location, contract_title, contract_amount, currency, start_date, end_date, created_at, updated_at",
+                "id, owner_id, organization_id, program_id, category_id, category_name, name, type, role, code, contract_number, client_name, contractor_name, consultant_name, location, region, town, latitude, longitude, contract_title, contract_amount, currency, start_date, end_date, created_at, updated_at",
               )
               .in("organization_id", allOrgIds)
               .order("updated_at", { ascending: false })
@@ -590,11 +1053,16 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
       const nextProjects = (projectRows ?? []) as ProjectRecord[];
       const projectIds = nextProjects.map((project) => project.id);
+      const memberUserIds = Array.from(
+        new Set(((memberRows ?? []) as MemberDirectoryEntry[]).map((member) => member.user_id)),
+      );
       const [
         { data: projectMemberRows, error: projectMembersError },
         { data: boqRows, error: boqError },
         { data: progressRows, error: progressError },
         { data: certificateRows, error: certificateError },
+        { data: snapshotRows, error: snapshotError },
+        { data: meetingMinuteRows, error: meetingMinuteError },
       ] = await Promise.all([
         projectIds.length > 0
           ? supabase
@@ -623,6 +1091,19 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               .in("project_id", projectIds)
               .order("updated_at", { ascending: false })
           : Promise.resolve({ data: [], error: null }),
+        memberUserIds.length > 0
+          ? supabase
+              .from("construction_workspace_snapshots")
+              .select("owner_id, payload, created_at, updated_at")
+              .in("owner_id", memberUserIds)
+          : Promise.resolve({ data: [], error: null }),
+        memberUserIds.length > 0
+          ? supabase
+              .from("workspace_meeting_minutes")
+              .select("id, owner_id, name, payload, created_at, updated_at")
+              .in("owner_id", memberUserIds)
+              .order("updated_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       if (!active) return;
@@ -638,6 +1119,18 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
       setBoqRecords((boqRows ?? []) as ProjectPayloadRecord<SavedBOQ>[]);
       setProgressRecords((progressRows ?? []) as ProjectPayloadRecord<ProgressReport>[]);
       setCertificateRecords((certificateRows ?? []) as ProjectPayloadRecord<PaymentCertificate>[]);
+      setWorkspaceSnapshots(
+        ((snapshotRows ?? []) as Array<{
+          owner_id: string;
+          payload: Partial<ConstructionWorkspacePayload> | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        }>).map((snapshot) => ({
+          ...snapshot,
+          payload: normalizeConstructionWorkspacePayload(snapshot.payload),
+        })),
+      );
+      setMeetingMinuteRecords((meetingMinuteRows ?? []) as WorkspaceOwnedPayloadRecord<MeetingMinute>[]);
 
       if (!selectedOrgId || !allOrgIds.includes(selectedOrgId)) {
         setSelectedOrgId(manageableOrgIds[0] ?? allOrgIds[0] ?? null);
@@ -654,7 +1147,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         projectMembersError ||
         boqError ||
         progressError ||
-        certificateError;
+        certificateError ||
+        snapshotError ||
+        meetingMinuteError;
       setNotice((current) => current ?? firstError?.message ?? null);
       setLoading(false);
     };
@@ -733,7 +1228,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
           ? supabase
               .from("projects")
               .select(
-                "id, owner_id, organization_id, program_id, category_id, category_name, name, type, role, code, client_name, location, contract_title, contract_amount, currency, start_date, end_date, created_at, updated_at",
+                "id, owner_id, organization_id, program_id, category_id, category_name, name, type, role, code, contract_number, client_name, contractor_name, consultant_name, location, region, town, latitude, longitude, contract_title, contract_amount, currency, start_date, end_date, created_at, updated_at",
               )
               .in("organization_id", allOrgIds)
               .order("updated_at", { ascending: false })
@@ -742,7 +1237,17 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
     const nextProjects = (projectRows ?? []) as ProjectRecord[];
     const projectIds = nextProjects.map((project) => project.id);
-    const [{ data: projectMemberRows }, { data: boqRows }, { data: progressRows }, { data: certificateRows }] =
+    const memberUserIds = Array.from(
+      new Set(((memberRows ?? []) as MemberDirectoryEntry[]).map((member) => member.user_id)),
+    );
+    const [
+      { data: projectMemberRows },
+      { data: boqRows },
+      { data: progressRows },
+      { data: certificateRows },
+      { data: snapshotRows },
+      { data: meetingMinuteRows },
+    ] =
       await Promise.all([
         projectIds.length > 0
           ? supabase
@@ -771,6 +1276,19 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               .in("project_id", projectIds)
               .order("updated_at", { ascending: false })
           : Promise.resolve({ data: [] }),
+        memberUserIds.length > 0
+          ? supabase
+              .from("construction_workspace_snapshots")
+              .select("owner_id, payload, created_at, updated_at")
+              .in("owner_id", memberUserIds)
+          : Promise.resolve({ data: [] }),
+        memberUserIds.length > 0
+          ? supabase
+              .from("workspace_meeting_minutes")
+              .select("id, owner_id, name, payload, created_at, updated_at")
+              .in("owner_id", memberUserIds)
+              .order("updated_at", { ascending: false })
+          : Promise.resolve({ data: [] }),
       ]);
 
     setMemberships(nextMemberships);
@@ -784,6 +1302,18 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     setBoqRecords((boqRows ?? []) as ProjectPayloadRecord<SavedBOQ>[]);
     setProgressRecords((progressRows ?? []) as ProjectPayloadRecord<ProgressReport>[]);
     setCertificateRecords((certificateRows ?? []) as ProjectPayloadRecord<PaymentCertificate>[]);
+    setWorkspaceSnapshots(
+      ((snapshotRows ?? []) as Array<{
+        owner_id: string;
+        payload: Partial<ConstructionWorkspacePayload> | null;
+        created_at?: string | null;
+        updated_at?: string | null;
+      }>).map((snapshot) => ({
+        ...snapshot,
+        payload: normalizeConstructionWorkspacePayload(snapshot.payload),
+      })),
+    );
+    setMeetingMinuteRecords((meetingMinuteRows ?? []) as WorkspaceOwnedPayloadRecord<MeetingMinute>[]);
     setLoading(false);
   };
 
@@ -1638,6 +2168,43 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
                     </div>
 
+                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                      <ProgressGaugeCard
+                        title="Physical progress"
+                        value={portfolio.actual}
+                        subtitle="Weighted actual progress across filtered organization projects."
+                        accentClass="text-ok"
+                        accentHex="#22c55e"
+                      >
+                        <MiniMetric label="Planned" value={`${portfolio.planned.toFixed(1)}%`} />
+                        <MiniMetric label="Variance" value={`${portfolio.variance >= 0 ? "+" : ""}${portfolio.variance.toFixed(1)}%`} />
+                      </ProgressGaugeCard>
+                      <ProgressGaugeCard
+                        title="Financial progress"
+                        value={portfolio.financial}
+                        subtitle="Certified value as a percentage of contract or BOQ portfolio value."
+                        accentClass="text-accent"
+                        accentHex="#3b82f6"
+                      >
+                        <MiniMetric
+                          label="Portfolio value"
+                          value={formatCurrency(
+                            portfolio.portfolioValue,
+                            filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD",
+                          )}
+                        />
+                        <MiniMetric
+                          label="Certified"
+                          value={formatCurrency(
+                            portfolio.certified,
+                            filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD",
+                          )}
+                        />
+                      </ProgressGaugeCard>
+                    </div>
+
+                    <OrganizationMapCard cards={portfolio.projectCards} />
+
                     <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
@@ -1720,10 +2287,44 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                       </div>
 
+                      <button
+                        type="button"
+                        onClick={() => setComplianceModalOpen(true)}
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/45"
+                      >
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                          <ClipboardCheck size={14} className={portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-ok"} />
+                          Checklist
+                        </div>
+                        <div className={`mt-3 text-2xl font-semibold ${portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-white"}`}>
+                          {portfolio.overdueChecklistItems.length}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          overdue documents from {portfolio.checklistItems.length} required
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActionModalOpen(true)}
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/45"
+                      >
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                          <CheckCircle2 size={14} className={portfolio.overdueActions > 0 ? "text-err" : "text-ok"} />
+                          Action points
+                        </div>
+                        <div className={`mt-3 text-2xl font-semibold ${portfolio.overdueActions > 0 ? "text-err" : "text-white"}`}>
+                          {portfolio.overdueActions}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          overdue from {portfolio.openActions} open action point{portfolio.openActions === 1 ? "" : "s"}
+                        </div>
+                      </button>
+
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
                           <Users size={14} className="text-accent" />
-                          Actions
+                          Open actions
                         </div>
                         <div className="mt-3 text-2xl font-semibold text-white">
                           {portfolio.openActions}
@@ -2189,6 +2790,180 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
           </div>
         )}
       </div>
+
+      <Modal
+        open={complianceModalOpen}
+        onClose={() => setComplianceModalOpen(false)}
+        title="Checklist Compliance"
+        width={980}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <MiniMetric label="Required" value={String(portfolio.checklistItems.length)} />
+            <MiniMetric label="Overdue" value={String(portfolio.overdueChecklistItems.length)} />
+            <MiniMetric label="Submitted" value={String(portfolio.submittedChecklistItems.length)} />
+            <MiniMetric label="Verified" value={String(portfolio.verifiedChecklistItems.length)} />
+          </div>
+
+          {portfolio.checklistItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border bg-bg-raised px-5 py-8 text-sm text-txt-muted">
+              No checklist items were found for the current organization dashboard filter.
+            </div>
+          ) : (
+            <>
+              <div className="hidden overflow-hidden rounded-2xl border border-border lg:block">
+                <div className="grid grid-cols-[1.35fr_1fr_120px_130px_120px] bg-bg-raised px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  <div>Item</div>
+                  <div>Project</div>
+                  <div>Status</div>
+                  <div>Due / expiry</div>
+                  <div>Responsible</div>
+                </div>
+                {portfolio.checklistItems.map((item) => {
+                  const project = selectedProjects.find((entry) => entry.id === item.project_id);
+                  return (
+                    <div
+                      key={item.id}
+                      className="grid grid-cols-[1.35fr_1fr_120px_130px_120px] items-center border-t border-border px-4 py-3 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold text-white">{item.title}</div>
+                        {item.documentUrl ? (
+                          <a
+                            href={item.documentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex text-xs font-semibold text-accent hover:underline"
+                          >
+                            Open document
+                          </a>
+                        ) : null}
+                      </div>
+                      <div className="truncate text-txt-muted">{project?.name || "Unknown project"}</div>
+                      <div>
+                        <Badge color={checklistStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
+                      </div>
+                      <div className={item.status === "pending" && isPastDate(item.dueDate) ? "font-semibold text-err" : "text-txt-muted"}>
+                        {formatDate(item.dueDate)}
+                      </div>
+                      <div className="truncate text-txt-muted">{item.responsiblePerson || "Unassigned"}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-3 lg:hidden">
+                {portfolio.checklistItems.map((item) => {
+                  const project = selectedProjects.find((entry) => entry.id === item.project_id);
+                  return (
+                    <div key={`${item.id}-card`} className="rounded-2xl border border-border bg-bg-raised p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-white">{item.title}</div>
+                          <div className="mt-1 text-xs text-txt-muted">{project?.name || "Unknown project"}</div>
+                        </div>
+                        <Badge color={checklistStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-txt-muted sm:grid-cols-2">
+                        <div>Due: {formatDate(item.dueDate)}</div>
+                        <div>Responsible: {item.responsiblePerson || "Unassigned"}</div>
+                      </div>
+                      {item.documentUrl ? (
+                        <a
+                          href={item.documentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex text-xs font-semibold text-accent hover:underline"
+                        >
+                          Open document
+                        </a>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={actionModalOpen}
+        onClose={() => setActionModalOpen(false)}
+        title="Organization Action Points"
+        width={980}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MiniMetric label="Open" value={String(portfolio.openActionItems.length)} />
+            <MiniMetric label="Overdue" value={String(portfolio.overdueActionItems.length)} />
+            <MiniMetric label="Total tracked" value={String(portfolio.actionItems.length)} />
+          </div>
+
+          {portfolio.actionItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border bg-bg-raised px-5 py-8 text-sm text-txt-muted">
+              No meeting action points were found for the current organization dashboard filter.
+            </div>
+          ) : (
+            <>
+              <div className="hidden overflow-hidden rounded-2xl border border-border lg:block">
+                <div className="grid grid-cols-[1.4fr_1fr_130px_120px_1fr] bg-bg-raised px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  <div>Action item</div>
+                  <div>Project</div>
+                  <div>Responsible</div>
+                  <div>Deadline</div>
+                  <div>Meeting</div>
+                </div>
+                {portfolio.actionItems.map((item) => {
+                  const project = selectedProjects.find((entry) => entry.id === item.project_id);
+                  return (
+                    <div
+                      key={`${item.meetingMinuteId}-${item.id}`}
+                      className="grid grid-cols-[1.4fr_1fr_130px_120px_1fr] items-start border-t border-border px-4 py-3 text-sm"
+                    >
+                      <div>
+                        <div className="font-semibold text-white">{item.description}</div>
+                        <div className="mt-1">
+                          <Badge color={actionStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
+                        </div>
+                      </div>
+                      <div className="text-txt-muted">{project?.name || "Unknown project"}</div>
+                      <div className="text-txt-muted">{item.responsiblePerson || "Unassigned"}</div>
+                      <div className={item.status !== "closed" && isPastDate(item.deadline) ? "font-semibold text-err" : "text-txt-muted"}>
+                        {formatDate(item.deadline)}
+                      </div>
+                      <div className="text-txt-muted">
+                        <div>{item.meetingTitle}</div>
+                        <div className="mt-1 text-xs text-txt-dim">{formatDate(item.meetingDate)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-3 lg:hidden">
+                {portfolio.actionItems.map((item) => {
+                  const project = selectedProjects.find((entry) => entry.id === item.project_id);
+                  return (
+                    <div key={`${item.meetingMinuteId}-${item.id}-card`} className="rounded-2xl border border-border bg-bg-raised p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="font-semibold text-white">{item.description}</div>
+                        <Badge color={actionStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-txt-muted sm:grid-cols-2">
+                        <div>Project: {project?.name || "Unknown project"}</div>
+                        <div>Responsible: {item.responsiblePerson || "Unassigned"}</div>
+                        <div>Deadline: {formatDate(item.deadline)}</div>
+                        <div>Meeting: {item.meetingTitle}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={createOrgOpen} onClose={() => setCreateOrgOpen(false)} title="Create organization" width={460}>
         <div className="space-y-4">
