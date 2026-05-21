@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Planovera Studio",
+  title: "Planovera — Project Controls and Drawings",
   description:
-    "Web-based engineering drawing workspace with admin-managed SVG libraries, technical drafting tools, saved projects, and PDF export.",
+    "Construction and non-construction project management with BOQ, payment certificates, work planning, and an integrated technical drawing workspace.",
   icons: {
     icon: "/brand/planovera-favicon.png",
     shortcut: "/brand/planovera-favicon.png",
@@ -19,7 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="h-full">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

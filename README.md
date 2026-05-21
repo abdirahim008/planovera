@@ -1,131 +1,154 @@
-# DrawFlow Studio
+# ProBuild — Construction & Project Management App
 
-DrawFlow Studio is a Next.js 14 engineering drawing workspace for:
+A full-featured project management application built for construction professionals (engineers, contractors, supervision teams, and clients/employers) as well as non-construction projects.
 
-- authenticated users
-- user SVG import and admin-managed library publishing
-- multi-sheet drawing packages
-- Fabric.js canvas editing
-- PDF export
-- Vercel hosting with Supabase auth, database, and storage
-- middleware-protected routes with cookie-based sessions
+## Features
 
-## Stack
+### Project Setup
+- Select project type: **Construction** or **Non-Construction**
+- Select your role: **Contractor**, **Supervision/Consultant**, or **Client/Employer**
+- Role-based module visibility (payment certs only for supervision & employer)
 
-- Next.js 14 App Router
-- React 18
-- Fabric.js 6
-- jsPDF
-- Supabase Auth
-- Supabase Postgres
-- Supabase Storage
-- Tailwind CSS
+### BOQ Module (Construction only)
+- **Spreadsheet-like table** with Item No, Description, Unit, Quantity, Rate, Amount columns
+- **Right-click context menu** with:
+  - Add/delete rows
+  - Convert rows to Section Header, Sub Total, or Grand Total
+  - Copy/paste rows, move up/down
+  - Insert special row types below
+- **Row selection** by clicking the left gutter (row number)
+- **Paste from Excel** — Ctrl+V tabular data directly into the table
+- **Import from Excel** — Upload .xlsx/.xls/.csv files
+- **Multi-sheet support** — add, rename (double-click tab), duplicate, or delete sheets
+- **BOQ Library** — pick from admin-maintained ready-to-use BOQ templates
+- **Save to Library** — save current BOQ as a reusable template
+- Auto-calculation of amounts and subtotals/grand totals
 
-## Local setup
+### Simple Items Table (Non-Construction only)
+- Simplified line items with auto-calculation
 
-1. Install dependencies
+### Payment Certificates (Supervision & Employer roles)
+- Generate **Interim** and **Final** payment certificates
+- Fetches items from the BOQ automatically
+- Previous quantities carry forward between certificates
+- Editable "Current Qty" with auto-calculated cumulative values
+
+### Work Plan
+- Activities with description, duration, start date, and **auto-calculated end date**
+- Fetch activities from BOQ or add manually
+- Status tracking: Pending, In Progress, Completed, Delayed
+
+### Admin Panel (`/admin`)
+- Manage the BOQ Library — view, preview, and delete templates
+
+---
+
+## Tech Stack
+
+- **Next.js 14** (App Router)
+- **TypeScript**
+- **Tailwind CSS** (custom dark theme)
+- **Zustand** (state management)
+- **SheetJS (xlsx)** (Excel import/export)
+- **Supabase** (database & auth — schema included)
+- **Vercel** (deployment)
+
+---
+
+## Quick Start
+
+### 1. Clone and install
 
 ```bash
+cd probuild
 npm install
 ```
 
-2. Copy `.env.example` to `.env.local`
+### 2. Configure Supabase
 
-3. Add your Supabase values
+1. Create a project at [supabase.com](https://supabase.com)
+2. Go to **SQL Editor** and run the contents of `supabase-schema.sql`
+3. Copy your project URL and anon key
+4. Edit `.env.local`:
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-4. In Supabase, run the SQL in [supabase/schema.sql](./supabase/schema.sql)
-
-5. Start the app
+### 3. Run locally
 
 ```bash
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000)
+Open [http://localhost:3000](http://localhost:3000)
 
-## Routes
-
-- `/login`
-  - public auth page
-- `/`
-  - protected drawing workspace
-
-Route protection is enforced by [middleware.ts](./middleware.ts) and backed by Supabase SSR cookies.
-
-## What the schema creates
-
-- `profiles`
-  - shared profile/auth metadata for the construction app and drawing module
-- `drawing_projects`
-  - stores saved drawing packages with sheet/page JSON
-- `drawing_library_items`
-  - stores published SVG drawings for the shared library
-- `drawing-assets` storage bucket
-  - reserved for future uploaded assets and generated exports
-
-The schema also includes a migration-safe rename path from the earlier `projects` and `library_items` table names into the drawing-specific table names above.
-
-New signups are created as `engineer` by default. Promote admins manually:
-
-```sql
-update public.profiles
-set role = 'admin'
-where email = 'your-email@company.com';
-```
-
-## Current workflow
-
-### Engineers
-
-- sign in with email/password
-- open the canvas workspace
-- draw from scratch with line, text, dimension, trim, and shape tools
-- paste raw SVG and render it into the canvas for editing
-- search the drawing library and insert reusable blocks
-- save drawing projects to Supabase
-- export drawing sheets to PDF
-
-### Admins
-
-- everything engineers can do
-- publish approved raw SVG or current canvas content into the shared library
-
-## Shared-backend integration
-
-For merging this into your construction project management platform, the recommended setup is:
-
-- one Supabase project shared by both apps
-- one shared `profiles` table and Supabase Auth tenant
-- drawing-specific domain tables such as `drawing_projects` and `drawing_library_items`
-
-That keeps login credentials and user roles shared, while avoiding collisions with broader platform tables like construction `projects`.
-
-## Deploying to Vercel
-
-1. Push the repo to GitHub
-2. Import the project into Vercel
-3. Add these environment variables in Vercel:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Deploy
-
-For production use, Vercel Pro is the right next step once you move beyond personal trial use.
-
-## Build check
+### 4. Deploy to Vercel
 
 ```bash
-npm run build
+npx vercel
 ```
+
+Or connect your GitHub repo to Vercel and it will auto-deploy.
+
+Add the Supabase environment variables in Vercel's project settings.
+
+---
+
+## Project Structure
+
+```
+probuild/
+├── app/
+│   ├── layout.tsx          # Root layout with metadata
+│   ├── page.tsx            # Main page (setup + workspace)
+│   ├── globals.css         # Global styles + Tailwind
+│   └── admin/
+│       └── page.tsx        # Admin BOQ library page
+├── components/
+│   ├── ui/
+│   │   ├── Button.tsx      # Reusable button
+│   │   ├── Badge.tsx       # Status/category badge
+│   │   ├── Modal.tsx       # Dialog modal
+│   │   └── ContextMenu.tsx # Right-click context menu
+│   ├── boq/
+│   │   ├── BOQModule.tsx   # Full BOQ module (table, sheets, library, import)
+│   │   └── SimpleItemsTable.tsx  # Simple table for non-construction
+│   ├── payment/
+│   │   └── PaymentModule.tsx     # Payment certificate generation
+│   ├── workplan/
+│   │   └── WorkPlanModule.tsx    # Work plan activities
+│   ├── layout/
+│   │   ├── Sidebar.tsx     # Navigation sidebar
+│   │   └── Dashboard.tsx   # Dashboard with stats
+│   └── admin/
+│       └── AdminLibrary.tsx # Admin library management
+├── lib/
+│   ├── supabase.ts         # Supabase client + type definitions
+│   ├── store.ts            # Zustand global state store
+│   └── excel-utils.ts      # Excel/paste parsing utilities
+├── supabase-schema.sql     # Database schema (run in Supabase SQL Editor)
+├── tailwind.config.ts
+├── tsconfig.json
+├── next.config.js
+├── package.json
+└── .env.local              # Environment variables (not committed)
+```
+
+---
+
+## Usage Tips
+
+- **BOQ Paste from Excel**: Copy a range of cells from Excel (columns: Item No, Description, Unit, Qty, Rate, Amount), click the BOQ table area, and press Ctrl+V
+- **Row Selection**: Click the row number on the left edge to select a row. Then right-click for context options including "Convert to Section Header"
+- **Sheet Management**: Double-click a sheet tab to rename it
+- **Payment Certificates**: Create your BOQ first, then go to Payments to generate certificates
+
+---
 
 ## Notes
 
-- The app uses Supabase directly from the client with RLS policies protecting data access.
-- Middleware now protects the main workspace route and redirects unauthenticated users to `/login`.
-- Seed library content is still available in the UI so the workspace is useful immediately, even before admins publish their own drawings.
-- Project save/load and role enforcement are now backed by Supabase instead of browser-local persistence.
-- Raw SVG import is available to all signed-in users, while publishing to the shared library remains admin-only.
+- The app currently uses **Zustand** for in-memory state. Data persists within a session but resets on reload.
+- To enable full persistence, integrate the Supabase client calls in the store actions (the schema and types are ready).
+- The BOQ Library ships with 3 sample templates (Road Works, Building Construction, Drainage Infrastructure).
