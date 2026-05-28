@@ -55,7 +55,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
       {!embedded ? (
         <div className="flex items-center gap-3 mb-6">
           <a
-            href="/"
+            href="/workspace"
             className="text-txt-muted hover:text-txt transition-colors"
           >
             <ArrowLeft size={18} />

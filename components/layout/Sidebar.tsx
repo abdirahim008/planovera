@@ -99,7 +99,7 @@ export default function Sidebar({
   const collapsed = isMobile ? false : forceCollapsed || sidebarCollapsed;
   const handleBrandClick = () => {
     setActiveModule("dashboard");
-    router.push("/");
+    router.push("/workspace");
 
     if (isMobile) {
       onCloseMobile?.();

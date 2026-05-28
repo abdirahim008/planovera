@@ -1761,7 +1761,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <a
-              href="/"
+              href="/workspace"
               className="inline-flex items-center gap-2 text-sm font-semibold text-txt-muted transition hover:text-txt"
             >
               <ArrowLeft size={16} />

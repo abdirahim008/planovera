@@ -26,7 +26,7 @@ export default function AuthPage() {
   const finalizeAccess = async () => {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
-      router.replace("/");
+      router.replace("/workspace");
       router.refresh();
       return;
     }
@@ -45,7 +45,7 @@ export default function AuthPage() {
     });
 
     if (error) {
-      router.replace("/");
+      router.replace("/workspace");
       router.refresh();
       return;
     }
@@ -56,7 +56,7 @@ export default function AuthPage() {
       return;
     }
 
-    router.replace("/");
+    router.replace("/workspace");
     router.refresh();
   };
 

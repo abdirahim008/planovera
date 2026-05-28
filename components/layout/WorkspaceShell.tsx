@@ -2,24 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Menu } from "lucide-react";
 
 import { useAppStore } from "@/lib/store";
 import Sidebar from "@/components/layout/Sidebar";
-import Dashboard from "@/components/layout/Dashboard";
-import BOQModule from "@/components/boq/BOQModule";
-import SimpleItemsTable from "@/components/boq/SimpleItemsTable";
-import PaymentModule from "@/components/payment/PaymentModule";
-import WorkPlanModule from "@/components/workplan/WorkPlanModule";
-import ProgressModule from "@/components/progress/ProgressModule";
-import DocumentsModule from "@/components/documents/DocumentsModule";
-import CorrespondenceModule from "@/components/correspondence/CorrespondenceModule";
-import ChecklistModule from "@/components/checklist/ChecklistModule";
-import SiteNotesModule from "@/components/site-notes/SiteNotesModule";
-import RiskRegisterModule from "@/components/risks/RiskRegisterModule";
-import StakeholderLogModule from "@/components/stakeholders/StakeholderLogModule";
-import MeetingMinutesModule from "@/components/meetings/MeetingMinutesModule";
-import ConstructionDrawingsModule from "@/components/drawings/ConstructionDrawingsModule";
 import {
   getSupabaseBrowserClient,
   isSupabaseConfigured,
@@ -44,6 +31,58 @@ import {
   buildRelationalWorkspacePayload,
   mergeWorkspacePayloadSources,
 } from "@/lib/workspace-sync";
+
+function ModuleLoading({ label = "Loading module..." }: { label?: string }) {
+  return (
+    <div className="flex min-h-[280px] items-center justify-center rounded-[28px] border border-border bg-bg-surface p-8 text-center text-sm font-semibold text-txt-muted">
+      {label}
+    </div>
+  );
+}
+
+const Dashboard = dynamic(() => import("@/components/layout/Dashboard"), {
+  loading: () => <ModuleLoading label="Loading dashboard..." />,
+});
+const BOQModule = dynamic(() => import("@/components/boq/BOQModule"), {
+  loading: () => <ModuleLoading label="Loading BOQ..." />,
+});
+const SimpleItemsTable = dynamic(() => import("@/components/boq/SimpleItemsTable"), {
+  loading: () => <ModuleLoading label="Loading items..." />,
+});
+const PaymentModule = dynamic(() => import("@/components/payment/PaymentModule"), {
+  loading: () => <ModuleLoading label="Loading payments..." />,
+});
+const WorkPlanModule = dynamic(() => import("@/components/workplan/WorkPlanModule"), {
+  loading: () => <ModuleLoading label="Loading work plan..." />,
+});
+const ProgressModule = dynamic(() => import("@/components/progress/ProgressModule"), {
+  loading: () => <ModuleLoading label="Loading progress..." />,
+});
+const DocumentsModule = dynamic(() => import("@/components/documents/DocumentsModule"), {
+  loading: () => <ModuleLoading label="Loading documents..." />,
+});
+const CorrespondenceModule = dynamic(() => import("@/components/correspondence/CorrespondenceModule"), {
+  loading: () => <ModuleLoading label="Loading correspondence..." />,
+});
+const ChecklistModule = dynamic(() => import("@/components/checklist/ChecklistModule"), {
+  loading: () => <ModuleLoading label="Loading checklist..." />,
+});
+const SiteNotesModule = dynamic(() => import("@/components/site-notes/SiteNotesModule"), {
+  loading: () => <ModuleLoading label="Loading site notes..." />,
+});
+const RiskRegisterModule = dynamic(() => import("@/components/risks/RiskRegisterModule"), {
+  loading: () => <ModuleLoading label="Loading risks..." />,
+});
+const StakeholderLogModule = dynamic(() => import("@/components/stakeholders/StakeholderLogModule"), {
+  loading: () => <ModuleLoading label="Loading stakeholders..." />,
+});
+const MeetingMinutesModule = dynamic(() => import("@/components/meetings/MeetingMinutesModule"), {
+  loading: () => <ModuleLoading label="Loading meetings..." />,
+});
+const ConstructionDrawingsModule = dynamic(
+  () => import("@/components/drawings/ConstructionDrawingsModule"),
+  { loading: () => <ModuleLoading label="Loading drawing launcher..." /> },
+);
 
 const moduleLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -138,7 +177,7 @@ function Workspace({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const hasProject = Boolean(project);
   const isConstruction = project?.type === "construction";
-  const routeSafeModule = pathname === "/" && activeModule === "drawings" ? "dashboard" : activeModule;
+  const routeSafeModule = pathname === "/workspace" && activeModule === "drawings" ? "dashboard" : activeModule;
   const module = hasProject ? routeSafeModule : routeSafeModule === "meetings" ? "meetings" : "dashboard";
   const activeLabel =
     module === "dashboard"
@@ -150,7 +189,7 @@ function Workspace({
   const isDrawingWorkspace = module === "drawings";
 
   useEffect(() => {
-    if (pathname === "/" && activeModule === "drawings") {
+    if (pathname === "/workspace" && activeModule === "drawings") {
       setActiveModule("dashboard");
     }
   }, [activeModule, pathname, setActiveModule]);

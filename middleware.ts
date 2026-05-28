@@ -56,8 +56,7 @@ export async function middleware(request: NextRequest) {
 
   const isLoginRoute = request.nextUrl.pathname.startsWith("/login");
   const isInviteRoute = request.nextUrl.pathname.startsWith("/invite");
-  const isLandingRoute = request.nextUrl.pathname === "/";
-  const isPublicRoute = isLandingRoute || isLoginRoute || isInviteRoute;
+  const isPublicRoute = isLoginRoute || isInviteRoute;
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
@@ -67,7 +66,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && isLoginRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/workspace";
     return NextResponse.redirect(url);
   }
 
@@ -75,5 +74,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/login", "/invite", "/organization/:path*", "/admin/:path*"],
+  matcher: ["/workspace/:path*", "/login", "/invite", "/organization/:path*", "/admin/:path*"],
 };

@@ -24,7 +24,7 @@ export default async function AdminPage() {
       .maybeSingle();
 
     if (profile?.role !== "admin") {
-      redirect("/");
+      redirect("/workspace");
     }
   }
 

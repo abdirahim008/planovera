@@ -362,7 +362,7 @@ export default function Editor({
 
   const handleBackToDashboard = useCallback(() => {
     setActiveModule("dashboard");
-    router.push("/");
+    router.push("/workspace");
   }, [router, setActiveModule]);
 
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);

@@ -7,7 +7,7 @@ import { getSupabaseServerClient, isServerSupabaseConfigured } from "@/lib/supab
 
 export default async function LoginPage() {
   if (AUTH_BYPASS_ENABLED) {
-    redirect("/");
+    redirect("/workspace");
   }
 
   if (isServerSupabaseConfigured()) {
@@ -17,7 +17,7 @@ export default async function LoginPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      redirect("/");
+      redirect("/workspace");
     }
   }
 

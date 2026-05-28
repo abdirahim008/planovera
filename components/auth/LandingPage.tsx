@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ArrowRight, CheckCircle2, FileText, LayoutDashboard, MapPinned, ShieldCheck } from "lucide-react";
 
 const featureCards = [
@@ -19,7 +20,14 @@ export default function LandingPage() {
         <header className="flex flex-wrap items-center justify-between gap-4">
           <a href="/" className="flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white shadow-xl shadow-blue-950/30">
-              <img src="/brand/planovera-mark.png" alt="Planovera" className="h-9 w-9 object-contain" />
+              <Image
+                src="/brand/planovera-mark.png"
+                alt="Planovera"
+                width={36}
+                height={36}
+                className="h-9 w-9 object-contain"
+                priority
+              />
             </span>
             <span>
               <span className="block text-xl font-black tracking-tight text-white">Planovera</span>
@@ -93,10 +101,14 @@ export default function LandingPage() {
             <div className="absolute -inset-8 rounded-[3rem] bg-blue-500/12 blur-3xl" />
             <div className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-slate-950/70 p-3 shadow-2xl shadow-black/50">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-amber-400/10" />
-              <img
+              <Image
                 src="/brand/planovera-hero-dashboard.png"
                 alt="Planovera project controls dashboard preview"
+                width={1536}
+                height={864}
+                sizes="(min-width: 1024px) 58vw, 100vw"
                 className="relative min-h-[420px] w-full rounded-[1.4rem] object-cover object-left-top lg:min-h-[640px]"
+                priority
               />
               <div className="absolute inset-x-3 bottom-3 grid gap-3 sm:grid-cols-3">
                 {[

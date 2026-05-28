@@ -65,7 +65,7 @@ export default function DrawingStudioRoute() {
             open without the dashboard sidebars.
           </p>
           <Link
-            href="/"
+            href="/workspace"
             className="mt-6 inline-flex rounded-xl border border-white/15 bg-white px-4 py-2 text-sm font-semibold text-slate-950"
           >
             Return to Planovera
