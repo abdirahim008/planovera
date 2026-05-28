@@ -132,6 +132,8 @@ type SubscriptionBlockState = {
   canManage: boolean;
 };
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+
 function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6">
@@ -806,7 +808,9 @@ export default function WorkspaceShell() {
   ]);
 
   useEffect(() => {
-    if (!authConfigured || !hasHydrated || !projectsReady || !activeUserId || !project?.id) {
+    const projectId = project?.id ?? "";
+    const canUseProjectPresence = uuidPattern.test(projectId);
+    if (!authConfigured || !hasHydrated || !projectsReady || !activeUserId || !canUseProjectPresence) {
       setCollaborators([]);
       return;
     }
@@ -821,7 +825,7 @@ export default function WorkspaceShell() {
 
     const heartbeat = async () => {
       const { error } = await supabase.from("project_presence").upsert({
-        project_id: project.id,
+        project_id: projectId,
         user_id: activeUserId,
         active_module: activeModule,
         cursor_state: {},
@@ -840,7 +844,7 @@ export default function WorkspaceShell() {
       const { data, error } = await supabase
         .from("project_presence")
         .select("user_id, active_module, last_seen_at, profiles(full_name,email)")
-        .eq("project_id", project.id)
+        .eq("project_id", projectId)
         .gte("last_seen_at", threshold)
         .order("last_seen_at", { ascending: false });
 

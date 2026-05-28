@@ -60,6 +60,7 @@ import {
   FINAL_CERTIFICATE_PROGRAM_ID,
   type FinalCertificateImportPreview,
 } from "@/lib/finalCertificateImportTypes";
+import { buildFinalCertificateDemoPayload, buildRoadPackagesDemoPayload } from "@/lib/sampleData";
 import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "@/lib/projectCategories";
 import { PROJECT_PRESETS, getProjectPreset } from "@/lib/project-presets";
 
@@ -1186,17 +1187,13 @@ export default function Dashboard() {
     setSurp2Importing(true);
     setSurp2ImportError(null);
     try {
-      const response = await fetch("/api/imports/surp2-mogadishu", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || "Could not import SURP2 files.");
-      }
-      importLocalTestData(data.payload);
-      setSurp2Preview(data.preview);
+      const payload = buildRoadPackagesDemoPayload();
+      importLocalTestData(payload);
+      setSurp2Preview(payload.preview);
       setPortfolioFilters({ programId: SURP2_PROGRAM_ID, categoryId: "", location: "", client: "" });
       setActiveModule("dashboard");
     } catch (error) {
-      setSurp2ImportError(error instanceof Error ? error.message : "Could not import SURP2 files.");
+      setSurp2ImportError(error instanceof Error ? error.message : "Could not load road package demo data.");
     } finally {
       setSurp2Importing(false);
     }
@@ -1206,13 +1203,9 @@ export default function Dashboard() {
     setFinalCertImporting(true);
     setFinalCertImportError(null);
     try {
-      const response = await fetch("/api/imports/final-certificate-test", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || "Could not import final certificate test files.");
-      }
-      importLocalTestData(data.payload);
-      setFinalCertPreview(data.preview);
+      const payload = buildFinalCertificateDemoPayload();
+      importLocalTestData(payload);
+      setFinalCertPreview(payload.preview);
       setPortfolioFilters({
         programId: FINAL_CERTIFICATE_PROGRAM_ID,
         categoryId: "",
@@ -1222,7 +1215,7 @@ export default function Dashboard() {
       setActiveModule("dashboard");
     } catch (error) {
       setFinalCertImportError(
-        error instanceof Error ? error.message : "Could not import final certificate test files."
+        error instanceof Error ? error.message : "Could not load final certificate demo data."
       );
     } finally {
       setFinalCertImporting(false);
@@ -1417,7 +1410,7 @@ function PortfolioDashboard({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" size="sm" onClick={onImportSurp2} disabled={importingSurp2}>
-              <DatabaseZap size={14} /> {importingSurp2 ? "Importing..." : "Import SURP2 Test Data"}
+              <DatabaseZap size={14} /> {importingSurp2 ? "Loading..." : "Load 4 Road Package Demo"}
             </Button>
             <Button
               variant="ghost"
@@ -1426,7 +1419,7 @@ function PortfolioDashboard({
               disabled={importingFinalCertificateTest}
             >
               <DatabaseZap size={14} />{" "}
-              {importingFinalCertificateTest ? "Importing..." : "Import Final Cert Test"}
+              {importingFinalCertificateTest ? "Loading..." : "Load Final Certificate Demo"}
             </Button>
             <Button variant="primary" size="sm" onClick={onCreateProject}>
               <Plus size={14} /> New Project
@@ -1452,12 +1445,12 @@ function PortfolioDashboard({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">
-                Local test import complete
+                Road package demo loaded
               </div>
               <div className="mt-1 text-lg font-black text-white">{surp2Preview.programName}</div>
               <p className="mt-1 text-sm text-txt-muted">
                 {surp2Preview.packageCount} packages imported with USD {currency(surp2Preview.totalBoqValue)} BOQ value.
-                Supabase cloud data was not changed.
+                This sample is stored in your workspace so you can explore the app.
               </p>
             </div>
             <div className="rounded-2xl border border-border bg-black/15 px-4 py-3 text-right">
@@ -1486,14 +1479,14 @@ function PortfolioDashboard({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-[10px] font-black uppercase tracking-[0.2em] text-ok">
-                Local final certificate test imported
+                Final certificate demo loaded
               </div>
               <div className="mt-1 text-lg font-black text-white">
                 {finalCertificatePreview.projectName}
               </div>
               <p className="mt-1 text-sm text-txt-muted">
                 Contract {finalCertificatePreview.contractNumber} · {finalCertificatePreview.contractorName}.
-                Supabase cloud data was not changed.
+                This sample lets you test IPC carry-forward and retention release.
               </p>
             </div>
             <div className="rounded-2xl border border-border bg-black/15 px-4 py-3 text-right">
