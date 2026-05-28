@@ -79,6 +79,26 @@ const resolveBOQNumber = (value: string | number | null | undefined, sheets: BOQ
 const formatBOQNumberDisplay = (value: string | number | null | undefined, sheets: BOQSheet[]) =>
   currency(resolveBOQNumber(value, sheets));
 
+const blankNonItemBOQColumns = new Set(["unit", "qty", "rate", "amount"]);
+const numericBOQColumns = new Set(["qty", "rate", "amount"]);
+
+const formatBOQCellDisplay = (
+  row: BOQRow,
+  key: string,
+  sheets: BOQSheet[],
+) => {
+  const rowRecord = row as unknown as Record<string, string | number | null | undefined>;
+  if (row.type === "header" && blankNonItemBOQColumns.has(key)) return "";
+  if ((row.type === "subtotal" || row.type === "grandtotal") && key !== "amount") return "";
+  if ((row.type === "subtotal" || row.type === "grandtotal") && key === "amount") {
+    return formatBOQNumberDisplay(row.amount, sheets);
+  }
+  if (row.type === "item" && numericBOQColumns.has(key)) {
+    return formatBOQNumberDisplay(rowRecord[key], sheets);
+  }
+  return String(rowRecord[key] ?? "");
+};
+
 // ─── Single Sheet Table ───────────────────────────────────────────
 function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
   type BOQColKey = typeof BOQ_COLS[number]["key"];
@@ -88,6 +108,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
   const {
     boqSheets, 
     activeSheetIndex, 
+    setActiveSheetIndex,
     updateSheetRows, 
     pasteBOQRows, 
     toggleSheetSummary, 
@@ -223,15 +244,39 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        const target = {
+          sheetIndex: formulaLinking.targetSheetIndex,
+          rowId: formulaLinking.targetRowId,
+          colKey: formulaLinking.targetColKey,
+        };
         completeFormulaLinking();
+        if (target.sheetIndex !== undefined && target.rowId && target.colKey) {
+          setActiveSheetIndex(target.sheetIndex);
+          setSelectedRowIds(new Set([target.rowId]));
+          setLastSelectedRowId(target.rowId);
+          setEditing({ id: target.rowId, key: target.colKey });
+          setSelection(null);
+        }
       } else if (e.key === "Escape") {
+        const target = {
+          sheetIndex: formulaLinking.targetSheetIndex,
+          rowId: formulaLinking.targetRowId,
+          colKey: formulaLinking.targetColKey,
+        };
         cancelFormulaLinking();
+        if (target.sheetIndex !== undefined && target.rowId && target.colKey) {
+          setActiveSheetIndex(target.sheetIndex);
+          setSelectedRowIds(new Set([target.rowId]));
+          setLastSelectedRowId(target.rowId);
+          setEditing({ id: target.rowId, key: target.colKey });
+          setSelection(null);
+        }
       }
     };
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [formulaLinking, completeFormulaLinking, cancelFormulaLinking]);
+  }, [formulaLinking, completeFormulaLinking, cancelFormulaLinking, setActiveSheetIndex]);
 
   const handleMouseEnter = (r: number, c: string) => {
     if (readOnly) return;
@@ -548,9 +593,22 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
   };
 
   return (
+    <>
+    {formulaLinking?.active && (
+      <div className="mb-3 rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-txt">
+        <div className="font-semibold text-accent">Formula mode</div>
+        <div className="mt-1 text-xs leading-5 text-txt-muted">
+          Click a cell on any sheet, then press <span className="font-semibold text-txt">Enter</span> to confirm or{" "}
+          <span className="font-semibold text-txt">Esc</span> to cancel.
+          {formulaLinking.currentFormula && formulaLinking.currentFormula !== "=" ? (
+            <span className="ml-2 font-mono text-accent">{formulaLinking.currentFormula}</span>
+          ) : null}
+        </div>
+      </div>
+    )}
     <div
       ref={tableContainerRef}
-      className="boq-table-shell relative overflow-auto rounded-[22px] border border-border bg-bg-surface"
+      className="boq-table-shell relative overflow-auto rounded-2xl border border-border bg-bg-surface"
       style={{ maxHeight: "calc(100vh - 310px)" }}
       tabIndex={0}
     >
@@ -560,9 +618,6 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
         </div>
       )}
       <div className="space-y-3 p-3 lg:hidden">
-        <div className="rounded-2xl border border-border bg-bg-raised/50 p-3 text-xs leading-5 text-txt-muted">
-          Compact BOQ view for mobile/tablet. Use desktop or rotate your tablet for spreadsheet-style bulk paste and formula editing.
-        </div>
         {rows.map((row, ri) => {
           const isSelected = selectedRowIds.has(row.id);
           const rowTone =
@@ -584,7 +639,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
             >
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                     Row {ri + 1} • {row.type}
                   </div>
                   {row.type !== "item" && readOnly && (
@@ -599,7 +654,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
               {row.type === "item" ? (
                 <div className="space-y-3">
                   <label className="block">
-                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Description</span>
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Description</span>
                     {readOnly ? (
                       <div className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm text-txt">{row.description || "—"}</div>
                     ) : (
@@ -623,14 +678,14 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                       const showResolvedFormula = isNumericKey && isFormulaValue(rawValue);
                       return (
                         <label key={key} className="block">
-                          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">{label}</span>
+                          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</span>
                           {readOnly || showResolvedFormula ? (
                             <div className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm text-txt">
                               <span className={isNumericKey ? "font-mono" : ""}>
                                 {isNumericKey ? formatBOQNumberDisplay(rawValue, boqSheets) : rawValue || "—"}
                               </span>
                               {showResolvedFormula && (
-                                <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
+                                <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
                                   formula
                                 </span>
                               )}
@@ -686,13 +741,13 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
       <table className="boq-reference-table hidden w-full select-none table-fixed border-collapse lg:table" style={{ minWidth: 820 }}>
         <thead>
           <tr>
-            <th className="w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 z-10 text-[10px] font-semibold text-txt-dim uppercase">#</th>
+            <th className="w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 z-10 text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">#</th>
             {BOQ_COLS.map((col) => {
               const locked = isColumnLocked(col.key);
               return (
                 <th
                   key={col.key}
-                  className={`${col.width} px-2 py-2 bg-bg-raised border-b-2 border-b-accent border-r border-r-border text-[10px] font-semibold uppercase tracking-wider text-txt-dim ${col.align} sticky top-0 z-10 ${locked ? "cursor-context-menu" : ""}`}
+                  className={`${col.width} px-2 py-2 bg-bg-raised border-b-2 border-b-accent border-r border-r-border text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim ${col.align} sticky top-0 z-10 ${locked ? "cursor-context-menu" : ""}`}
                   onContextMenu={(e) => handleHeaderContextMenu(e, col.key)}
                 >
                   {col.label}
@@ -739,7 +794,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                       />
                     ) : (
                       <div className="flex gap-3 whitespace-pre-wrap break-words leading-6 text-txt-muted">
-                        <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full border border-accent/25 bg-accent/10 px-2 text-[9px] font-black uppercase tracking-[0.16em] text-accent">
+                        <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full border border-accent/25 bg-accent/10 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
                           Note
                         </span>
                         <span>{row.description || "Double-click to add a note"}</span>
@@ -763,17 +818,28 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                   const editable = !readOnly && !locked && (row.type === "item" || (col.key === "description" && (row.type === "header" || row.type === "subtotal" || row.type === "grandtotal")));
                   const cellValue = String((row as any)[col.key] ?? "");
                   const showFormulaSuggestions = isEditing && cellValue.startsWith("=");
+                  const isFormulaSourceCell =
+                    formulaLinking?.active &&
+                    formulaLinking.sourceSheetIndex === activeSheetIndex &&
+                    formulaLinking.sourceRowId === row.id &&
+                    formulaLinking.sourceColKey === col.key;
+                  const isFormulaTargetCell =
+                    formulaLinking?.active &&
+                    formulaLinking.targetSheetIndex === activeSheetIndex &&
+                    formulaLinking.targetRowId === row.id &&
+                    formulaLinking.targetColKey === col.key;
                   return (
                     <td
                       key={col.key}
                       colSpan={colSpan}
-                      className={`relative px-2 py-[6px] min-h-[34px] border-r border-r-border border-b border-b-border ${col.align} text-[13px] transition-colors ${col.mono ? "font-mono" : ""} ${isInSelection(ri, col.key) ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""} ${locked ? "bg-bg-raised/30 cursor-not-allowed select-none" : ""} ${formulaLinking?.active && formulaLinking.currentFormula.includes(`!${row.id}.${col.key}`) ? "cell-linking-source" : ""}`}
+                      className={`relative px-2 py-[6px] min-h-[34px] border-r border-r-border border-b border-b-border ${col.align} text-[13px] transition-colors ${col.mono ? "font-mono" : ""} ${isInSelection(ri, col.key) ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""} ${locked ? "bg-bg-raised/30 cursor-not-allowed select-none" : ""} ${isFormulaSourceCell ? "cell-linking-source" : ""} ${isFormulaTargetCell ? "cell-linking-target" : ""}`}
                       onMouseDown={(e) => {
                         if (formulaLinking?.active) {
                           e.preventDefault();
                           selectFormulaSource(activeSheetIndex, row.id, col.key);
-                          const isFunctionFormula = /^=(SUM|PRODUCT|SUBTRACT)\(/i.test(formulaLinking.currentFormula);
-                          if (!isFunctionFormula) completeFormulaLinking();
+                          setSelectedRowIds(new Set([row.id]));
+                          setLastSelectedRowId(row.id);
+                          setSelection({ start: { r: ri, c: col.key }, end: { r: ri, c: col.key }, isDragging: false });
                           return;
                         }
                         if (e.button === 0) {
@@ -816,9 +882,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                         )
                       ) : (
                         <span className={`block ${col.key === "description" ? "whitespace-pre-wrap break-words leading-snug min-w-[280px]" : "truncate"}`}>
-                          {(col.key === "amount" || col.key === "rate" || col.key === "qty") 
-                            ? formatBOQNumberDisplay((row as any)[col.key], boqSheets)
-                            : (row as any)[col.key]}
+                          {formatBOQCellDisplay(row, col.key, boqSheets)}
                         </span>
                       )}
                       {showFormulaSuggestions && (
@@ -855,33 +919,33 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
         <div className="boq-summary-table mt-12 mb-8 hidden px-4 lg:block">
           <div className="flex items-center gap-4 mb-4 px-1">
             <div className="h-px flex-1 bg-border" />
-            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim whitespace-nowrap px-4">Summary of Subtotals</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim whitespace-nowrap px-4">Summary of Subtotals</h3>
             <div className="h-px flex-1 bg-border" />
           </div>
 
           <table className="border-collapse w-full text-[11px]" style={{ minWidth: 820 }}>
             <thead>
               <tr className="bg-bg-raised/50">
-                <th className="w-8 min-w-[32px] p-1 border border-border text-[9px] font-bold text-txt-dim uppercase tracking-wider text-center">#</th>
+                <th className="w-8 min-w-[32px] p-1 border border-border text-[10px] font-semibold text-txt-dim uppercase tracking-[0.14em] text-center">#</th>
                 <th className="w-[70px] border border-border text-[10px]">&nbsp;</th>
-                <th className="min-w-[280px] w-full px-2 py-2 border border-border text-[10px] font-bold uppercase text-txt-dim text-left">Summary Description</th>
+                <th className="min-w-[280px] w-full px-2 py-2 border border-border text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim text-left">Summary Description</th>
                 <th className="w-[70px] border border-border text-[10px]">&nbsp;</th>
                 <th className="w-[100px] border border-border text-[10px]">&nbsp;</th>
                 <th className="w-[110px] border border-border text-[10px]">&nbsp;</th>
-                <th className="w-[130px] px-2 py-2 border border-border text-[10px] font-bold uppercase text-txt-dim text-right">Amount</th>
+                <th className="w-[130px] px-2 py-2 border border-border text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim text-right">Amount</th>
               </tr>
             </thead>
             <tbody>
               {rows.filter(r => r.type === 'subtotal').map((sub, si) => (
                 <tr key={sub.id} className="hover:bg-bg-hover transition-colors group">
-                  <td className="w-8 min-w-[32px] p-1 border border-border text-center text-txt-dim font-mono text-[9px]">{si + 1}</td>
+                  <td className="w-8 min-w-[32px] p-1 border border-border text-center text-txt-dim font-mono text-[10px]">{si + 1}</td>
                   <td className="w-[70px] border border-border">&nbsp;</td>
                   <td className="min-w-[280px] w-full px-2 py-1.5 border border-border">
                     {readOnly ? (
-                      <div className="text-xs font-bold uppercase text-txt">{sub.description}</div>
+                      <div className="text-xs font-semibold uppercase text-txt">{sub.description}</div>
                     ) : (
-                      <input 
-                        className="w-full bg-transparent border-none outline-none text-xs font-bold uppercase focus:ring-1 focus:ring-accent/30 rounded px-1 -ml-1 transition-all"
+                      <input
+                        className="w-full bg-transparent border-none outline-none text-xs font-semibold uppercase focus:ring-1 focus:ring-accent/30 rounded px-1 -ml-1 transition-all"
                         value={sub.description}
                         onChange={(e) => updateCell(sub.id, "description", e.target.value)}
                         placeholder="Unnamed Subtotal"
@@ -891,7 +955,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                   <td className="w-[70px] border border-border">&nbsp;</td>
                   <td className="w-[100px] border border-border">&nbsp;</td>
                   <td className="w-[110px] border border-border">&nbsp;</td>
-                  <td className="w-[130px] px-2 py-1.5 border border-border text-right font-mono font-bold text-txt text-[13px]">
+                  <td className="w-[130px] px-2 py-1.5 border border-border text-right font-mono font-semibold text-txt text-[13px]">
                     {formatBOQNumberDisplay(sub.amount, boqSheets)}
                   </td>
                 </tr>
@@ -903,12 +967,12 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                 <td className="border border-border">&nbsp;</td>
                 <td className="px-2 py-3 border border-border">
                   {readOnly ? (
-                    <div className="text-sm font-black uppercase text-accent">
+                    <div className="text-sm font-semibold uppercase text-accent">
                       {boqSheets[activeSheetIndex]?.summaryGrandTotalTitle || "GRAND SUMMARY"}
                     </div>
                   ) : (
-                    <input 
-                      className="w-full bg-transparent border-none outline-none text-sm font-black uppercase text-accent focus:ring-0"
+                    <input
+                      className="w-full bg-transparent border-none outline-none text-sm font-semibold uppercase text-accent focus:ring-0"
                       value={boqSheets[activeSheetIndex]?.summaryGrandTotalTitle || "GRAND SUMMARY"}
                       onChange={(e) => updateSheetSummaryLabel(activeSheetIndex, e.target.value)}
                     />
@@ -917,7 +981,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                 <td className="border border-border">&nbsp;</td>
                 <td className="border border-border">&nbsp;</td>
                 <td className="border border-border">&nbsp;</td>
-                <td className="px-2 py-3 border border-border text-right font-mono font-black text-accent text-base">
+                <td className="px-2 py-3 border border-border text-right font-mono font-semibold text-accent text-base">
                   {currency(
                     rows.filter(r => r.type === 'subtotal').reduce((acc, r) => acc + resolveBOQNumber(r.amount, boqSheets), 0)
                   )}
@@ -938,6 +1002,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
         />
       )}
     </div>
+    </>
   );
 }
 
@@ -957,9 +1022,6 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
 
   return (
     <Modal open={open} onClose={onClose} title="BOQ Library" width={600}>
-      <p className="text-sm text-txt-muted mb-4">
-        Select a pre-built BOQ template. This will replace your current BOQ sheets.
-      </p>
       <div className="flex flex-col gap-2 max-h-[400px] overflow-auto">
         {boqLibrary.map((item) => (
           <div key={item.id}>
@@ -1107,7 +1169,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
     <Modal open={open} onClose={onClose} title="Save BOQ to Library">
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block mb-1.5">Name</label>
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Name</label>
           <input
             className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
             value={name}
@@ -1116,7 +1178,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block mb-1.5">Description</label>
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Description</label>
           <input
             className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
             value={description}
@@ -1125,7 +1187,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block mb-1.5">Category</label>
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Category</label>
           <input
             className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
             value={category}
@@ -1165,7 +1227,7 @@ function CreateBOQModal({ open, onClose }: { open: boolean; onClose: () => void 
     <Modal open={open} onClose={onClose} title="Create New BOQ" width={420}>
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block mb-1.5">
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">
             BOQ Name
           </label>
           <input
@@ -1277,10 +1339,6 @@ function ExcelImportPreviewModal({
   return (
     <Modal open={open} onClose={onClose} title="Import Excel Preview" width={1100}>
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-txt-muted">
-          Review and map your Excel columns before import. You can re-map, swap, or ignore any column.
-        </p>
-
         <div className="flex flex-wrap gap-2">
           {rawSheets.map((sheet, idx) => {
             const sheetColCount = sheet.rows.reduce((max, r) => Math.max(max, r.length), 0);
@@ -1469,16 +1527,10 @@ function BOQListView({
   return (
     <>
       {projectBOQs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="w-20 h-20 rounded-2xl bg-accent/10 flex items-center justify-center mb-5">
-            <LayoutGrid size={32} className="text-accent opacity-60" />
-          </div>
-          <p className="text-txt-muted text-sm font-medium">No BOQs created yet</p>
-          <p className="text-xs text-txt-dim mt-1.5 max-w-[280px] text-center">
-            Create your first Bill of Quantities to start pricing project items
-          </p>
-          <Button variant="primary" size="md" className="mt-5" onClick={onCreateClick}>
-            <Plus size={14} /> Create First BOQ
+        <div className="flex flex-col items-center justify-center py-16">
+          <p className="text-txt-muted text-sm font-medium">No BOQs yet</p>
+          <Button variant="primary" size="md" className="mt-4" onClick={onCreateClick}>
+            <Plus size={14} /> Create BOQ
           </Button>
         </div>
       ) : (
@@ -1504,13 +1556,13 @@ function BOQListView({
             return (
               <div
                 key={boq.id}
-                className="group flex flex-col gap-3 rounded-xl border border-border bg-bg-surface p-4 cursor-pointer transition-all duration-200 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5 sm:flex-row sm:items-center sm:justify-between"
+                className="group flex flex-col gap-3 rounded-lg border border-border bg-bg-surface p-4 cursor-pointer transition-all duration-200 hover:border-accent/50 sm:flex-row sm:items-center sm:justify-between"
                 style={{ animationDelay: `${idx * 60}ms`, animationFillMode: "both" }}
                 onClick={() => onOpen(boq.id)}
               >
                 <div className="flex min-w-0 items-center gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center flex-shrink-0">
-                    <LayoutGrid size={20} className="text-accent" />
+                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                    <LayoutGrid size={18} className="text-accent" />
                   </div>
                   <div>
                     <div className="font-semibold text-sm">{boq.name}</div>
@@ -1526,8 +1578,8 @@ function BOQListView({
                 <div className="flex items-center justify-between gap-3 sm:justify-start">
                   {totalAmount > 0 && (
                     <div className="text-right mr-2">
-                      <div className="text-[10px] text-txt-dim uppercase tracking-wider">Total</div>
-                      <div className="font-mono text-sm font-bold mt-0.5 text-ok">
+                      <div className="text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">Total</div>
+                      <div className="font-mono text-sm font-semibold mt-0.5 text-ok">
                         $ {currency(totalAmount)}
                       </div>
                     </div>
@@ -1914,12 +1966,7 @@ export default function BOQModule() {
     return (
       <div className="animate-fade-in">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight">Bill of Quantities</h2>
-            <p className="text-xs text-txt-muted mt-0.5">
-              Manage your project BOQs
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold tracking-tight">Bill of Quantities</h2>
           <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
             <Plus size={14} /> Create BOQ
           </Button>
@@ -1964,15 +2011,15 @@ export default function BOQModule() {
           </Button>
           <div className="h-5 w-px bg-border" />
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-txt-dim">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
               Bill of Quantities
             </p>
-            <h2 className="mt-1 text-2xl font-black tracking-tight">{activeBoqName}</h2>
-            <p className="text-sm text-txt-muted mt-1">
-              {isViewMode
-                ? "View mode — click the edit button to make changes"
-                : "Click row gutter to select • Right-click for options • Double-click to edit • Ctrl+V to paste from Excel"}
-            </p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight">{activeBoqName}</h2>
+            {!isViewMode && (
+              <p className="text-sm text-txt-muted mt-1">
+                Right-click for options • Double-click to edit • Ctrl+V to paste from Excel
+              </p>
+            )}
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
@@ -2017,11 +2064,11 @@ export default function BOQModule() {
         </div>
       </div>
 
-      <div className="boq-summary-strip mb-5 grid overflow-hidden rounded-[22px] border border-border bg-bg-surface md:grid-cols-5">
+      <div className="boq-summary-strip mb-5 grid overflow-hidden rounded-2xl border border-border bg-bg-surface md:grid-cols-5">
         {summaryCards.map((card) => (
           <div key={card.label} className="boq-summary-card border-b border-border px-5 py-4 md:border-b-0 md:border-r last:border-r-0">
-            <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-txt-dim">{card.label}</div>
-            <div className={`mt-2 text-xl font-black tracking-tight boq-summary-value-${card.tone}`}>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{card.label}</div>
+            <div className={`mt-2 text-xl font-semibold tracking-tight boq-summary-value-${card.tone}`}>
               {card.value}
             </div>
           </div>
@@ -2094,9 +2141,6 @@ export default function BOQModule() {
       )}
       <SaveToLibraryModal open={showSaveLib} onClose={() => setShowSaveLib(false)} />
       <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title="Export BOQ to Excel" width={520}>
-        <p className="text-sm text-txt-muted mb-3">
-          Select which BOQ sheets to include in the export file.
-        </p>
         <div className="space-y-2 max-h-[280px] overflow-auto border border-border rounded-lg p-3 bg-bg-raised/30">
           {boqSheets.map((sheet) => (
             <label key={sheet.id} className="flex items-center gap-2 text-sm cursor-pointer">

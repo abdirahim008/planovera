@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -20,12 +20,16 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock3,
+  Download,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import type { WorkPlanActivity } from "@/lib/supabase";
+import { exportWorkPlanAsPdf, exportWorkPlanAsExcel } from "@/lib/work-plan-export";
 
 const statusColors: Record<string, string> = {
   pending: "text-txt-dim bg-txt-dim/10 border-txt-dim/20",
@@ -128,16 +132,13 @@ function WorkPlanListView({
   return (
     <>
       {projectWorkPlans.length === 0 ? (
-        <div className="rounded-[24px] border border-dashed border-border bg-bg-surface/80 px-6 py-20 text-center">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-[22px] bg-accent/10">
-            <Calendar size={32} className="text-accent opacity-70" />
+        <div className="rounded-2xl border border-dashed border-border bg-bg-surface/80 px-6 py-20 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent/10">
+            <Calendar size={28} className="text-accent opacity-70" />
           </div>
-          <p className="text-sm font-bold text-txt">No construction programme yet</p>
-          <p className="mx-auto mt-1.5 max-w-[340px] text-xs leading-5 text-txt-dim">
-            Create a work plan to schedule project activities with auto-calculated dates
-          </p>
-          <Button variant="primary" size="md" className="mt-5" onClick={onCreateClick}>
-            <Plus size={14} /> Create First Work Plan
+          <p className="text-sm font-semibold text-txt">No work plans yet</p>
+          <Button variant="primary" size="md" className="mt-4" onClick={onCreateClick}>
+            <Plus size={14} /> New Work Plan
           </Button>
         </div>
       ) : (
@@ -161,21 +162,20 @@ function WorkPlanListView({
             return (
               <div
                 key={wp.id}
-                className="group relative overflow-hidden rounded-[22px] border border-border bg-bg-surface p-4 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/45 hover:shadow-xl hover:shadow-black/10"
+                className="group relative overflow-hidden rounded-2xl border border-border bg-bg-surface p-4 cursor-pointer transition-colors duration-150 hover:border-accent/45"
                 style={{ animationDelay: `${idx * 60}ms`, animationFillMode: "both" }}
                 onClick={() => onOpen(wp.id)}
               >
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/50 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="flex min-w-0 items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/10">
                       <Calendar size={20} className="text-accent" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                         Construction Programme
                       </div>
-                      <div className="mt-1 truncate text-base font-black text-txt">{wp.name}</div>
+                      <div className="mt-1 truncate text-base font-semibold text-txt">{wp.name}</div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-txt-dim md:gap-3">
                         <span>{wp.sheets.length} sheet{wp.sheets.length !== 1 ? "s" : ""}</span>
                         <span>{actCount} activit{actCount !== 1 ? "ies" : "y"}</span>
@@ -187,8 +187,8 @@ function WorkPlanListView({
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="min-w-[180px] rounded-2xl border border-border bg-black/10 p-3">
-                      <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-txt-dim">
+                    <div className="min-w-[180px] rounded-xl border border-border bg-black/10 p-3">
+                      <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                         <span>Progress</span>
                         <span className="text-txt">{completion}%</span>
                       </div>
@@ -470,14 +470,15 @@ function WorkPlanTable({
             >
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                     {isSection ? "Section header" : `Activity ${activityOrdinal}`}
                   </div>
                   {readOnly ? (
-                    <div className="mt-1 text-sm font-semibold text-txt">{act.description || "—"}</div>
+                    <div className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-5 text-txt">{act.description || "—"}</div>
                   ) : (
-                    <input
-                      className="mt-2 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm font-semibold text-txt outline-none focus:border-accent"
+                    <textarea
+                      rows={2}
+                      className="mt-2 min-h-[72px] w-full resize-y rounded-xl border border-border bg-bg-input px-3 py-2 text-sm font-semibold leading-5 text-txt outline-none focus:border-accent"
                       value={act.description}
                       onChange={(e) => updateActivity(act.id, "description", e.target.value)}
                       placeholder={isSection ? "Section title" : "Activity description"}
@@ -553,23 +554,17 @@ function WorkPlanTable({
           );
         })}
       </div>
-      <div className="hidden overflow-auto border border-border rounded-lg lg:block" style={{ maxHeight: "calc(100vh - 365px)" }}>
-        <table className="border-collapse w-full" style={{ minWidth: 780 }}>
+      <div className="hidden data-table-shell overflow-auto lg:block" style={{ maxHeight: "calc(100vh - 365px)" }}>
+        <table className="data-table data-table-sticky" style={{ minWidth: 780 }}>
           <thead>
             <tr>
-              {[
-                { label: "#", w: "w-10", align: "text-center" },
-                { label: "Description", w: "min-w-[260px]", align: "text-left" },
-                { label: "Duration (days)", w: "w-[110px]", align: "text-center" },
-                { label: "Start Date", w: "w-[130px]", align: "text-center" },
-                { label: "End Date", w: "w-[130px]", align: "text-center" },
-                { label: "Status", w: "w-[120px]", align: "text-center" },
-                ...(!readOnly ? [{ label: "", w: "w-10", align: "text-center" }] : []),
-              ].map((col, i) => (
-                <th key={i} className={`${col.w} px-2 py-2 bg-bg-raised border-b-2 border-b-accent border-r border-r-border text-[10px] font-semibold uppercase tracking-wider text-txt-dim ${col.align} sticky top-0 z-10`}>
-                  {col.label}
-                </th>
-              ))}
+              <th style={{ width: 40 }} className="text-center">#</th>
+              <th className="min-w-[420px] w-[58%]">Description</th>
+              <th style={{ width: 110 }} className="text-center">Duration (days)</th>
+              <th style={{ width: 130 }} className="text-center">Start Date</th>
+              <th style={{ width: 130 }} className="text-center">End Date</th>
+              <th style={{ width: 120 }} className="text-center">Status</th>
+              {!readOnly && <th style={{ width: 40 }} aria-label="Actions" />}
             </tr>
           </thead>
           <tbody>
@@ -581,31 +576,31 @@ function WorkPlanTable({
               return (
               <tr
                 key={act.id}
-                className={`hover:bg-bg-hover transition-colors ${isSection ? "bg-bg-raised/60" : ""} ${selectedRowIds.includes(act.id) ? "bg-accent/10 row-selected" : ""}`}
+                className={`${isSection ? "bg-bg-raised/60" : ""} ${selectedRowIds.includes(act.id) ? "bg-accent/10 row-selected" : ""}`}
                 onContextMenu={(e) => handleContextMenu(e, act.id)}
                 onClick={(e) => handleRowClick(e, act.id)}
               >
-                <td className="px-2 h-[34px] text-center border-r border-r-border border-b border-b-border text-[11px] text-txt-dim">{isSection ? "" : activityOrdinal}</td>
-                <td className={`px-1 border-r border-r-border border-b border-b-border transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className="data-cell-index">{isSection ? "" : activityOrdinal}</td>
+                <td className={`data-cell-wrap transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "description")} onMouseEnter={() => handleMouseEnter(i, "description")}>
-                  {readOnly ? <span className={`px-2 py-1 text-[13px] block ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
-                    : <input className={`w-full px-2 py-1 bg-transparent border-none outline-none text-[13px] ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
-                        onChange={(e) => updateActivity(act.id, "description", e.target.value)} onPaste={(e) => handlePaste(i, "description", e)} placeholder={isSection ? "Section title" : "Activity description"} />}
+                  {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
+                    : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
+                        rows={2} onChange={(e) => updateActivity(act.id, "description", e.target.value)} onPaste={(e) => handlePaste(i, "description", e)} placeholder={isSection ? "Section title" : "Activity description"} />}
                 </td>
-                <td className={`px-1 text-center border-r border-r-border border-b border-b-border transition-colors ${isInSelection(i, "duration") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className={`text-center transition-colors ${isInSelection(i, "duration") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "duration")} onMouseEnter={() => handleMouseEnter(i, "duration")}>
                   {readOnly || isSection ? <span className="text-xs font-mono text-txt">{act.duration || "—"}</span>
-                    : <input type="number" className="w-full px-2 py-0.5 bg-transparent border-none outline-none text-xs text-center font-mono text-txt" value={act.duration}
+                    : <input type="number" className="data-cell-input text-center font-mono text-xs" value={act.duration}
                         onChange={(e) => updateActivity(act.id, "duration", e.target.value)} onPaste={(e) => handlePaste(i, "duration", e)} placeholder="—" />}
                 </td>
-                <td className={`px-1 text-center border-r border-r-border border-b border-b-border transition-colors ${isInSelection(i, "startDate") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className={`text-center transition-colors ${isInSelection(i, "startDate") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "startDate")} onMouseEnter={() => handleMouseEnter(i, "startDate")}>
                   {readOnly || isSection ? <span className="text-xs text-txt">{act.startDate || "—"}</span>
-                    : <input type="date" className="w-full px-2 py-0.5 bg-transparent border-none outline-none text-xs text-txt text-center [color-scheme:dark]" value={act.startDate}
+                    : <input type="date" className="data-cell-input [color-scheme:dark] text-center text-xs" value={act.startDate}
                         onChange={(e) => updateActivity(act.id, "startDate", e.target.value)} onPaste={(e) => handlePaste(i, "startDate", e)} />}
                 </td>
-                <td className="px-2 text-center border-r border-r-border border-b border-b-border text-xs font-mono text-txt-muted">{act.endDate || "—"}</td>
-                <td className={`px-1 text-center border-r border-r-border border-b border-b-border transition-colors ${isInSelection(i, "status") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className="text-center text-xs font-mono text-txt-muted">{act.endDate || "—"}</td>
+                <td className={`text-center transition-colors ${isInSelection(i, "status") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "status")} onMouseEnter={() => handleMouseEnter(i, "status")}>
                   {readOnly || isSection ? (
                     <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold border ${isSection ? "text-txt-dim bg-bg-surface border-border" : statusColors[act.status] || ""}`}>
@@ -622,8 +617,8 @@ function WorkPlanTable({
                   )}
                 </td>
                 {!readOnly && (
-                  <td className="text-center border-b border-b-border">
-                    <button onClick={() => deleteActivity(act.id)} className="p-1 bg-transparent border-none text-err/40 hover:text-err cursor-pointer transition-colors"><Trash2 size={13} /></button>
+                  <td className="data-cell-action">
+                    <button onClick={() => deleteActivity(act.id)} className="data-row-action danger" aria-label="Delete activity"><Trash2 size={13} /></button>
                   </td>
                 )}
               </tr>
@@ -729,11 +724,11 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
   };
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-border bg-bg-surface shadow-xl shadow-black/10">
-      <div className="flex flex-col gap-4 border-b border-border bg-[linear-gradient(180deg,rgba(59,130,246,0.08),rgba(15,23,42,0.12))] p-4 xl:flex-row xl:items-center xl:justify-between">
+    <div className="overflow-hidden rounded-2xl border border-border bg-bg-surface">
+      <div className="flex flex-col gap-4 border-b border-border bg-bg-raised/40 p-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">Programme Gantt</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Programme Gantt</div>
             <div className="mt-1 text-sm font-semibold text-txt">
               Rev 1 - {completed} of {datedActivities.length} activities complete - {delayed} critical
             </div>
@@ -776,7 +771,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
         <div className="min-w-[980px]">
           <div className="grid grid-cols-[320px_1fr] border-b border-border bg-bg/70">
             <div className="border-r border-border px-4 py-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Activity</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Activity</div>
             </div>
             <div className="relative flex min-h-11">
               {timelineCols.map((col, index) => (
@@ -793,7 +788,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                   className="absolute bottom-0 top-0 w-px bg-warn"
                   style={{ left: `${todayPosition}%` }}
                 >
-                  <span className="absolute -left-5 top-1 rounded bg-warn px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-black">
+                  <span className="absolute -left-5 top-1 rounded bg-warn px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-black">
                     Today
                   </span>
                 </div>
@@ -979,6 +974,72 @@ function WorkPlanSheetTabs({ readOnly }: { readOnly: boolean }) {
   );
 }
 
+// ─── Export menu (PDF / Excel) ────────────────────────────────────
+function ExportMenu({
+  onPdf,
+  onExcel,
+  ganttHint,
+}: {
+  onPdf: () => void;
+  onExcel: () => void;
+  ganttHint: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <Button size="sm" variant="default" onClick={() => setOpen((prev) => !prev)}>
+        <Download size={14} /> Export
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-10 z-40 w-[260px] rounded-xl border border-border bg-bg-surface p-1 shadow-xl shadow-black/30">
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onPdf(); }}
+            className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-bg-hover"
+          >
+            <FileText size={16} className="mt-0.5 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-txt">PDF (current view)</span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-txt-dim">
+                {ganttHint ? "Landscape A3 — drop into a presentation" : "Print-ready schedule table"}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onExcel(); }}
+            className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-bg-hover"
+          >
+            <FileSpreadsheet size={16} className="mt-0.5 shrink-0 text-ok" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-txt">Excel (data table)</span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-txt-dim">
+                Activities + month-by-month timeline sheet
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Work Plan Module ────────────────────────────────────────
 export default function WorkPlanModule() {
   const {
@@ -1025,28 +1086,29 @@ export default function WorkPlanModule() {
   const handleEdit = () => { setMode("edit"); };
   const handleSave = () => { saveWorkPlan(); setMode("view"); };
 
+  // Build an in-memory snapshot of the active work plan so that exports reflect
+  // unsaved edits the user is currently looking at, not the last saved version.
+  const buildLiveWorkPlanSnapshot = () => {
+    if (!activeWorkPlanId) return null;
+    const saved = projectWorkPlans.find((w) => w.id === activeWorkPlanId);
+    return {
+      id: activeWorkPlanId,
+      project_id: project?.id || "",
+      name: saved?.name || activeWpName,
+      createdAt: saved?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sheets: workPlanSheets,
+    };
+  };
+
   if (mode === "list") {
     return (
       <div className="animate-fade-in">
-        <div className="mb-5 rounded-[24px] border border-border bg-bg-surface p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-txt-dim">Work Plan</div>
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-txt">Construction Programme</h2>
-              <p className="mt-1 max-w-2xl text-sm text-txt-muted">
-                Manage project schedules, activity sheets, table editing, and Gantt timeline views.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-2xl border border-border bg-black/10 px-4 py-3">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Plans</div>
-                <div className="mt-1 text-xl font-black text-txt">{projectWorkPlans.length}</div>
-              </div>
-              <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-                <Plus size={14} /> Create Work Plan
-              </Button>
-            </div>
-          </div>
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-semibold tracking-tight text-txt">Work Plan</h2>
+          <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} /> New Work Plan
+          </Button>
         </div>
         <WorkPlanListView onOpen={handleOpen} onCreateClick={() => setShowCreate(true)} />
         <CreateWorkPlanModal open={showCreate} onClose={() => setShowCreate(false)} />
@@ -1062,23 +1124,19 @@ export default function WorkPlanModule() {
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-4 rounded-[24px] border border-border bg-bg-surface p-5">
+      <div className="mb-4 rounded-2xl border border-border bg-bg-surface p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleBack}><ArrowLeft size={14} /> Back</Button>
-              <span className="rounded-full border border-border bg-black/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">
+              <span className="rounded-full border border-border bg-black/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                 {isViewMode ? "View Mode" : "Edit Mode"}
               </span>
             </div>
-            <div className="mt-4 text-[10px] font-bold uppercase tracking-[0.22em] text-txt-dim">Work Plan</div>
-            <h2 className="mt-1 text-2xl font-black tracking-tight text-txt">{activeWpName}</h2>
-            <p className="mt-1 text-sm text-txt-muted">
-              {isViewMode ? "Review the programme, then switch to edit when updates are needed." : "Schedule activities with auto-calculated end dates."}
-            </p>
+            <h2 className="mt-3 text-lg font-semibold tracking-tight text-txt">{activeWpName}</h2>
           </div>
           <div className="flex flex-col gap-3 xl:items-end">
-            <div className="flex flex-wrap gap-2 text-[10px] text-txt-muted">
+            <div className="flex flex-wrap gap-2 text-[11px] text-txt-muted">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/10 px-2.5 py-1"><CheckCircle2 size={12} className="text-ok" /> {completedActivities} complete</span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/10 px-2.5 py-1"><Clock3 size={12} className="text-accent" /> {activeActivitiesCount} active</span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/10 px-2.5 py-1"><AlertTriangle size={12} className="text-err" /> {delayedActivities} critical</span>
@@ -1126,6 +1184,17 @@ export default function WorkPlanModule() {
                   </button>
                 ))}
               </div>
+              <ExportMenu
+                ganttHint={scheduleView === "gantt"}
+                onPdf={() => {
+                  const liveSnapshot = buildLiveWorkPlanSnapshot();
+                  if (liveSnapshot) exportWorkPlanAsPdf(liveSnapshot, project, scheduleView);
+                }}
+                onExcel={() => {
+                  const liveSnapshot = buildLiveWorkPlanSnapshot();
+                  if (liveSnapshot) void exportWorkPlanAsExcel(liveSnapshot, project);
+                }}
+              />
               {isViewMode ? (
                 <Button size="sm" variant="primary" onClick={handleEdit}><Pencil size={14} /> Edit</Button>
               ) : (
@@ -1150,9 +1219,6 @@ export default function WorkPlanModule() {
       {workPlanSheets.length > 0 && <WorkPlanSheetTabs readOnly={isViewMode} />}
 
       <Modal open={showFetchBOQModal} onClose={() => setShowFetchBOQModal(false)} title="Fetch Activities from BOQ" width={520}>
-        <p className="text-sm text-txt-muted mb-4">
-          Select which BOQ to fetch activities from. Activities will be appended as new Work Plan sheets.
-        </p>
         <div className="space-y-3">
           <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block">
             BOQ Source

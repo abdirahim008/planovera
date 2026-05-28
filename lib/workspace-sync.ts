@@ -328,6 +328,12 @@ export const buildProjectSyncSignature = (
     siteNotes: activeProjectId
       ? payload.siteNotes.filter((item) => item.project_id === activeProjectId)
       : [],
+    risks: activeProjectId
+      ? payload.risks.filter((item) => item.project_id === activeProjectId)
+      : [],
+    stakeholders: activeProjectId
+      ? payload.stakeholders.filter((item) => item.project_id === activeProjectId)
+      : [],
     attendeeGroups: payload.attendeeGroups,
     meetingMinutes: payload.meetingMinutes,
   });

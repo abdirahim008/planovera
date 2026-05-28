@@ -29,9 +29,12 @@ import type {
   SiteNote,
   SiteNoteCategory,
   SiteNotePhoto,
+  Risk,
+  Stakeholder,
   ApprovalStep,
   MeetingAttendee,
   MeetingAttendeeGroup,
+  MeetingSeries,
   MeetingAgendaItem,
   MeetingActionItem,
   MeetingMinute,
@@ -40,7 +43,15 @@ import type {
 import { normalizeConstructionWorkspacePayload } from "./supabase";
 import type { Surp2ImportPayload } from "./surp2ImportTypes";
 import { SURP2_IMPORT_ID } from "./surp2ImportTypes";
+import type { FinalCertificateImportPayload } from "./finalCertificateImportTypes";
+import { FINAL_CERTIFICATE_IMPORT_ID, FINAL_CERTIFICATE_ID_PREFIX } from "./finalCertificateImportTypes";
 import { calculateBOQLineAmount, isPercentageUnit } from "./boq-calculations";
+import {
+  inverseBOQLineAmount,
+  parsePaymentNumber,
+  paymentCertificateCalcs,
+  paymentLineState,
+} from "./payment-calculations";
 import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "./projectCategories";
 import { sanitizeRichTextHtml } from "./richText";
 
@@ -117,11 +128,13 @@ const evalArithmetic = (expr: string): number => {
 const evaluateFormulaExpression = (expr: string, allSheets: BOQSheet[], depth: number): number => {
   if (depth > 5) return 0;
 
-  // Resolve references like 'Sheet 1'!<rowId>.<col>
+  // Resolve references like 'Sheet 1'!<rowId>.<col>. Row ids can come from
+  // imports, so they are not always UUID-shaped.
   let resolvedExpr = expr.replace(
-    /'([^']+)'!([a-f0-9-]+)\.(itemNo|description|unit|qty|rate|amount)/gi,
+    /'((?:[^']|'')+)'!([^.]+)\.(itemNo|description|unit|qty|rate|amount)/gi,
     (_full, sheetName, rowId, colKey) => {
-      const sheet = allSheets.find((s) => s.name === sheetName);
+      const resolvedSheetName = String(sheetName).replace(/''/g, "'");
+      const sheet = allSheets.find((s) => s.name === resolvedSheetName);
       const row = sheet?.rows.find((r) => r.id === rowId);
       const rawVal = row ? String((row as any)[colKey] ?? "0") : "0";
       return String(resolveCellValue(rawVal, allSheets, depth + 1));
@@ -308,6 +321,37 @@ const parseNumber = (value: string | number | undefined | null): number => {
 };
 
 const deepClone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const normalizePaymentItemState = (item: PaymentItem): PaymentItem => {
+  const line = paymentLineState(item);
+  return {
+    ...item,
+    previousQty: line.previousQty.toFixed(2),
+    currentQty: line.currentQty.toFixed(2),
+    previousAmount: line.previousAmount.toFixed(2),
+    currentAmount: line.currentAmount.toFixed(2),
+    totalQty: line.totalQty.toFixed(2),
+    totalAmount: line.totalAmount.toFixed(2),
+    balanceQty: line.balanceQty.toFixed(2),
+    warningStatus: line.warningStatus,
+  };
+};
+
+const paymentItemFromQuantities = (item: PaymentItem, currentQty: number): PaymentItem => {
+  const previousQty = parsePaymentNumber(item.previousQty);
+  const previousAmount = parsePaymentNumber(item.previousAmount);
+  const rate = parsePaymentNumber(item.boqRate);
+  const totalQty = previousQty + currentQty;
+  const currentAmount = calculateBOQLineAmount(currentQty, rate, item.unit);
+  const totalAmount = previousAmount + currentAmount;
+  return normalizePaymentItemState({
+    ...item,
+    currentQty: currentQty.toFixed(2),
+    currentAmount: currentAmount.toFixed(2),
+    totalQty: totalQty.toFixed(2),
+    totalAmount: totalAmount.toFixed(2),
+  });
+};
 
 export type MeetingActionSnapshot = MeetingActionItem & {
   meetingMinuteId: string;
@@ -814,10 +858,14 @@ const buildDemoWorkspace = () => {
     boqQty: String(boqQty),
     boqRate: String(rate),
     boqAmount: calculateBOQLineAmount(boqQty, rate, unit).toFixed(2),
+    previousQty: inverseBOQLineAmount(previousAmount, rate, unit).toFixed(2),
+    currentQty: Math.max(0, totalQty - inverseBOQLineAmount(previousAmount, rate, unit)).toFixed(2),
     previousAmount: previousAmount.toFixed(2),
     currentAmount: currentAmount.toFixed(2),
     totalQty: totalQty.toFixed(2),
     totalAmount: (previousAmount + currentAmount).toFixed(2),
+    balanceQty: (boqQty - totalQty).toFixed(2),
+    warningStatus: totalQty > boqQty ? "over-certified" : "ok",
   });
 
   const certificates: PaymentCertificate[] = [
@@ -827,14 +875,24 @@ const buildDemoWorkspace = () => {
       boqId,
       boqName: "Contract BOQ Rev A",
       number: 1,
+      revision: 0,
       type: "interim",
       date: "2026-03-31",
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
       status: "approved",
+      previousCertificateId: null,
+      locked: true,
       contingenciesPercent: 0,
       governmentTaxPercent: 5,
       retentionPercent: 10,
       advancePaymentPercent: 5,
       withholdingTaxPercent: 3,
+      advancePaymentAmount: "23013.00",
+      advanceRecoveredPrevious: "0.00",
+      advanceRecoveryCurrent: "0.00",
+      retentionReleaseAmount: "0.00",
+      adjustments: [],
       contractorName: "Mahad Ahmed",
       contractorCompany: "HornBuild Contractors Ltd",
       contractorTitle: "Project Manager",
@@ -863,14 +921,24 @@ const buildDemoWorkspace = () => {
       boqId,
       boqName: "Contract BOQ Rev A",
       number: 2,
+      revision: 0,
       type: "interim",
       date: "2026-04-22",
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-22",
       status: "submitted",
+      previousCertificateId: certificate1Id,
+      locked: false,
       contingenciesPercent: 0,
       governmentTaxPercent: 5,
       retentionPercent: 10,
       advancePaymentPercent: 5,
       withholdingTaxPercent: 3,
+      advancePaymentAmount: "23013.00",
+      advanceRecoveredPrevious: "0.00",
+      advanceRecoveryCurrent: "5000.00",
+      retentionReleaseAmount: "0.00",
+      adjustments: [],
       contractorName: "Mahad Ahmed",
       contractorCompany: "HornBuild Contractors Ltd",
       contractorTitle: "Project Manager",
@@ -1432,6 +1500,62 @@ const makeSiteNote = (
   };
 };
 
+const nextRiskReference = (existing: Risk[], projectId: string): string => {
+  const used = existing
+    .filter((risk) => risk.project_id === projectId)
+    .map((risk) => Number((risk.reference || "").match(/(\d+)$/)?.[1] || 0))
+    .filter((n) => Number.isFinite(n));
+  const next = (used.length ? Math.max(...used) : 0) + 1;
+  return `RSK-${String(next).padStart(3, "0")}`;
+};
+
+const makeRisk = (
+  projectId: string,
+  reference: string,
+  risk?: Partial<Risk>,
+): Risk => {
+  const now = new Date().toISOString();
+  return {
+    id: risk?.id || uuid(),
+    project_id: risk?.project_id || projectId,
+    reference: risk?.reference || reference,
+    title: risk?.title || "",
+    description: risk?.description || "",
+    category: risk?.category || "other",
+    likelihood: risk?.likelihood || "medium",
+    impact: risk?.impact || "medium",
+    status: risk?.status || "open",
+    owner: risk?.owner || "",
+    mitigation: risk?.mitigation || "",
+    reviewDate: risk?.reviewDate || "",
+    createdAt: risk?.createdAt || now,
+    updatedAt: risk?.updatedAt || now,
+  };
+};
+
+const makeStakeholder = (
+  projectId: string,
+  stakeholder?: Partial<Stakeholder>,
+): Stakeholder => {
+  const now = new Date().toISOString();
+  return {
+    id: stakeholder?.id || uuid(),
+    project_id: stakeholder?.project_id || projectId,
+    name: stakeholder?.name || "",
+    organization: stakeholder?.organization || "",
+    role: stakeholder?.role || "",
+    type: stakeholder?.type || "internal",
+    email: stakeholder?.email || "",
+    phone: stakeholder?.phone || "",
+    influence: stakeholder?.influence || "medium",
+    interest: stakeholder?.interest || "medium",
+    engagementNotes: stakeholder?.engagementNotes || "",
+    active: stakeholder?.active ?? true,
+    createdAt: stakeholder?.createdAt || now,
+    updatedAt: stakeholder?.updatedAt || now,
+  };
+};
+
 export type SiteVisitReportSectionKey =
   | "projectName"
   | "contractReference"
@@ -1589,7 +1713,7 @@ interface AppState {
   createNewProject: (p: Project) => void;
   updateProject: (projectId: string, updates: Partial<Project>) => void;
   loadDemoWorkspace: () => void;
-  importLocalTestData: (payload: Surp2ImportPayload) => void;
+  importLocalTestData: (payload: Surp2ImportPayload | FinalCertificateImportPayload) => void;
 
   activeModule: string;
   setActiveModule: (m: string) => void;
@@ -1641,6 +1765,10 @@ interface AppState {
     targetSheetIndex?: number; 
     targetRowId?: string; 
     targetColKey?: string; 
+    targetOriginalValue?: string;
+    sourceSheetIndex?: number;
+    sourceRowId?: string;
+    sourceColKey?: string;
     currentFormula: string; 
   } | null;
   startFormulaLinking: (sheetIdx: number, rowId: string, colKey: string, initialFormula?: string) => void;
@@ -1654,6 +1782,7 @@ interface AppState {
   addCertificate: (type: "interim" | "final", boqId: string, prevCertId?: string | null) => void;
   updateCertItem: (certId: string, sheetId: string, itemId: string, key: string, value: string) => void;
   updateCertSettings: (certId: string, settings: Partial<PaymentCertificate>) => void;
+  reviseCertificate: (certId: string) => void;
   deleteCertificate: (certId: string) => void;
 
   // ─── Progress ────────────────────────────────────────────────────
@@ -1705,6 +1834,18 @@ interface AppState {
   deleteSiteNotePhoto: (noteId: string, photoId: string) => void;
   createSiteVisitReportFromNote: (noteId: string, options?: Partial<SiteVisitReportOptions>) => void;
 
+  risks: Risk[];
+  addRisk: (risk?: Partial<Risk>) => void;
+  updateRisk: (id: string, updates: Partial<Risk>) => void;
+  deleteRisk: (id: string) => void;
+  duplicateRisk: (id: string) => void;
+
+  stakeholders: Stakeholder[];
+  addStakeholder: (stakeholder?: Partial<Stakeholder>) => void;
+  updateStakeholder: (id: string, updates: Partial<Stakeholder>) => void;
+  deleteStakeholder: (id: string) => void;
+  duplicateStakeholder: (id: string) => void;
+
   attendeeGroups: MeetingAttendeeGroup[];
   saveAttendeeGroup: (group: MeetingAttendeeGroup) => void;
   deleteAttendeeGroup: (id: string) => void;
@@ -1713,6 +1854,11 @@ interface AppState {
   saveMeetingMinute: (minute: MeetingMinute) => void;
   deleteMeetingMinute: (id: string) => void;
   duplicateMeetingMinute: (id: string) => void;
+  reopenMeetingAction: (actionKey: string) => void;
+
+  meetingSeries: MeetingSeries[];
+  saveMeetingSeries: (series: MeetingSeries) => void;
+  deleteMeetingSeries: (id: string) => void;
 
   // ─── Work Plan Working State (multi-sheet) ───────────────────────
   workPlanSheets: WorkPlanSheet[];
@@ -1815,8 +1961,11 @@ export const useAppStore = create<AppState>()(
           correspondenceRecords: deepClone(next.correspondenceRecords),
           checklistItems: deepClone(next.checklistItems),
           siteNotes: deepClone(next.siteNotes),
+          risks: deepClone(next.risks),
+          stakeholders: deepClone(next.stakeholders),
           attendeeGroups: deepClone(next.attendeeGroups),
           meetingMinutes: deepClone(next.meetingMinutes),
+          meetingSeries: deepClone(next.meetingSeries),
           formulaLinking: null,
         });
       },
@@ -1841,8 +1990,11 @@ export const useAppStore = create<AppState>()(
           correspondenceRecords: next.correspondenceRecords,
           checklistItems: next.checklistItems,
           siteNotes: next.siteNotes,
+          risks: next.risks,
+          stakeholders: next.stakeholders,
           attendeeGroups: next.attendeeGroups,
           meetingMinutes: next.meetingMinutes,
+          meetingSeries: next.meetingSeries,
           formulaLinking: null,
         });
       },
@@ -1878,13 +2030,16 @@ export const useAppStore = create<AppState>()(
       loadDemoWorkspace: () => set(() => buildDemoWorkspace()),
       importLocalTestData: (payload) =>
         set((s) => {
-          if (payload.importId !== SURP2_IMPORT_ID) return s;
-          const isSurp2Id = (id?: string | null) => Boolean(id?.startsWith("surp2-"));
+          const allowedImportIds = [SURP2_IMPORT_ID, FINAL_CERTIFICATE_IMPORT_ID];
+          if (!allowedImportIds.includes(payload.importId)) return s;
+          const importPrefix =
+            payload.importId === FINAL_CERTIFICATE_IMPORT_ID ? FINAL_CERTIFICATE_ID_PREFIX : "surp2-";
+          const isImportedId = (id?: string | null) => Boolean(id?.startsWith(importPrefix));
           const importedProjectIds = new Set(payload.projects.map((item) => item.id));
 
           return {
             programs: [
-              ...s.programs.filter((program) => !isSurp2Id(program.id)),
+              ...s.programs.filter((program) => !isImportedId(program.id)),
               ...deepClone(payload.programs),
             ],
             categories:
@@ -1900,50 +2055,50 @@ export const useAppStore = create<AppState>()(
                     created_at: new Date().toISOString(),
                   })),
             projects: [
-              ...s.projects.filter((project) => !isSurp2Id(project.id)),
+              ...s.projects.filter((project) => !isImportedId(project.id)),
               ...deepClone(payload.projects),
             ],
             project: null,
             savedBOQs: [
               ...s.savedBOQs.filter(
-                (boq) => !isSurp2Id(boq.id) && !importedProjectIds.has(boq.project_id)
+                (boq) => !isImportedId(boq.id) && !importedProjectIds.has(boq.project_id)
               ),
               ...deepClone(payload.savedBOQs),
             ],
             savedWorkPlans: [
               ...s.savedWorkPlans.filter(
-                (workPlan) => !isSurp2Id(workPlan.id) && !importedProjectIds.has(workPlan.project_id)
+                (workPlan) => !isImportedId(workPlan.id) && !importedProjectIds.has(workPlan.project_id)
               ),
               ...deepClone(payload.savedWorkPlans),
             ],
             certificates: [
               ...s.certificates.filter(
                 (certificate) =>
-                  !isSurp2Id(certificate.id) && !importedProjectIds.has(certificate.project_id)
+                  !isImportedId(certificate.id) && !importedProjectIds.has(certificate.project_id)
               ),
               ...deepClone(payload.certificates),
             ],
             progressReports: [
               ...s.progressReports.filter(
-                (report) => !isSurp2Id(report.id) && !importedProjectIds.has(report.project_id)
+                (report) => !isImportedId(report.id) && !importedProjectIds.has(report.project_id)
               ),
               ...deepClone(payload.progressReports),
             ],
             generatedDocuments: s.generatedDocuments.filter(
-              (document) => !isSurp2Id(document.id) && !importedProjectIds.has(document.project_id)
+              (document) => !isImportedId(document.id) && !importedProjectIds.has(document.project_id)
             ),
             correspondenceRecords: s.correspondenceRecords.filter(
-              (record) => !isSurp2Id(record.id) && !importedProjectIds.has(record.project_id)
+              (record) => !isImportedId(record.id) && !importedProjectIds.has(record.project_id)
             ),
             checklistItems: s.checklistItems.filter(
-              (item) => !isSurp2Id(item.id) && !importedProjectIds.has(item.project_id)
+              (item) => !isImportedId(item.id) && !importedProjectIds.has(item.project_id)
             ),
             siteNotes: s.siteNotes.filter(
-              (note) => !isSurp2Id(note.id) && !importedProjectIds.has(note.project_id)
+              (note) => !isImportedId(note.id) && !importedProjectIds.has(note.project_id)
             ),
             meetingMinutes: s.meetingMinutes.filter(
               (minute) =>
-                !isSurp2Id(minute.id) &&
+                !isImportedId(minute.id) &&
                 !minute.actionGroups.some((group) => importedProjectIds.has(group.project_id))
             ),
             ...resetProjectWorkspace(),
@@ -2141,24 +2296,32 @@ export const useAppStore = create<AppState>()(
         })),
       
       startFormulaLinking: (sheetIdx, rowId, colKey, initialFormula) =>
-        set({
+        set((s) => {
+          const targetRow = s.boqSheets[sheetIdx]?.rows.find((row) => row.id === rowId);
+          const targetOriginalValue = String((targetRow as any)?.[colKey] ?? "");
+          return {
           formulaLinking: {
             active: true,
             targetSheetIndex: sheetIdx,
             targetRowId: rowId,
             targetColKey: colKey,
+            targetOriginalValue,
             currentFormula: initialFormula?.startsWith("=") ? initialFormula : "=",
           },
+        };
         }),
       
       selectFormulaSource: (sheetIdx, rowId, colKey) => {
         const { formulaLinking, boqSheets } = get();
         if (!formulaLinking) return;
         const sourceSheet = boqSheets[sheetIdx];
-        const refToken = `'${sourceSheet.name}'!${rowId}.${colKey}`;
+        if (!sourceSheet) return;
+        const safeSheetName = sourceSheet.name.replace(/'/g, "''");
+        const refToken = `'${safeSheetName}'!${rowId}.${colKey}`;
         const currentFormula = formulaLinking.currentFormula || "=";
 
         let nextFormula = currentFormula;
+        const directReferencePattern = /^='(?:[^']|'')+'![^.]+\.[A-Za-z0-9_]+$/;
         const fnMatch = currentFormula.match(/^=(SUM|PRODUCT|SUBTRACT)\((.*)\)$/i);
         if (fnMatch) {
           const fnName = fnMatch[1];
@@ -2166,16 +2329,51 @@ export const useAppStore = create<AppState>()(
           nextFormula = `=${fnName}(${existingArgs ? `${existingArgs},` : ""}${refToken})`;
         } else if (currentFormula.trim() === "=") {
           nextFormula = `=${refToken}`;
+        } else if (formulaLinking.sourceRowId && directReferencePattern.test(currentFormula.trim())) {
+          nextFormula = `=${refToken}`;
         } else if (/[+\-*/(,]\s*$/.test(currentFormula)) {
           nextFormula = `${currentFormula}${refToken}`;
         } else {
           nextFormula = `${currentFormula}+${refToken}`;
         }
 
-        set({ formulaLinking: { ...formulaLinking, currentFormula: nextFormula } });
+        set({
+          formulaLinking: {
+            ...formulaLinking,
+            currentFormula: nextFormula,
+            sourceSheetIndex: sheetIdx,
+            sourceRowId: rowId,
+            sourceColKey: colKey,
+          },
+        });
       },
 
-      cancelFormulaLinking: () => set({ formulaLinking: null }),
+      cancelFormulaLinking: () => {
+        const { formulaLinking, boqSheets } = get();
+        if (
+          !formulaLinking ||
+          formulaLinking.targetSheetIndex === undefined ||
+          !formulaLinking.targetRowId ||
+          !formulaLinking.targetColKey
+        ) {
+          set({ formulaLinking: null });
+          return;
+        }
+
+        const targetSheet = boqSheets[formulaLinking.targetSheetIndex];
+        if (!targetSheet) {
+          set({ formulaLinking: null });
+          return;
+        }
+
+        const updatedRows = targetSheet.rows.map((row) =>
+          row.id === formulaLinking.targetRowId
+            ? { ...row, [formulaLinking.targetColKey!]: formulaLinking.targetOriginalValue ?? "" }
+            : row,
+        );
+        get().updateSheetRows(formulaLinking.targetSheetIndex, updatedRows);
+        set({ formulaLinking: null, activeSheetIndex: formulaLinking.targetSheetIndex });
+      },
 
       completeFormulaLinking: () => {
         const { formulaLinking, boqSheets } = get();
@@ -2191,7 +2389,7 @@ export const useAppStore = create<AppState>()(
         );
 
         get().updateSheetRows(targetSheetIndex!, updatedRows);
-        set({ formulaLinking: null });
+        set({ formulaLinking: null, activeSheetIndex: targetSheetIndex! });
       },
       addSheet: () =>
         set((s) => ({
@@ -2317,7 +2515,26 @@ export const useAppStore = create<AppState>()(
           const selectedBOQ = s.savedBOQs.find((b) => b.id === boqId);
           if (!selectedBOQ) return s;
           const certSheets: PaymentCertSheet[] = [];
-          const prevCert = prevCertId ? s.certificates.find((c) => c.id === prevCertId) : null;
+          const projectId = s.project?.id || "";
+          const projectCertificates = s.certificates.filter((c) => c.project_id === projectId);
+          const autoPrevious =
+            projectCertificates
+              .filter((c) => c.type === "interim" && c.boqId === boqId && (c.status === "approved" || c.status === "paid"))
+              .sort((a, b) => b.number - a.number || (b.revision || 0) - (a.revision || 0))[0] || null;
+          const prevCert = prevCertId === null
+            ? null
+            : prevCertId
+            ? s.certificates.find((c) => c.id === prevCertId) || null
+            : autoPrevious;
+          const previousCalcs = prevCert ? paymentCertificateCalcs(prevCert) : null;
+          const nextNumber =
+            Math.max(
+              0,
+              ...projectCertificates
+                .filter((c) => c.type === type)
+                .map((c) => Number.isFinite(c.number) ? c.number : 0)
+            ) + 1;
+          const today = new Date().toISOString().split("T")[0];
 
           selectedBOQ.sheets.forEach((boqSheet) => {
             const items: PaymentItem[] = boqSheet.rows
@@ -2335,7 +2552,7 @@ export const useAppStore = create<AppState>()(
                 const prevAmount = parseFloat(prevItem?.totalAmount || "0") || 0;
                 const prevQty = parseFloat(prevItem?.totalQty || "0") || 0;
 
-                return {
+                return normalizePaymentItemState({
                   id: uuid(),
                   billNo: r.itemNo || "",
                   description: r.description,
@@ -2343,11 +2560,13 @@ export const useAppStore = create<AppState>()(
                   boqQty: q.toFixed(2),
                   boqRate: rate.toFixed(2),
                   boqAmount: boqAmountValue.toFixed(2),
+                  previousQty: prevQty.toFixed(2),
+                  currentQty: "0.00",
                   previousAmount: prevAmount.toFixed(2),
                   currentAmount: "0.00",
                   totalQty: prevQty.toFixed(2),
                   totalAmount: prevAmount.toFixed(2),
-                };
+                });
               });
 
             if (items.length > 0) {
@@ -2355,30 +2574,83 @@ export const useAppStore = create<AppState>()(
             }
           });
 
+          // FIDIC settings: inherit from previous cert if present, else sensible defaults.
+          const contingenciesPercent = prevCert ? prevCert.contingenciesPercent : 15;
+          const governmentTaxPercent = prevCert ? prevCert.governmentTaxPercent : 8;
+          const retentionPercent = prevCert ? prevCert.retentionPercent : 10;
+          const advancePaymentPercent = prevCert ? prevCert.advancePaymentPercent : 30;
+          const withholdingTaxPercent = prevCert ? prevCert.withholdingTaxPercent : 5;
+
+          // Period: start where the previous one ended (+1 day), end today.
+          const addOneDay = (iso: string) => {
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return today;
+            d.setUTCDate(d.getUTCDate() + 1);
+            return d.toISOString().split("T")[0];
+          };
+          const periodStart = prevCert?.periodEnd ? addOneDay(prevCert.periodEnd) : today;
+          const periodEnd = today;
+
+          const boqGrandTotal = certSheets
+            .flatMap((sheet) => sheet.items)
+            .reduce((sum, item) => sum + parsePaymentNumber(item.boqAmount), 0);
+          const advancePaymentAmount = prevCert?.advancePaymentAmount
+            ? prevCert.advancePaymentAmount
+            : ((boqGrandTotal * advancePaymentPercent) / 100).toFixed(2);
+          const advanceRecoveredPrevious = previousCalcs
+            ? previousCalcs.total.advance.toFixed(2)
+            : "0.00";
+          const remainingAdvance = Math.max(
+            0,
+            parsePaymentNumber(advancePaymentAmount) - parsePaymentNumber(advanceRecoveredPrevious)
+          );
+
+          // Signatory defaults: inherit from previous cert so users don't re-key these.
+          const contractorName = prevCert?.contractorName || "";
+          const contractorCompany = prevCert?.contractorCompany || "";
+          const contractorTitle = prevCert?.contractorTitle || "Site Agent";
+          const engineerName = prevCert?.engineerName || "";
+          const engineerOrg = prevCert?.engineerOrg || "";
+          const engineerTitle = prevCert?.engineerTitle || "Resident Engineer";
+          const employerName = prevCert?.employerName || "";
+          const employerOrg = prevCert?.employerOrg || "";
+          const employerTitle = prevCert?.employerTitle || "Project Coordinator";
+
           const cert: PaymentCertificate = {
             id: uuid(),
-            project_id: s.project?.id || "",
+            project_id: projectId,
             boqId: selectedBOQ.id,
             boqName: selectedBOQ.name,
-            number: s.certificates.length + 1,
+            number: nextNumber,
+            revision: 0,
             type,
-            date: new Date().toISOString().split("T")[0],
+            date: today,
+            periodStart,
+            periodEnd,
             status: "draft",
+            previousCertificateId: prevCert?.id || null,
+            locked: false,
             sheets: certSheets,
-            contingenciesPercent: 15,
-            governmentTaxPercent: 8,
-            retentionPercent: 10,
-            advancePaymentPercent: 30,
-            withholdingTaxPercent: 5,
-            contractorName: "",
-            contractorCompany: "",
-            contractorTitle: "Site Agent",
-            engineerName: "",
-            engineerOrg: "",
-            engineerTitle: "Resident Engineer",
-            employerName: "",
-            employerOrg: "",
-            employerTitle: "Project Coordinator",
+            contingenciesPercent,
+            governmentTaxPercent,
+            retentionPercent,
+            advancePaymentPercent,
+            withholdingTaxPercent,
+            advancePaymentAmount,
+            advanceRecoveredPrevious,
+            advanceRecoveryCurrent: type === "final" ? remainingAdvance.toFixed(2) : "0.00",
+            retentionReleaseAmount: type === "final" && previousCalcs ? previousCalcs.total.retentionHeld.toFixed(2) : "0.00",
+            finalAccountNote: type === "final" ? "Final account prepared from latest approved IPC and BOQ valuation." : "",
+            adjustments: [],
+            contractorName,
+            contractorCompany,
+            contractorTitle,
+            engineerName,
+            engineerOrg,
+            engineerTitle,
+            employerName,
+            employerOrg,
+            employerTitle,
           };
           return { certificates: [...s.certificates, cert] };
         }),
@@ -2387,6 +2659,7 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           certificates: s.certificates.map((c) => {
             if (c.id !== certId) return c;
+            if (c.locked || c.status === "approved" || c.status === "paid") return c;
             return {
               ...c,
               sheets: c.sheets.map((sh) => {
@@ -2399,17 +2672,21 @@ export const useAppStore = create<AppState>()(
                     const rate = parseFloat(upd.boqRate) || 0;
                     const prevAmount = parseFloat(upd.previousAmount) || 0;
 
-                    if (key === "totalQty") {
+                    if (key === "currentQty") {
+                      return paymentItemFromQuantities(upd, parsePaymentNumber(value));
+                    } else if (key === "totalQty") {
                       const tQty = parseFloat(upd.totalQty) || 0;
+                      const previousQty = parsePaymentNumber(upd.previousQty);
                       upd.totalAmount = calculateBOQLineAmount(tQty, rate, upd.unit).toFixed(2);
                       upd.currentAmount = (parseFloat(upd.totalAmount) - prevAmount).toFixed(2);
+                      upd.currentQty = (tQty - previousQty).toFixed(2);
                     } else if (key === "totalAmount") {
                       // Fallback for manual total amount entry if needed (though usually driven by qty now)
                       const tAmt = parseFloat(upd.totalAmount) || 0;
                       upd.currentAmount = (tAmt - prevAmount).toFixed(2);
                       if (rate > 0) upd.totalQty = (isPercentageUnit(upd.unit) ? (tAmt * 100) / rate : tAmt / rate).toFixed(2);
                     }
-                    return upd;
+                    return normalizePaymentItemState(upd);
                   }),
                 };
               }),
@@ -2418,8 +2695,37 @@ export const useAppStore = create<AppState>()(
         })),
       updateCertSettings: (certId, settings) =>
         set((s) => ({
-          certificates: s.certificates.map((c) => (c.id === certId ? { ...c, ...settings } : c)),
+          certificates: s.certificates.map((c) => {
+            if (c.id !== certId) return c;
+            const nextStatus = settings.status || c.status;
+            return {
+              ...c,
+              ...settings,
+              locked: settings.locked ?? (nextStatus === "approved" || nextStatus === "paid"),
+            };
+          }),
         })),
+      reviseCertificate: (certId) =>
+        set((s) => {
+          const source = s.certificates.find((c) => c.id === certId);
+          if (!source) return s;
+          const today = new Date().toISOString().split("T")[0];
+          const revision: PaymentCertificate = {
+            ...deepClone(source),
+            id: uuid(),
+            revision: (source.revision || 0) + 1,
+            date: today,
+            status: "draft",
+            locked: false,
+            previousCertificateId: source.previousCertificateId || null,
+            sheets: source.sheets.map((sheet) => ({
+              ...sheet,
+              id: uuid(),
+              items: sheet.items.map((item) => normalizePaymentItemState({ ...item, id: uuid() })),
+            })),
+          };
+          return { certificates: [...s.certificates, revision] };
+        }),
       deleteCertificate: (certId) =>
         set((s) => ({ certificates: s.certificates.filter((c) => c.id !== certId) })),
 
@@ -2923,6 +3229,73 @@ export const useAppStore = create<AppState>()(
         }),
 
       // ═══════════════════════════════════════════════════════════════
+      // ─── Risk Register ────────────────────────────────────────────
+      // ═══════════════════════════════════════════════════════════════
+      risks: [],
+      addRisk: (risk) =>
+        set((s) => {
+          const projectId = risk?.project_id || s.project?.id || "";
+          if (!projectId) return s;
+          const reference = risk?.reference || nextRiskReference(s.risks, projectId);
+          return { risks: [makeRisk(projectId, reference, risk), ...s.risks] };
+        }),
+      updateRisk: (id, updates) =>
+        set((s) => ({
+          risks: s.risks.map((risk) =>
+            risk.id === id ? { ...risk, ...updates, updatedAt: new Date().toISOString() } : risk
+          ),
+        })),
+      deleteRisk: (id) =>
+        set((s) => ({ risks: s.risks.filter((risk) => risk.id !== id) })),
+      duplicateRisk: (id) =>
+        set((s) => {
+          const risk = s.risks.find((r) => r.id === id);
+          if (!risk) return s;
+          const reference = nextRiskReference(s.risks, risk.project_id);
+          const duplicate = makeRisk(risk.project_id, reference, {
+            ...risk,
+            id: uuid(),
+            reference,
+            title: `${risk.title || "Risk"} (Copy)`,
+          });
+          return { risks: [duplicate, ...s.risks] };
+        }),
+
+      // ═══════════════════════════════════════════════════════════════
+      // ─── Stakeholder Log ──────────────────────────────────────────
+      // ═══════════════════════════════════════════════════════════════
+      stakeholders: [],
+      addStakeholder: (stakeholder) =>
+        set((s) => {
+          const projectId = stakeholder?.project_id || s.project?.id || "";
+          if (!projectId) return s;
+          return {
+            stakeholders: [makeStakeholder(projectId, stakeholder), ...s.stakeholders],
+          };
+        }),
+      updateStakeholder: (id, updates) =>
+        set((s) => ({
+          stakeholders: s.stakeholders.map((stakeholder) =>
+            stakeholder.id === id
+              ? { ...stakeholder, ...updates, updatedAt: new Date().toISOString() }
+              : stakeholder
+          ),
+        })),
+      deleteStakeholder: (id) =>
+        set((s) => ({ stakeholders: s.stakeholders.filter((stakeholder) => stakeholder.id !== id) })),
+      duplicateStakeholder: (id) =>
+        set((s) => {
+          const stakeholder = s.stakeholders.find((item) => item.id === id);
+          if (!stakeholder) return s;
+          const duplicate = makeStakeholder(stakeholder.project_id, {
+            ...stakeholder,
+            id: uuid(),
+            name: `${stakeholder.name || "Stakeholder"} (Copy)`,
+          });
+          return { stakeholders: [duplicate, ...s.stakeholders] };
+        }),
+
+      // ═══════════════════════════════════════════════════════════════
       // ─── Meeting Minutes / Action Points ──────────────────────────
       // ═══════════════════════════════════════════════════════════════
       attendeeGroups: [],
@@ -2985,6 +3358,63 @@ export const useAppStore = create<AppState>()(
             updatedAt: now,
           };
           return { meetingMinutes: [...s.meetingMinutes, duplicate] };
+        }),
+      meetingSeries: [],
+      saveMeetingSeries: (series) =>
+        set((s) => {
+          const exists = s.meetingSeries.some((item) => item.id === series.id);
+          const now = new Date().toISOString();
+          return {
+            meetingSeries: exists
+              ? s.meetingSeries.map((item) =>
+                  item.id === series.id ? { ...series, updatedAt: now } : item
+                )
+              : [...s.meetingSeries, { ...series, updatedAt: now }],
+          };
+        }),
+      deleteMeetingSeries: (id) =>
+        set((s) => ({
+          meetingSeries: s.meetingSeries.filter((item) => item.id !== id),
+          // Unlink minutes that referenced this series — don't delete them.
+          meetingMinutes: s.meetingMinutes.map((minute) =>
+            minute.meetingSeriesId === id ? { ...minute, meetingSeriesId: undefined } : minute
+          ),
+        })),
+      reopenMeetingAction: (actionKey) =>
+        set((s) => {
+          // Find the most recent minute (by meetingDate then updatedAt) that contains this actionKey,
+          // and flip the matching action item to "open". Older minutes are left untouched so history is preserved.
+          const sortedMinutes = s.meetingMinutes
+            .map((minute, index) => ({ minute, index }))
+            .sort((a, b) => {
+              const dateCmp = a.minute.meetingDate.localeCompare(b.minute.meetingDate);
+              if (dateCmp !== 0) return dateCmp;
+              return a.minute.updatedAt.localeCompare(b.minute.updatedAt);
+            });
+          const target = [...sortedMinutes].reverse().find(({ minute }) =>
+            minute.actionGroups.some((group) =>
+              group.actionItems.some((item) => item.actionKey === actionKey)
+            )
+          );
+          if (!target) return s;
+          const now = new Date().toISOString();
+          return {
+            meetingMinutes: s.meetingMinutes.map((minute) => {
+              if (minute.id !== target.minute.id) return minute;
+              return {
+                ...minute,
+                updatedAt: now,
+                actionGroups: minute.actionGroups.map((group) => ({
+                  ...group,
+                  actionItems: group.actionItems.map((item) =>
+                    item.actionKey === actionKey
+                      ? { ...item, status: "open", closedAt: undefined }
+                      : item
+                  ),
+                })),
+              };
+            }),
+          };
         }),
 
       // ═══════════════════════════════════════════════════════════════
@@ -3327,7 +3757,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "probuild-storage",
-        version: 11,
+        version: 12,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, any>;
         if (version < 2) {
@@ -3463,6 +3893,29 @@ export const useAppStore = create<AppState>()(
 
         if (version < 11) {
           if (!state.siteNotes) state.siteNotes = [];
+        }
+
+        if (version < 12) {
+          if (state.certificates) {
+            state.certificates = state.certificates.map((cert: any) => ({
+              ...cert,
+              revision: cert.revision ?? 0,
+              periodStart: cert.periodStart || cert.date || new Date().toISOString().split("T")[0],
+              periodEnd: cert.periodEnd || cert.date || new Date().toISOString().split("T")[0],
+              previousCertificateId: cert.previousCertificateId ?? null,
+              locked: cert.locked ?? (cert.status === "approved" || cert.status === "paid"),
+              advancePaymentAmount: cert.advancePaymentAmount ?? "",
+              advanceRecoveredPrevious: cert.advanceRecoveredPrevious ?? "",
+              advanceRecoveryCurrent: cert.advanceRecoveryCurrent ?? "",
+              retentionReleaseAmount: cert.retentionReleaseAmount ?? "0.00",
+              adjustments: cert.adjustments ?? [],
+              finalAccountNote: cert.finalAccountNote ?? "",
+              sheets: (cert.sheets || []).map((sheet: any) => ({
+                ...sheet,
+                items: (sheet.items || []).map((item: PaymentItem) => normalizePaymentItemState(item)),
+              })),
+            }));
+          }
         }
 
         return state as AppState;

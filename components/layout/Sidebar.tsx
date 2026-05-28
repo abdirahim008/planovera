@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { useAppStore } from "@/lib/store";
-import Badge from "@/components/ui/Badge";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
+import { labelsForType, isConstructionProject } from "@/lib/project-labels";
 import {
   ArrowLeft,
   Calendar,
@@ -23,7 +23,9 @@ import {
   PenTool,
   PanelLeft,
   PanelLeftClose,
+  Shield,
   Table,
+  Users,
   X,
 } from "lucide-react";
 
@@ -54,26 +56,40 @@ export default function Sidebar({
   } = useAppStore();
 
   const hasProject = Boolean(project);
-  const isConstruction = project?.type === "construction";
+  const isConstruction = isConstructionProject(project);
+  const labels = labelsForType(project);
+  // Non-construction projects don't have FIDIC payment certificates — for now we only
+  // surface a "Payments" / "Invoices" entry to construction supervisors/employers. The
+  // lightweight non-construction milestone invoice flow lives behind the Documents module.
   const canPayment =
     hasProject &&
     isConstruction &&
-    (project.role === "supervision" || project.role === "employer");
+    (project?.role === "supervision" || project?.role === "employer");
 
+  // Drawings (Fabric.js technical drawings) and Site Notes (site inspection records) are
+  // construction-only modules. They're hidden for non-construction projects rather than
+  // renamed, because the underlying tooling doesn't make sense outside a construction site.
+  const showDrawings = isConstruction;
+  const showSiteNotes = isConstruction;
+
+  // Risks + Stakeholders are universal — surfaced on every project type. They live
+  // toward the end of the nav so the construction-first chrome at the top stays familiar.
   const navItems = hasProject
     ? [
         { id: "dashboard", label: "Overview", icon: Home },
         ...(isConstruction
-          ? [{ id: "boq", label: "BOQ", icon: LayoutGrid }]
-          : [{ id: "items", label: "Items", icon: Table }]),
-        { id: "progress", label: "Progress", icon: ClipboardList },
-        { id: "site-notes", label: "Site Notes", icon: NotebookPen },
-        ...(canPayment ? [{ id: "payment", label: "Payments", icon: DollarSign }] : []),
-        { id: "workplan", label: "Work Plan", icon: Calendar },
-        { id: "drawings", label: "Drawings", icon: PenTool },
-        { id: "correspondence", label: "Correspondence", icon: Mail },
-        { id: "documents", label: "Documents", icon: FileText },
-        { id: "checklist", label: "Checklist", icon: ClipboardCheck },
+          ? [{ id: "boq", label: labels.nav.boqOrItems, icon: LayoutGrid }]
+          : [{ id: "items", label: labels.nav.boqOrItems, icon: Table }]),
+        { id: "progress", label: labels.nav.progress, icon: ClipboardList },
+        ...(showSiteNotes ? [{ id: "site-notes", label: labels.nav.siteNotes, icon: NotebookPen }] : []),
+        ...(canPayment ? [{ id: "payment", label: labels.nav.payment, icon: DollarSign }] : []),
+        { id: "workplan", label: labels.nav.workPlan, icon: Calendar },
+        ...(showDrawings ? [{ id: "drawings", label: labels.nav.drawings, icon: PenTool }] : []),
+        { id: "correspondence", label: labels.nav.correspondence, icon: Mail },
+        { id: "documents", label: labels.nav.documents, icon: FileText },
+        { id: "checklist", label: labels.nav.checklist, icon: ClipboardCheck },
+        { id: "risks", label: "Risks", icon: Shield },
+        { id: "stakeholders", label: "Stakeholders", icon: Users },
       ]
     : [
         { id: "dashboard", label: "Portfolio", icon: Home },
@@ -153,11 +169,8 @@ export default function Sidebar({
         />
         {!collapsed && (
           <>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-bold tracking-tight">Planovera</div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-txt-dim">
-                Project Controls
-              </div>
+            <div className="min-w-0 truncate text-sm font-semibold tracking-tight text-white">
+              Planovera
             </div>
             {isMobile ? (
               <button
@@ -166,7 +179,7 @@ export default function Sidebar({
                   event.stopPropagation();
                   onCloseMobile?.();
                 }}
-                className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-transparent text-txt-dim transition hover:bg-bg-hover hover:text-txt"
+                className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-txt-dim transition hover:bg-bg-hover hover:text-txt"
                 aria-label="Close navigation"
               >
                 <X size={16} />
@@ -185,34 +198,20 @@ export default function Sidebar({
 
       {hasProject && !collapsed && (
         <div className="border-b border-border px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">Current Project</div>
-            <button
-              type="button"
-              onClick={handleBackToPortfolio}
-              className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg-raised px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-txt-dim transition hover:bg-bg-hover hover:text-txt"
-            >
-              <ArrowLeft size={12} />
-              All Projects
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleBackToPortfolio}
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-txt-dim transition hover:text-txt"
+          >
+            <ArrowLeft size={12} />
+            All projects
+          </button>
           <div className="mt-2 truncate text-sm font-semibold text-white">{project?.name}</div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge color={isConstruction ? "accent" : "purple"}>
-              {isConstruction ? "CONSTR" : "NON-C"}
-            </Badge>
-            <Badge color="ok">{project?.role?.toUpperCase().slice(0, 6) || ""}</Badge>
-          </div>
-        </div>
-      )}
-
-      {!hasProject && !collapsed && (
-        <div className="border-b border-border px-4 py-3">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">Portfolio Mode</div>
-          <div className="mt-2 text-sm font-semibold text-white">Overall Project Dashboard</div>
-          <div className="mt-1 text-xs leading-5 text-txt-muted">
-            Open a project to access BOQ, progress, payment, work plan, correspondence, and documents.
-          </div>
+          {project?.role ? (
+            <div className="mt-1.5 text-[11px] capitalize text-txt-muted">
+              {project.role}
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -226,39 +225,28 @@ export default function Sidebar({
               key={item.id}
               onClick={() => handleNavClick(item.id)}
               className={clsx(
-                "mb-1 flex w-full cursor-pointer items-center gap-2.5 rounded-xl border text-[13px] transition-all duration-150",
-                collapsed ? "justify-center p-3" : "px-3 py-3",
+                "mb-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150",
+                collapsed ? "justify-center p-2.5" : "px-3 py-2",
                 active
-                  ? "border-accent/25 bg-accent/10 font-semibold text-accent"
-                  : "border-transparent bg-transparent text-txt-muted hover:bg-bg-hover hover:text-txt"
+                  ? "bg-accent/12 text-accent"
+                  : "text-txt-muted hover:bg-bg-hover hover:text-txt"
               )}
               title={collapsed ? item.label : undefined}
             >
-              <Icon size={18} />
+              <Icon size={17} />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
           );
         })}
       </nav>
 
-      {!collapsed && hasProject && (
-        <div className="border-t border-border p-4">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">Workspace</div>
-          <div className="mt-1 text-xs leading-5 text-txt-muted">
-            {project?.location || "Location not set"}
-            <br />
-            {project?.contractTitle || "Contract title not set"}
-          </div>
-        </div>
-      )}
-
       {authConfigured ? (
-        <div className={clsx("border-t border-border", collapsed ? "p-2" : "p-4")}>
+        <div className={clsx("border-t border-border", collapsed ? "p-2" : "p-3")}>
           <a
             href="/organization"
             className={clsx(
-              "mb-2 flex w-full items-center rounded-xl border border-border bg-bg-raised text-sm font-semibold text-txt transition hover:bg-bg-hover",
-              collapsed ? "justify-center px-0 py-3" : "gap-2.5 px-3 py-3",
+              "mb-1 flex w-full items-center rounded-lg text-[13px] font-medium text-txt-muted transition-colors duration-150 hover:bg-bg-hover hover:text-txt",
+              collapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2",
             )}
             title={collapsed ? "Organization" : undefined}
           >
@@ -270,8 +258,8 @@ export default function Sidebar({
             onClick={handleSignOut}
             disabled={isSigningOut}
             className={clsx(
-              "flex w-full items-center rounded-xl border border-border bg-bg-raised text-sm font-semibold text-txt transition hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-60",
-              collapsed ? "justify-center px-0 py-3" : "gap-2.5 px-3 py-3",
+              "flex w-full items-center rounded-lg text-[13px] font-medium text-txt-muted transition-colors duration-150 hover:bg-bg-hover hover:text-txt disabled:cursor-not-allowed disabled:opacity-60",
+              collapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2",
             )}
             title={collapsed ? "Sign out" : undefined}
           >

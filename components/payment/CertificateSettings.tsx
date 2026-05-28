@@ -19,11 +19,18 @@ export default function CertificateSettings({
   onSave,
 }: CertificateSettingsProps) {
   const [settings, setSettings] = useState({
+    periodStart: cert.periodStart || cert.date,
+    periodEnd: cert.periodEnd || cert.date,
     contingenciesPercent: cert.contingenciesPercent,
     governmentTaxPercent: cert.governmentTaxPercent,
     retentionPercent: cert.retentionPercent,
     advancePaymentPercent: cert.advancePaymentPercent,
     withholdingTaxPercent: cert.withholdingTaxPercent,
+    advancePaymentAmount: cert.advancePaymentAmount || "0.00",
+    advanceRecoveredPrevious: cert.advanceRecoveredPrevious || "0.00",
+    advanceRecoveryCurrent: cert.advanceRecoveryCurrent || "0.00",
+    retentionReleaseAmount: cert.retentionReleaseAmount || "0.00",
+    finalAccountNote: cert.finalAccountNote || "",
     contractorName: cert.contractorName,
     contractorCompany: cert.contractorCompany,
     contractorTitle: cert.contractorTitle,
@@ -39,11 +46,18 @@ export default function CertificateSettings({
 
   useEffect(() => {
     setSettings({
+      periodStart: cert.periodStart || cert.date,
+      periodEnd: cert.periodEnd || cert.date,
       contingenciesPercent: cert.contingenciesPercent,
       governmentTaxPercent: cert.governmentTaxPercent,
       retentionPercent: cert.retentionPercent,
       advancePaymentPercent: cert.advancePaymentPercent,
       withholdingTaxPercent: cert.withholdingTaxPercent,
+      advancePaymentAmount: cert.advancePaymentAmount || "0.00",
+      advanceRecoveredPrevious: cert.advanceRecoveredPrevious || "0.00",
+      advanceRecoveryCurrent: cert.advanceRecoveryCurrent || "0.00",
+      retentionReleaseAmount: cert.retentionReleaseAmount || "0.00",
+      finalAccountNote: cert.finalAccountNote || "",
       contractorName: cert.contractorName,
       contractorCompany: cert.contractorCompany,
       contractorTitle: cert.contractorTitle,
@@ -81,13 +95,31 @@ export default function CertificateSettings({
             <span className="w-5 h-5 rounded bg-accent/15 flex items-center justify-center text-accent text-[10px]">📋</span>
             Certificate Info
           </h4>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Date</label>
               <input
                 type="date"
                 value={settings.date}
                 onChange={(e) => update("date", e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Period Start</label>
+              <input
+                type="date"
+                value={settings.periodStart}
+                onChange={(e) => update("periodStart", e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Period End</label>
+              <input
+                type="date"
+                value={settings.periodEnd}
+                onChange={(e) => update("periodEnd", e.target.value)}
                 className={inputCls}
               />
             </div>
@@ -113,7 +145,7 @@ export default function CertificateSettings({
             <span className="w-5 h-5 rounded bg-warn/15 flex items-center justify-center text-warn text-[10px]">%</span>
             Additions & Deductions
           </h4>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Contingencies %</label>
               <input
@@ -151,7 +183,7 @@ export default function CertificateSettings({
               />
             </div>
             <div>
-              <label className={labelCls}>Advance Payment %</label>
+              <label className={labelCls}>Default Advance Recovery %</label>
               <input
                 type="number"
                 min="0"
@@ -177,13 +209,71 @@ export default function CertificateSettings({
           </div>
         </div>
 
+        {/* Advance and retention tracking */}
+        <div className={sectionCls}>
+          <h4 className={sectionTitleCls}>
+            <span className="w-5 h-5 rounded bg-purple-500/15 flex items-center justify-center text-purple-400 text-[10px]">$</span>
+            Advance & Retention Tracking
+          </h4>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Original Advance</label>
+              <input
+                value={settings.advancePaymentAmount}
+                onChange={(e) => update("advancePaymentAmount", e.target.value)}
+                placeholder="0.00"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Previous Advance Recovered</label>
+              <input
+                value={settings.advanceRecoveredPrevious}
+                onChange={(e) => update("advanceRecoveredPrevious", e.target.value)}
+                placeholder="0.00"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Current Advance Recovery</label>
+              <input
+                value={settings.advanceRecoveryCurrent}
+                onChange={(e) => update("advanceRecoveryCurrent", e.target.value)}
+                placeholder="0.00"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Retention Release</label>
+              <input
+                value={settings.retentionReleaseAmount}
+                onChange={(e) => update("retentionReleaseAmount", e.target.value)}
+                placeholder="0.00"
+                className={inputCls}
+              />
+            </div>
+            {cert.type === "final" && (
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Final Account Note</label>
+                <textarea
+                  value={settings.finalAccountNote}
+                  onChange={(e) => update("finalAccountNote", e.target.value)}
+                  placeholder="Optional reconciliation note for the final certificate"
+                  rows={3}
+                  className={inputCls}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Signatories */}
         <div className={sectionCls}>
           <h4 className={sectionTitleCls}>
             <span className="w-5 h-5 rounded bg-ok/15 flex items-center justify-center text-ok text-[10px]">✍</span>
             Contractor (Prepared by)
           </h4>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Name</label>
               <input
@@ -202,7 +292,7 @@ export default function CertificateSettings({
                 className={inputCls}
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className={labelCls}>Title</label>
               <input
                 value={settings.contractorTitle}
@@ -219,7 +309,7 @@ export default function CertificateSettings({
             <span className="w-5 h-5 rounded bg-accent/15 flex items-center justify-center text-accent text-[10px]">✍</span>
             Engineer (Rates & Quantities Confirmed by)
           </h4>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Name</label>
               <input
@@ -238,7 +328,7 @@ export default function CertificateSettings({
                 className={inputCls}
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className={labelCls}>Title</label>
               <input
                 value={settings.engineerTitle}
@@ -255,7 +345,7 @@ export default function CertificateSettings({
             <span className="w-5 h-5 rounded bg-purple-500/15 flex items-center justify-center text-purple-400 text-[10px]">✍</span>
             Employer (Checked by)
           </h4>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Name</label>
               <input
@@ -274,7 +364,7 @@ export default function CertificateSettings({
                 className={inputCls}
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className={labelCls}>Title</label>
               <input
                 value={settings.employerTitle}

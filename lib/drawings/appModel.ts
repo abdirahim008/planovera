@@ -105,7 +105,11 @@ export const STORAGE_KEYS = {
   session: "drawflow-session",
   library: "drawflow-library",
   projects: "drawflow-projects",
+  favorites: "drawflow-favorites",
+  recents: "drawflow-recents",
 } as const;
+
+export const MAX_RECENTS = 8;
 
 const nowIso = () => new Date().toISOString();
 const today = () => new Date().toISOString().slice(0, 10);
@@ -953,6 +957,40 @@ export function loadSession(): UserSession | null {
   } catch {
     return null;
   }
+}
+
+export function loadFavoriteIds(): string[] {
+  if (typeof window === "undefined") return [];
+  const stored = window.localStorage.getItem(STORAGE_KEYS.favorites);
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function persistFavoriteIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(ids));
+}
+
+export function loadRecentIds(): string[] {
+  if (typeof window === "undefined") return [];
+  const stored = window.localStorage.getItem(STORAGE_KEYS.recents);
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function persistRecentIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEYS.recents, JSON.stringify(ids.slice(0, MAX_RECENTS)));
 }
 
 export function persistSession(session: UserSession | null) {

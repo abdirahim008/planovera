@@ -15,6 +15,8 @@ type SyncRequestBody = {
   activeModule?: string | null;
 };
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const serializeProjectRow = <TPayload,>(row: {
   organization_id?: string | null;
   name: string;
@@ -181,16 +183,18 @@ export async function POST(request: Request) {
     typeof body?.activeProjectId === "string" && body.activeProjectId
       ? body.activeProjectId
       : null;
+  const syncProjectId =
+    activeProjectId && uuidPattern.test(activeProjectId) ? activeProjectId : null;
   const activeModule =
     typeof body?.activeModule === "string" && body.activeModule ? body.activeModule : null;
 
   let organizationId: string | null = null;
 
-  if (activeProjectId) {
+  if (syncProjectId) {
     const { data: projectRow, error: projectError } = await supabase
       .from("projects")
       .select("id, organization_id")
-      .eq("id", activeProjectId)
+      .eq("id", syncProjectId)
       .maybeSingle();
 
     if (projectError || !projectRow) {
@@ -203,8 +207,8 @@ export async function POST(request: Request) {
     organizationId = projectRow.organization_id ?? null;
   }
 
-  const projectRows = activeProjectId
-    ? buildProjectScopedSyncRows(payload, activeProjectId, organizationId, user.id)
+  const projectRows = syncProjectId
+    ? buildProjectScopedSyncRows(payload, syncProjectId, organizationId, user.id)
     : {
         boqDocuments: [],
         workPlans: [],
@@ -228,36 +232,36 @@ export async function POST(request: Request) {
       attendeeSync,
       minutesSync,
     ] = await Promise.all([
-      activeProjectId
-        ? syncProjectTable("project_boq_documents", activeProjectId, projectRows.boqDocuments)
+      syncProjectId
+        ? syncProjectTable("project_boq_documents", syncProjectId, projectRows.boqDocuments)
         : Promise.resolve({ upserted: 0, deleted: 0 }),
-      activeProjectId
-        ? syncProjectTable("project_work_plans", activeProjectId, projectRows.workPlans)
+      syncProjectId
+        ? syncProjectTable("project_work_plans", syncProjectId, projectRows.workPlans)
         : Promise.resolve({ upserted: 0, deleted: 0 }),
-      activeProjectId
-        ? syncProjectTable("project_simple_item_sets", activeProjectId, projectRows.simpleItemSets)
+      syncProjectId
+        ? syncProjectTable("project_simple_item_sets", syncProjectId, projectRows.simpleItemSets)
         : Promise.resolve({ upserted: 0, deleted: 0 }),
-      activeProjectId
+      syncProjectId
         ? syncProjectTable(
             "project_payment_certificates",
-            activeProjectId,
+            syncProjectId,
             projectRows.certificates,
           )
         : Promise.resolve({ upserted: 0, deleted: 0 }),
-      activeProjectId
-        ? syncProjectTable("project_progress_reports", activeProjectId, projectRows.progressReports)
+      syncProjectId
+        ? syncProjectTable("project_progress_reports", syncProjectId, projectRows.progressReports)
         : Promise.resolve({ upserted: 0, deleted: 0 }),
-      activeProjectId
+      syncProjectId
         ? syncProjectTable(
             "project_generated_documents",
-            activeProjectId,
+            syncProjectId,
             projectRows.generatedDocuments,
           )
         : Promise.resolve({ upserted: 0, deleted: 0 }),
-      activeProjectId
+      syncProjectId
         ? syncProjectTable(
             "project_correspondence_records",
-            activeProjectId,
+            syncProjectId,
             projectRows.correspondenceRecords,
           )
         : Promise.resolve({ upserted: 0, deleted: 0 }),
@@ -265,9 +269,9 @@ export async function POST(request: Request) {
       syncWorkspaceTable("workspace_meeting_minutes", user.id, workspaceRows.meetingMinutes),
     ]);
 
-    if (activeProjectId) {
+    if (syncProjectId) {
       const { error: presenceError } = await supabase.from("project_presence").upsert({
-        project_id: activeProjectId,
+        project_id: syncProjectId,
         user_id: user.id,
         active_module: activeModule,
         cursor_state: {},
@@ -281,6 +285,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      skippedProjectSync: Boolean(activeProjectId && !syncProjectId),
       synced: {
         boqDocuments: boqSync,
         workPlans: workPlanSync,

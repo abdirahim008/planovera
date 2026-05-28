@@ -48,6 +48,10 @@ interface LeftPanelProps {
   projectName: string;
   onProjectNameChange: (name: string) => void;
   libraryItems: LibraryItem[];
+  favoriteIds: string[];
+  recentIds: string[];
+  onToggleFavorite: (libraryId: string) => void;
+  onRecordLibraryUse: (libraryId: string) => void;
   savedProjects: SavedProject[];
   activeProjectId: string | null;
   selectedCount: number;
@@ -93,6 +97,10 @@ export default function LeftPanel({
   projectName,
   onProjectNameChange,
   libraryItems,
+  favoriteIds,
+  recentIds,
+  onToggleFavorite,
+  onRecordLibraryUse,
   savedProjects,
   activeProjectId,
   selectedCount,
@@ -188,16 +196,44 @@ export default function LeftPanel({
   );
   const [publishTags, setPublishTags] = useState("library, editable, drawing");
 
+  const [assetFilter, setAssetFilter] = useState<"all" | "object" | "drawing">("all");
+
   const filteredItems = useMemo(() => {
     const needle = libraryQuery.trim().toLowerCase();
     return libraryItems.filter((item) => {
       const categoryMatch = libraryCategory === "all" || item.category === libraryCategory;
       if (!categoryMatch) return false;
+      // Treat items with no assetType as "object" (legacy library entries).
+      const effectiveType = item.assetType ?? "object";
+      if (assetFilter !== "all" && effectiveType !== assetFilter) return false;
       if (!needle) return true;
       const haystack = [item.name, item.description, ...item.tags, item.author].join(" ").toLowerCase();
       return haystack.includes(needle);
     });
-  }, [libraryCategory, libraryItems, libraryQuery]);
+  }, [assetFilter, libraryCategory, libraryItems, libraryQuery]);
+
+  const favoriteItems = useMemo(
+    () =>
+      favoriteIds
+        .map((id) => libraryItems.find((item) => item.id === id))
+        .filter((item): item is LibraryItem => Boolean(item)),
+    [favoriteIds, libraryItems],
+  );
+
+  const recentItems = useMemo(
+    () =>
+      recentIds
+        .map((id) => libraryItems.find((item) => item.id === id))
+        .filter((item): item is LibraryItem => Boolean(item))
+        .filter((item) => !favoriteIds.includes(item.id))
+        .slice(0, 6),
+    [favoriteIds, libraryItems, recentIds],
+  );
+
+  const handleInsertLibraryItem = (item: LibraryItem) => {
+    onRecordLibraryUse(item.id);
+    onAddSvg(item.svg);
+  };
 
   const updateTitleBlock = <K extends keyof TitleBlockData>(
     key: K,
@@ -907,51 +943,136 @@ export default function LeftPanel({
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-                Ready-to-edit objects and drawings
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Insert personal objects, admin-published details, or complete drawing starters into the canvas.
-              </p>
+            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-semibold">
+              {[
+                { id: "all" as const, label: "All" },
+                { id: "object" as const, label: "Objects" },
+                { id: "drawing" as const, label: "Templates" },
+              ].map((filter) => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  onClick={() => setAssetFilter(filter.id)}
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    assetFilter === filter.id
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
             </div>
 
-            <div className="space-y-3">
-              {filteredItems.map((item) => (
-                <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">{item.name}</div>
-                      <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">
-                        {item.category} · {item.assetType === "drawing" ? "Drawing" : "Object"} ·{" "}
-                        {item.source === "personal"
-                          ? "My library"
-                          : item.source === "admin"
-                            ? "Shared admin library"
-                            : "System starter"}
-                      </div>
-                    </div>
-                    <button className="btn btn-primary" onClick={() => onAddSvg(item.svg)}>
-                      Insert
-                    </button>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {item.tags.map((tag) => (
-                      <span key={`${item.id}-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-3 text-xs text-slate-500">
-                    Updated {new Date(item.updatedAt).toLocaleDateString()} by {item.author}
-                  </div>
+            {favoriteItems.length > 0 ? (
+              <div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Favorites
                 </div>
-              ))}
+                <div className="space-y-1.5">
+                  {favoriteItems.map((item) => (
+                    <button
+                      key={`fav-${item.id}`}
+                      type="button"
+                      onClick={() => handleInsertLibraryItem(item)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-left transition hover:bg-amber-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                        <div className="truncate text-[11px] text-slate-500">
+                          {item.category} · {item.assetType === "drawing" ? "Template" : "Object"}
+                        </div>
+                      </div>
+                      <span className="text-amber-500" aria-hidden>★</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {recentItems.length > 0 ? (
+              <div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Recently used
+                </div>
+                <div className="space-y-1.5">
+                  {recentItems.map((item) => (
+                    <button
+                      key={`recent-${item.id}`}
+                      type="button"
+                      onClick={() => handleInsertLibraryItem(item)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                        <div className="truncate text-[11px] text-slate-500">
+                          {item.category} · {item.assetType === "drawing" ? "Template" : "Object"}
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-slate-400">Insert</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              {(favoriteItems.length > 0 || recentItems.length > 0) && (
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  All {assetFilter === "drawing" ? "templates" : assetFilter === "object" ? "objects" : "items"}
+                </div>
+              )}
+              {filteredItems.map((item) => {
+                const isFavorite = favoriteIds.includes(item.id);
+                return (
+                  <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                          <button
+                            type="button"
+                            onClick={() => onToggleFavorite(item.id)}
+                            className={`shrink-0 text-base leading-none transition ${
+                              isFavorite ? "text-amber-500 hover:text-amber-600" : "text-slate-300 hover:text-amber-500"
+                            }`}
+                            aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                            title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                          >
+                            {isFavorite ? "★" : "☆"}
+                          </button>
+                        </div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">
+                          {item.category} · {item.assetType === "drawing" ? "Template" : "Object"} ·{" "}
+                          {item.source === "personal"
+                            ? "My library"
+                            : item.source === "admin"
+                              ? "Shared admin library"
+                              : "System starter"}
+                        </div>
+                      </div>
+                      <button className="btn btn-primary shrink-0" onClick={() => handleInsertLibraryItem(item)}>
+                        Insert
+                      </button>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.tags.map((tag) => (
+                        <span key={`${item.id}-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500">
+                      Updated {new Date(item.updatedAt).toLocaleDateString()} by {item.author}
+                    </div>
+                  </div>
+                );
+              })}
 
               {filteredItems.length === 0 ? (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                  No library drawings match the current search.
+                  No library {assetFilter === "drawing" ? "templates" : assetFilter === "object" ? "objects" : "items"} match the current search.
                 </div>
               ) : null}
             </div>

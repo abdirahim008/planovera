@@ -20,10 +20,7 @@ export default function AdminConsole() {
             <ArrowLeft size={18} />
           </a>
           <div>
-            <h1 className="text-xl font-bold">Platform Administration</h1>
-            <p className="text-xs text-txt-muted mt-0.5">
-              Manual billing control, seat operations, and shared BOQ library management
-            </p>
+            <h1 className="text-xl font-semibold">Platform administration</h1>
           </div>
         </div>
 
@@ -31,7 +28,7 @@ export default function AdminConsole() {
           <button
             type="button"
             onClick={() => setTab("billing")}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
               tab === "billing"
                 ? "bg-accent text-white"
                 : "text-txt-muted hover:bg-bg-hover hover:text-txt"
@@ -43,7 +40,7 @@ export default function AdminConsole() {
           <button
             type="button"
             onClick={() => setTab("library")}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
               tab === "library"
                 ? "bg-accent text-white"
                 : "text-txt-muted hover:bg-bg-hover hover:text-txt"
@@ -54,7 +51,7 @@ export default function AdminConsole() {
           </button>
         </div>
 
-        <div className="rounded-3xl border border-border bg-bg p-6">
+        <div className="rounded-2xl border border-border bg-bg p-6">
           {tab === "billing" ? <BillingAdminPanel /> : <AdminLibrary embedded />}
         </div>
       </div>

@@ -237,6 +237,173 @@ body {
   border-color: var(--boq-border-soft) !important;
 }
 
+/* Monday-style data tables ------------------------------------------------ */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.data-table thead th {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-dim);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  background: transparent;
+  white-space: nowrap;
+}
+
+.data-table tbody tr {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.data-table tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.data-table td {
+  padding: 6px 12px;
+  vertical-align: middle;
+  line-height: 1.45;
+}
+
+.data-table td.data-cell-num {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.data-table td.data-cell-action {
+  width: 36px;
+  padding-right: 6px;
+}
+
+.data-table.data-table-sticky thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  z-index: 1;
+}
+
+/* Editable input that fills the cell — no border-on-border, no inner padding */
+.data-cell-input,
+.data-cell-select,
+.data-cell-textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+}
+
+.data-cell-input::placeholder,
+.data-cell-textarea::placeholder {
+  color: var(--color-text-dim);
+  opacity: 0.7;
+}
+
+.data-cell-input:focus,
+.data-cell-select:focus,
+.data-cell-textarea:focus {
+  /* No ring, no border — just the cell itself lighting up. */
+  background: transparent;
+}
+
+/* Light up the whole cell when its input is focused. */
+.data-table tbody tr td:has(.data-cell-input:focus),
+.data-table tbody tr td:has(.data-cell-select:focus),
+.data-table tbody tr td:has(.data-cell-textarea:focus) {
+  background: rgba(59, 130, 246, 0.08);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.data-cell-textarea {
+  resize: none;
+  overflow: hidden;
+  display: block;
+}
+
+.data-cell-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 16px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-text-dim) 50%),
+                    linear-gradient(135deg, var(--color-text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 8px) 50%, calc(100% - 4px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.data-cell-wrap {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.data-cell-trunc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Row index gutter — quiet monospaced numbers */
+.data-table td.data-cell-index {
+  width: 40px;
+  padding-left: 12px;
+  padding-right: 8px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--color-text-dim);
+  text-align: right;
+}
+
+/* Action button inside a row — small, low-emphasis */
+.data-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--color-text-dim);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.data-row-action:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.data-row-action.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--color-err);
+}
+
+/* Shell that wraps a table when it needs a card frame */
+.data-table-shell {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
 /* Context menu */
 .ctx-menu {
   position: fixed;
@@ -340,6 +507,13 @@ body {
   outline-offset: -2px;
   background-color: rgba(59, 130, 246, 0.1) !important;
   z-index: 50;
+  position: relative;
+}
+
+.cell-linking-target {
+  box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.72);
+  background-color: rgba(245, 158, 11, 0.08) !important;
+  z-index: 45;
   position: relative;
 }
 .row-gutter:hover {
@@ -817,11 +991,23 @@ body {
 .rich-text-editor ul,
 .rich-text-editor ol {
   margin: 0 0 0.55rem;
-  padding-left: 1.35rem;
+  padding-left: 1.6rem;
+}
+
+.rich-text-editor ul {
+  list-style: disc outside;
+}
+
+.rich-text-editor ol {
+  list-style: decimal outside;
 }
 
 .rich-text-editor li {
   margin-bottom: 0.2rem;
+}
+
+.rich-text-editor li::marker {
+  color: var(--color-text-muted);
 }
 
 .rich-text-editor strong {

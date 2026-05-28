@@ -517,7 +517,7 @@ function OrganizationLocationMap({
     <div className={`planovera-dark-map relative ${height} overflow-hidden bg-[#181a25]`}>
       <div ref={mapContainerRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-white/10 bg-[#0f172a]/85 px-4 py-3 shadow-soft backdrop-blur">
-        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
           Organization map
         </div>
         <div className="mt-1 text-sm font-bold text-white">
@@ -553,19 +553,16 @@ function OrganizationMapCard({ cards }: { cards: OrganizationProjectCard[] }) {
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") setOpen(true);
         }}
-        className="mt-5 w-full overflow-hidden rounded-[24px] border border-border bg-bg-surface text-left shadow-soft transition hover:border-accent/50"
+        className="mt-5 w-full overflow-hidden rounded-2xl border border-border bg-bg-surface text-left transition hover:border-accent/50"
       >
         <div className="grid gap-0 lg:grid-cols-[0.72fr_1.28fr]">
           <div className="border-b border-border p-5 lg:border-b-0 lg:border-r">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                   <MapPin size={14} className="text-accent" /> Project locations
                 </div>
-                <div className="mt-2 text-xl font-black text-white">Portfolio map</div>
-                <p className="mt-2 text-sm leading-6 text-txt-muted">
-                  Location dots update with organization user, program, client, and location filters.
-                </p>
+                <div className="mt-2 text-xl font-semibold text-white">Portfolio map</div>
               </div>
               <span className="rounded-xl border border-border bg-black/15 p-2 text-txt-muted">
                 <Maximize2 size={16} />
@@ -573,16 +570,16 @@ function OrganizationMapCard({ cards }: { cards: OrganizationProjectCard[] }) {
             </div>
             <div className="mt-5 grid grid-cols-3 gap-3">
               <div className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Dots</div>
-                <div className="mt-1 text-2xl font-black text-white">{points.length}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Dots</div>
+                <div className="mt-1 text-2xl font-semibold text-white">{points.length}</div>
               </div>
               <div className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Projects</div>
-                <div className="mt-1 text-2xl font-black text-ok">{plottedCount}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Projects</div>
+                <div className="mt-1 text-2xl font-semibold text-ok">{plottedCount}</div>
               </div>
               <div className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Missing</div>
-                <div className="mt-1 text-2xl font-black text-warn">{missingCount}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Missing</div>
+                <div className="mt-1 text-2xl font-semibold text-warn">{missingCount}</div>
               </div>
             </div>
           </div>
@@ -639,11 +636,10 @@ function ProgressGaugeCard({
   const percent = clampPercent(value);
 
   return (
-    <div className="rounded-3xl border border-border bg-bg-raised p-5">
+    <div className="rounded-2xl border border-border bg-bg-raised p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">{title}</div>
-          <p className="mt-2 text-sm text-txt-muted">{subtitle}</p>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{title}</div>
         </div>
         <div
           className="grid h-28 w-28 shrink-0 place-items-center rounded-full"
@@ -653,8 +649,8 @@ function ProgressGaugeCard({
         >
           <div className="grid h-20 w-20 place-items-center rounded-full bg-bg-surface">
             <div className="text-center">
-              <div className={`text-2xl font-black ${accentClass}`}>{percent.toFixed(0)}</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-txt-dim">%</div>
+              <div className={`text-2xl font-semibold ${accentClass}`}>{percent.toFixed(0)}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">%</div>
             </div>
           </div>
         </div>
@@ -667,8 +663,8 @@ function ProgressGaugeCard({
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-border bg-black/10 p-3">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
-      <div className="mt-1 text-lg font-black text-white">{value}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
     </div>
   );
 }
@@ -1771,16 +1767,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               <ArrowLeft size={16} />
               Back to workspace
             </a>
-            <div className="mt-4 inline-flex rounded-full border border-border bg-bg-surface px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
-              Organization owner/admin workspace
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold text-white">
-              Organization command centre
+            <h1 className="mt-4 text-2xl font-semibold text-white">
+              Organization
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-txt-muted">
-              Track every project your team is delivering, then manage members, official
-              program names, and category standards from one organization workspace.
-            </p>
           </div>
 
           <div className="flex flex-wrap justify-end gap-3">
@@ -1841,19 +1830,19 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         ) : null}
 
         {!configured ? (
-          <div className="mt-8 rounded-3xl border border-warn/30 bg-warn/10 p-6 text-sm text-warn">
+          <div className="mt-8 rounded-2xl border border-warn/30 bg-warn/10 p-6 text-sm text-warn">
             Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` before opening the
             organization console.
           </div>
         ) : loading ? (
-          <div className="mt-8 rounded-3xl border border-border bg-bg-surface p-8 text-sm text-txt-muted">
-            Loading your organizations, assigned seats, and pending invites...
+          <div className="mt-8 rounded-2xl border border-border bg-bg-surface p-8 text-sm text-txt-muted">
+            Loading...
           </div>
         ) : (
           <div className="mt-8 grid gap-6 lg:grid-cols-[300px,minmax(0,1fr)]">
             <section className="space-y-4">
-              <div className="rounded-3xl border border-border bg-bg-surface p-5">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
+              <div className="rounded-2xl border border-border bg-bg-surface p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                   Your workspaces
                 </div>
                 <div className="mt-4 space-y-3">
@@ -1897,8 +1886,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-border bg-bg-surface p-3">
-                <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
+              <div className="rounded-2xl border border-border bg-bg-surface p-3">
+                <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                   Console
                 </div>
                 <div className="space-y-1">
@@ -1936,8 +1925,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                 <>
                   {activeOrgTab === "team" ? (
                   <div className="grid gap-4 xl:grid-cols-2">
-                    <div className="rounded-3xl border border-border bg-bg-surface p-5">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
+                    <div className="rounded-2xl border border-border bg-bg-surface p-5">
+                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                         <CreditCard size={14} className="text-accent" />
                         Current plan
                       </div>
@@ -1951,32 +1940,23 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           ? selectedSubscription.plan_code.replace(/-/g, " ")
                           : "No plan configured"}
                       </div>
-                      <div className="mt-2 text-sm text-txt-muted">
-                        {selectedSubscription
-                          ? `${selectedSubscription.billing_interval} billing · ${selectedSubscription.status}`
-                          : "A platform admin must assign seats and activate access before invites can be sent."}
-                      </div>
                       <div className="mt-4 text-xs text-txt-dim">
                         Access expires: {formatSubscriptionExpiry(selectedSubscription)}
                       </div>
                       {!selectedSubscriptionUsable && (
-                        <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-xs leading-5 text-red-100">
-                          Workspace access is paused until a platform admin manually reactivates
-                          this organization.
+                        <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs leading-5 text-red-100">
+                          Workspace access is paused.
                         </div>
                       )}
                     </div>
 
-                    <div className="rounded-3xl border border-border bg-bg-surface p-5">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
+                    <div className="rounded-2xl border border-border bg-bg-surface p-5">
+                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                         <Users size={14} className="text-accent" />
                         Seats
                       </div>
                       <div className="mt-4 text-xl font-semibold text-white">
                         {seatsUsed}/{totalSeats}
-                      </div>
-                      <div className="mt-2 text-sm text-txt-muted">
-                        {seatsAvailable} seat{seatsAvailable === 1 ? "" : "s"} still available
                       </div>
                       <div className="mt-4 text-xs text-txt-dim">
                         Active members: {activeMembers.length} · Reserved invites: {reservedSeats}
@@ -1986,17 +1966,11 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   ) : null}
 
                   {activeOrgTab === "dashboard" ? (
-                  <div className="rounded-3xl border border-border bg-bg-surface p-6">
+                  <div className="rounded-2xl border border-border bg-bg-surface p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                          <BarChart3 size={14} className="text-accent" />
-                          Organization portfolio
-                        </div>
-                        <h2 className="mt-2 text-xl font-semibold text-white">
-                          Project performance across {selectedOrganization.name}
-                        </h2>
-                      </div>
+                      <h2 className="text-xl font-semibold text-white">
+                        Portfolio
+                      </h2>
                       <Badge color={portfolio.variance >= 0 ? "ok" : "warn"}>
                         {portfolio.variance >= 0 ? "+" : ""}
                         {portfolio.variance.toFixed(1)}% variance
@@ -2006,7 +1980,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     <div className="mt-5 rounded-2xl border border-border bg-bg-raised p-4">
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
                         <label className="space-y-2">
-                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             User
                           </span>
                           <select
@@ -2025,7 +1999,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           </select>
                         </label>
                         <label className="space-y-2">
-                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Program
                           </span>
                           <select
@@ -2047,7 +2021,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           </select>
                         </label>
                         <label className="space-y-2">
-                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Category
                           </span>
                           <select
@@ -2071,7 +2045,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           </select>
                         </label>
                         <label className="space-y-2">
-                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Location
                           </span>
                           <select
@@ -2090,7 +2064,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           </select>
                         </label>
                         <label className="space-y-2">
-                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Client
                           </span>
                           <select
@@ -2207,7 +2181,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
                     <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <FolderKanban size={14} className="text-accent" />
                           Projects
                         </div>
@@ -2220,7 +2194,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <TrendingUp size={14} className="text-ok" />
                           Physical progress
                         </div>
@@ -2233,7 +2207,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <DollarSign size={14} className="text-warn" />
                           Portfolio value
                         </div>
@@ -2249,7 +2223,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <CreditCard size={14} className="text-accent" />
                           Financial progress
                         </div>
@@ -2262,7 +2236,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <DollarSign size={14} className="text-ok" />
                           Earned / certified
                         </div>
@@ -2275,7 +2249,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <TrendingUp size={14} className="text-warn" />
                           Delayed projects
                         </div>
@@ -2292,7 +2266,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         onClick={() => setComplianceModalOpen(true)}
                         className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/45"
                       >
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <ClipboardCheck size={14} className={portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-ok"} />
                           Checklist
                         </div>
@@ -2309,7 +2283,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         onClick={() => setActionModalOpen(true)}
                         className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/45"
                       >
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <CheckCircle2 size={14} className={portfolio.overdueActions > 0 ? "text-err" : "text-ok"} />
                           Action points
                         </div>
@@ -2322,7 +2296,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </button>
 
                       <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                           <Users size={14} className="text-accent" />
                           Open actions
                         </div>
@@ -2354,26 +2328,26 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                               </div>
                               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                                 <div className="rounded-xl border border-border bg-bg-surface p-3">
-                                  <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">Value</div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Value</div>
                                   <div className="mt-1 font-mono font-bold text-txt">
                                     {formatCurrency(item.commercialValue, item.project.currency || selectedProjects[0]?.currency || "USD")}
                                   </div>
                                 </div>
                                 <div className="rounded-xl border border-border bg-bg-surface p-3">
-                                  <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">Physical</div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Physical</div>
                                   <div className={`mt-1 font-mono font-bold ${item.progress.variance >= -5 ? "text-ok" : "text-warn"}`}>
                                     {item.progress.actual.toFixed(1)}%
                                   </div>
                                   <div className="text-[11px] text-txt-dim">plan {item.progress.planned.toFixed(1)}%</div>
                                 </div>
                                 <div className="rounded-xl border border-border bg-bg-surface p-3">
-                                  <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">Earned</div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Earned</div>
                                   <div className="mt-1 font-mono font-bold text-txt">
                                     {formatCurrency(item.progress.earned, item.project.currency || selectedProjects[0]?.currency || "USD")}
                                   </div>
                                 </div>
                                 <div className="rounded-xl border border-border bg-bg-surface p-3">
-                                  <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">Updated</div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Updated</div>
                                   <div className="mt-1 text-xs font-semibold text-txt">{formatDate(item.updatedAt)}</div>
                                 </div>
                               </div>
@@ -2463,95 +2437,90 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "programs" ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                          Programs
-                        </div>
-                        <h2 className="mt-1 text-xl font-semibold text-white">Official program catalog</h2>
-                      </div>
+                      <h2 className="text-xl font-semibold text-white">Programs</h2>
                       {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
                     {selectedPrograms.length === 0 ? (
-                      <div className="rounded-3xl border border-dashed border-border bg-bg-surface px-5 py-8 text-sm text-txt-muted">
-                        No official programs yet. Use `Add program` to create shared program names
-                        that employees can select during project setup.
+                      <div className="rounded-2xl border border-dashed border-border bg-bg-surface px-5 py-8 text-sm text-txt-muted">
+                        No programs yet.
                       </div>
                     ) : (
-                    <div className="grid gap-3">
-                      {selectedPrograms.map((program) => {
-                        const usageCount = programUsageCounts.get(program.id) ?? 0;
-                        const archived = program.status !== "active";
+                    <div className="data-table-shell">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Program</th>
+                            <th>Client / location</th>
+                            <th>Dates</th>
+                            <th>Budget</th>
+                            <th>Linked</th>
+                            <th>Status</th>
+                            {canManageSelectedOrganization ? <th aria-label="Actions" /> : null}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedPrograms.map((program) => {
+                            const usageCount = programUsageCounts.get(program.id) ?? 0;
+                            const archived = program.status !== "active";
 
-                        return (
-                          <div
-                            key={program.id}
-                            className={`rounded-2xl border px-4 py-4 ${
-                              archived
-                                ? "border-border bg-bg-raised/60 opacity-75"
-                                : "border-border bg-bg-raised"
-                            }`}
-                          >
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="text-base font-semibold text-white">
+                            return (
+                              <tr key={program.id} className={archived ? "opacity-70" : undefined}>
+                                <td className="data-cell-wrap">
+                                  <div className="font-semibold text-white">
                                     {program.code ? `${program.code} - ${program.name}` : program.name}
                                   </div>
+                                  {program.description ? (
+                                    <div className="mt-1 text-xs text-txt-dim">{program.description}</div>
+                                  ) : null}
+                                </td>
+                                <td className="data-cell-wrap text-txt-muted">
+                                  {[program.client_name, program.location].filter(Boolean).join(" · ") || "—"}
+                                </td>
+                                <td className="data-cell-wrap text-txt-muted">
+                                  {formatDate(program.start_date)} - {formatDate(program.end_date)}
+                                </td>
+                                <td className="data-cell-wrap text-txt-muted">
+                                  {program.budget_amount ? `${program.budget_amount} ${program.currency || "USD"}` : "—"}
+                                </td>
+                                <td className="data-cell-num">{usageCount}</td>
+                                <td>
                                   <Badge color={archived ? "warn" : "ok"}>
                                     {program.status.toUpperCase()}
                                   </Badge>
-                                  <span className="rounded-full border border-border bg-bg px-3 py-1 text-xs text-txt-muted">
-                                    {usageCount} linked project{usageCount === 1 ? "" : "s"}
-                                  </span>
-                                </div>
-                                <div className="mt-2 text-sm text-txt-muted">
-                                  {[program.client_name, program.location].filter(Boolean).join(" · ") ||
-                                    "No client or location metadata set"}
-                                </div>
-                                {program.description ? (
-                                  <p className="mt-2 max-w-3xl text-sm leading-6 text-txt-dim">
-                                    {program.description}
-                                  </p>
+                                </td>
+                                {canManageSelectedOrganization ? (
+                                  <td>
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      <Button variant="ghost" size="sm" onClick={() => openEditProgram(program)}>
+                                        <Pencil size={13} /> Edit
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={busyAction === `program-status:${program.id}`}
+                                        onClick={() =>
+                                          handleProgramStatus(program, archived ? "active" : "paused")
+                                        }
+                                      >
+                                        {archived ? "Activate" : "Archive"}
+                                      </Button>
+                                      <Button
+                                        variant="danger"
+                                        size="sm"
+                                        disabled={busyAction === `program-delete:${program.id}`}
+                                        onClick={() => handleDeleteProgram(program)}
+                                      >
+                                        <Trash2 size={13} />
+                                      </Button>
+                                    </div>
+                                  </td>
                                 ) : null}
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-txt-dim">
-                                  <span>Budget: {program.budget_amount || "Not set"}</span>
-                                  <span>Currency: {program.currency || "USD"}</span>
-                                  <span>
-                                    Dates: {formatDate(program.start_date)} - {formatDate(program.end_date)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {canManageSelectedOrganization ? (
-                                <div className="flex flex-wrap gap-2">
-                                  <Button variant="ghost" size="sm" onClick={() => openEditProgram(program)}>
-                                    <Pencil size={13} /> Edit
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={busyAction === `program-status:${program.id}`}
-                                    onClick={() =>
-                                      handleProgramStatus(program, archived ? "active" : "paused")
-                                    }
-                                  >
-                                    {archived ? "Activate" : "Archive"}
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    size="sm"
-                                    disabled={busyAction === `program-delete:${program.id}`}
-                                    onClick={() => handleDeleteProgram(program)}
-                                  >
-                                    <Trash2 size={13} /> Delete
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                     )}
                   </div>
@@ -2560,83 +2529,82 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "categories" ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                          Categories
-                        </div>
-                        <h2 className="mt-1 text-xl font-semibold text-white">Official category catalog</h2>
-                      </div>
+                      <h2 className="text-xl font-semibold text-white">Categories</h2>
                       {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
                     {selectedCategories.length === 0 ? (
-                      <div className="rounded-3xl border border-dashed border-border bg-bg-surface px-5 py-8 text-sm text-txt-muted">
-                        No official categories yet. Add defaults or create a custom category so
-                        organization projects can be filtered consistently.
+                      <div className="rounded-2xl border border-dashed border-border bg-bg-surface px-5 py-8 text-sm text-txt-muted">
+                        No categories yet.
                       </div>
                     ) : (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {selectedCategories.map((category) => {
-                        const usageCount = categoryUsageCounts.get(category.id) ?? 0;
-                        const archived = category.status !== "active";
+                    <div className="data-table-shell">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 28 }} aria-label="" />
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th>Linked</th>
+                            <th>Status</th>
+                            {canManageSelectedOrganization ? <th aria-label="Actions" /> : null}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedCategories.map((category) => {
+                            const usageCount = categoryUsageCounts.get(category.id) ?? 0;
+                            const archived = category.status !== "active";
 
-                        return (
-                          <div
-                            key={category.id}
-                            className={`rounded-2xl border px-4 py-4 ${
-                              archived
-                                ? "border-border bg-bg-raised/60 opacity-75"
-                                : "border-border bg-bg-raised"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
+                            return (
+                              <tr key={category.id} className={archived ? "opacity-70" : undefined}>
+                                <td>
                                   <span
-                                    className="h-3 w-3 rounded-full border border-white/20"
+                                    className="inline-block h-3 w-3 rounded-full border border-white/20"
                                     style={{ backgroundColor: category.color || "#3b82f6" }}
                                   />
-                                  <div className="font-semibold text-white">
-                                    {category.code ? `${category.code} - ${category.name}` : category.name}
-                                  </div>
+                                </td>
+                                <td className="data-cell-wrap font-semibold text-white">
+                                  {category.code ? `${category.code} - ${category.name}` : category.name}
+                                </td>
+                                <td className="data-cell-wrap text-txt-muted">
+                                  {category.description || "—"}
+                                </td>
+                                <td className="data-cell-num">{usageCount}</td>
+                                <td>
                                   <Badge color={archived ? "warn" : "ok"}>{category.status.toUpperCase()}</Badge>
-                                </div>
-                                <p className="mt-2 text-sm text-txt-muted">
-                                  {category.description || "No description"}
-                                </p>
-                                <div className="mt-3 text-xs text-txt-dim">
-                                  {usageCount} linked project{usageCount === 1 ? "" : "s"}
-                                </div>
-                              </div>
-                              {canManageSelectedOrganization ? (
-                                <div className="flex flex-wrap justify-end gap-2">
-                                  <Button variant="ghost" size="sm" onClick={() => openEditCategory(category)}>
-                                    <Pencil size={13} /> Edit
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={busyAction === `category-status:${category.id}`}
-                                    onClick={() =>
-                                      handleCategoryStatus(category, archived ? "active" : "archived")
-                                    }
-                                  >
-                                    {archived ? "Activate" : "Archive"}
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    size="sm"
-                                    disabled={busyAction === `category-delete:${category.id}`}
-                                    onClick={() => handleDeleteCategory(category)}
-                                  >
-                                    <Trash2 size={13} /> Delete
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
+                                </td>
+                                {canManageSelectedOrganization ? (
+                                  <td>
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      <Button variant="ghost" size="sm" onClick={() => openEditCategory(category)}>
+                                        <Pencil size={13} /> Edit
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={busyAction === `category-status:${category.id}`}
+                                        onClick={() =>
+                                          handleCategoryStatus(category, archived ? "active" : "archived")
+                                        }
+                                      >
+                                        {archived ? "Activate" : "Archive"}
+                                      </Button>
+                                      <Button
+                                        variant="danger"
+                                        size="sm"
+                                        disabled={busyAction === `category-delete:${category.id}`}
+                                        onClick={() => handleDeleteCategory(category)}
+                                      >
+                                        <Trash2 size={13} />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                ) : null}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                     )}
                   </div>
@@ -2645,123 +2613,132 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "team" ? (
                   <>
                   <div className="grid gap-6 xl:grid-cols-2">
-                    <div className="rounded-3xl border border-border bg-bg-surface p-6">
+                    <div className="rounded-2xl border border-border bg-bg-surface p-6">
                       <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                            Team members
-                          </div>
-                          <h2 className="mt-2 text-xl font-semibold text-white">
-                            Assigned seats and access levels
-                          </h2>
-                        </div>
+                        <h2 className="text-xl font-semibold text-white">Members</h2>
                         <Badge color="ok">{activeMembers.length} active</Badge>
                       </div>
 
-                      <div className="mt-5 space-y-3">
-                        {selectedMembers.map((member) => (
-                          <div
-                            key={member.id}
-                            className="rounded-2xl border border-border bg-bg-raised px-4 py-4"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-semibold text-white">
-                                  {member.profiles?.full_name || member.profiles?.email || "User"}
-                                </div>
-                                <div className="mt-1 text-xs text-txt-muted">
-                                  {member.profiles?.email || "Email unavailable"}
-                                </div>
-                              </div>
-                              <Badge color={roleBadgeColor(member.role)}>
-                                {member.role.toUpperCase()}
-                              </Badge>
-                            </div>
-                            <div className="mt-3 text-xs text-txt-dim">
-                              Joined {formatDate(member.joined_at)} · Status {member.status}
-                            </div>
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                              <span className="rounded-full border border-border bg-bg px-3 py-1 text-txt-muted">
-                                {memberUsage.assignedCounts.get(member.user_id) ?? 0} project
-                                {(memberUsage.assignedCounts.get(member.user_id) ?? 0) === 1
-                                  ? ""
-                                  : "s"}{" "}
-                                assigned
-                              </span>
-                              <span className="rounded-full border border-border bg-bg px-3 py-1 text-txt-muted">
-                                {memberUsage.createdCounts.get(member.user_id) ?? 0} created
-                              </span>
-                            </div>
+                      <div className="mt-5">
+                        {selectedMembers.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-border px-4 py-5 text-sm text-txt-muted">
+                            No members yet.
                           </div>
-                        ))}
+                        ) : (
+                          <div className="data-table-shell">
+                            <table className="data-table">
+                              <thead>
+                                <tr>
+                                  <th>Name</th>
+                                  <th>Email</th>
+                                  <th>Role</th>
+                                  <th>Joined</th>
+                                  <th>Status</th>
+                                  <th>Assigned</th>
+                                  <th>Created</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedMembers.map((member) => {
+                                  const assigned = memberUsage.assignedCounts.get(member.user_id) ?? 0;
+                                  const created = memberUsage.createdCounts.get(member.user_id) ?? 0;
+                                  return (
+                                    <tr key={member.id}>
+                                      <td className="data-cell-wrap font-semibold text-white">
+                                        {member.profiles?.full_name || member.profiles?.email || "User"}
+                                      </td>
+                                      <td className="data-cell-wrap text-txt-muted">
+                                        {member.profiles?.email || "—"}
+                                      </td>
+                                      <td>
+                                        <Badge color={roleBadgeColor(member.role)}>
+                                          {member.role.toUpperCase()}
+                                        </Badge>
+                                      </td>
+                                      <td className="text-txt-muted">{formatDate(member.joined_at)}</td>
+                                      <td className="text-txt-muted">{member.status}</td>
+                                      <td className="data-cell-num">{assigned}</td>
+                                      <td className="data-cell-num">{created}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="rounded-3xl border border-border bg-bg-surface p-6">
+                    <div className="rounded-2xl border border-border bg-bg-surface p-6">
                       <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-txt-dim">
-                            Pending invites
-                          </div>
-                          <h2 className="mt-2 text-xl font-semibold text-white">
-                            Reserved seats waiting for sign-up
-                          </h2>
-                        </div>
+                        <h2 className="text-xl font-semibold text-white">Pending invites</h2>
                         <Badge color="accent">{selectedInvites.length} pending</Badge>
                       </div>
 
-                      <div className="mt-5 space-y-3">
+                      <div className="mt-5">
                         {selectedInvites.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-border px-4 py-5 text-sm text-txt-muted">
-                            No pending invites yet. Reserve a seat and share the link with the employee.
+                            No pending invites.
                           </div>
-                        ) : null}
-
-                        {selectedInvites.map((invite) => (
-                          <div
-                            key={invite.id}
-                            className="rounded-2xl border border-border bg-bg-raised px-4 py-4"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-semibold text-white">
-                                  {invite.full_name || invite.email}
-                                </div>
-                                <div className="mt-1 text-xs text-txt-muted">
-                                  {invite.email} · {invite.delivery_method} invite
-                                </div>
-                              </div>
-                              <Badge color={roleBadgeColor(invite.role)}>{invite.role.toUpperCase()}</Badge>
-                            </div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <Button variant="ghost" size="sm" onClick={() => handleCopyLink(invite)}>
-                                <Copy size={13} /> Copy link
-                              </Button>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={busyAction === `revoke:${invite.id}`}
-                                onClick={() => handleRevokeInvite(invite.id)}
-                              >
-                                {busyAction === `revoke:${invite.id}` ? "Revoking..." : "Revoke"}
-                              </Button>
-                            </div>
-                            <div className="mt-3 text-xs text-txt-dim">
-                              Expires {formatDate(invite.expires_at)}
-                            </div>
+                        ) : (
+                          <div className="data-table-shell">
+                            <table className="data-table">
+                              <thead>
+                                <tr>
+                                  <th>Name</th>
+                                  <th>Email</th>
+                                  <th>Role</th>
+                                  <th>Delivery</th>
+                                  <th>Expires</th>
+                                  <th aria-label="Actions" />
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedInvites.map((invite) => (
+                                  <tr key={invite.id}>
+                                    <td className="data-cell-wrap font-semibold text-white">
+                                      {invite.full_name || invite.email}
+                                    </td>
+                                    <td className="data-cell-wrap text-txt-muted">{invite.email}</td>
+                                    <td>
+                                      <Badge color={roleBadgeColor(invite.role)}>
+                                        {invite.role.toUpperCase()}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-txt-muted">{invite.delivery_method}</td>
+                                    <td className="text-txt-muted">{formatDate(invite.expires_at)}</td>
+                                    <td>
+                                      <div className="flex flex-wrap justify-end gap-2">
+                                        <Button variant="ghost" size="sm" onClick={() => handleCopyLink(invite)}>
+                                          <Copy size={13} /> Copy link
+                                        </Button>
+                                        <Button
+                                          variant="danger"
+                                          size="sm"
+                                          disabled={busyAction === `revoke:${invite.id}`}
+                                          onClick={() => handleRevokeInvite(invite.id)}
+                                        >
+                                          {busyAction === `revoke:${invite.id}` ? "Revoking..." : "Revoke"}
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {freshInviteLink ? (
-                    <div className="rounded-3xl border border-ok/30 bg-ok/10 p-6">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-ok">
+                    <div className="rounded-2xl border border-ok/30 bg-ok/10 p-6">
+                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-ok">
                         <Link2 size={14} />
                         Fresh invite link
                       </div>
-                      <div className="mt-4 rounded-2xl border border-border bg-bg-surface px-4 py-3 font-mono text-xs text-txt">
+                      <div className="mt-4 rounded-lg border border-border bg-bg-surface px-4 py-3 font-mono text-xs text-txt">
                         {freshInviteLink}
                       </div>
                       <div className="mt-4">
@@ -2781,9 +2758,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   ) : null}
                 </>
               ) : (
-                <div className="rounded-3xl border border-border bg-bg-surface p-6 text-sm text-txt-muted">
-                  No organization memberships were found yet. Create an organization to start
-                  inviting teammates and assigning seats.
+                <div className="rounded-2xl border border-border bg-bg-surface p-6 text-sm text-txt-muted">
+                  No organization memberships yet. Create one to start.
                 </div>
               )}
             </section>
@@ -2976,10 +2952,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               placeholder="Engineering company or department"
             />
           </div>
-          <p className="text-sm leading-6 text-txt-muted">
-            This creates a shared organization workspace with an owner seat and a team-ready trial
-            subscription. You can still keep your personal workspace alongside it.
-          </p>
           <div className="flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setCreateOrgOpen(false)}>
               Cancel
@@ -3002,11 +2974,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         width={720}
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm leading-6 text-txt">
-            Official programs are shared with the organization and appear in every employee’s
-            project program dropdown. Personal/private programs stay outside this catalog.
-          </div>
-
           <div className="grid gap-4 md:grid-cols-[1fr_160px]">
             <div>
               <label className="label">Program name</label>
@@ -3157,10 +3124,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         width={560}
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm leading-6 text-txt">
-            Official categories appear in employee project forms and portfolio filters. Use them to
-            standardize sectors and construction asset types across the organization.
-          </div>
           <div className="grid gap-4 md:grid-cols-[1fr_140px]">
             <div>
               <label className="label">Category name</label>
@@ -3293,12 +3256,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                 <option value="manual">Reserve seat manually</option>
               </select>
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            The easiest flow is to reserve the seat immediately, then let the employee sign up with
-            the same email. If you share the link, it pre-fills the invited address and feels closer
-            to Monday.com style onboarding without forcing an admin to create passwords for staff.
           </div>
 
           <div className="flex justify-end gap-3">

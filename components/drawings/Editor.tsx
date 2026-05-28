@@ -39,7 +39,13 @@ import {
   mapProfileToSession,
   mapProjectRecord,
   parseTags,
+  loadFavoriteIds,
+  loadRecentIds,
+  loadSavedProjects,
+  persistFavoriteIds,
   persistLibraryItems,
+  persistRecentIds,
+  persistSavedProjects,
 } from "@/lib/drawings/appModel";
 import {
   PARAMETRIC_BLOCK_LABELS,
@@ -308,7 +314,27 @@ export default function Editor({
   const [projectName, setProjectName] = useState(() => getDrawingPackageName(linkedProject));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(SEED_LIBRARY_ITEMS);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => loadFavoriteIds());
+  const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentIds());
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+
+  const toggleLibraryFavorite = useCallback((libraryId: string) => {
+    setFavoriteIds((current) => {
+      const next = current.includes(libraryId)
+        ? current.filter((id) => id !== libraryId)
+        : [libraryId, ...current];
+      persistFavoriteIds(next);
+      return next;
+    });
+  }, []);
+
+  const recordLibraryUse = useCallback((libraryId: string) => {
+    setRecentIds((current) => {
+      const next = [libraryId, ...current.filter((id) => id !== libraryId)];
+      persistRecentIds(next);
+      return next;
+    });
+  }, []);
   const [pages, setPages] = useState<Page[]>(() =>
     applyLinkedProjectContext([createBlankPage(1)], linkedProject),
   );
@@ -358,9 +384,11 @@ export default function Editor({
     previewGroup?: FabricNS.Group | null;
   }>({ step: 0 });
   const lineStateRef = useRef<{
-    p1?: { x: number; y: number };
-    previewLine?: FabricNS.Line | null;
-  }>({});
+    // Confirmed points along the current polyline (first click = points[0]).
+    points: { x: number; y: number }[];
+    // Preview polyline drawn from confirmed points + the rubber-band cursor segment.
+    previewPolyline?: FabricNS.Polyline | null;
+  }>({ points: [] });
   const wallStateRef = useRef<{
     p1?: { x: number; y: number };
     previewLine?: FabricNS.Line | null;
@@ -637,7 +665,12 @@ export default function Editor({
       });
       setUserId(null);
       setLibraryItems(loadLibraryItems());
-      setSavedProjects([]);
+      const localProjects = loadSavedProjects();
+      const scopedLocal = linkedProject?.id
+        ? localProjects.filter((p) => p.linkedProjectId === linkedProject.id)
+        : localProjects;
+      setSavedProjects(scopedLocal);
+      setLastSavedAt(scopedLocal[0]?.updatedAt ?? null);
       setBooted(true);
       return;
     }
@@ -660,6 +693,51 @@ export default function Editor({
     };
   }, [linkedProject, syncUserState]);
 
+  const finishLinePolyline = useCallback(() => {
+    const canvas = fabricRef.current;
+    const state = lineStateRef.current;
+    if (!canvas || !fabricMod) return false;
+
+    // Always tear down the preview, even if we don't commit anything.
+    if (state.previewPolyline) {
+      canvas.remove(state.previewPolyline);
+      state.previewPolyline = null;
+    }
+
+    const points = state.points;
+    if (points.length < 2) {
+      state.points = [];
+      canvas.requestRenderAll();
+      return false;
+    }
+
+    const minX = Math.min(...points.map((p) => p.x));
+    const minY = Math.min(...points.map((p) => p.y));
+    const localPoints = points.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+
+    const polyline = new fabricMod.Polyline(localPoints, {
+      left: minX,
+      top: minY,
+      stroke: "#0f172a",
+      strokeWidth: 1.2,
+      strokeUniform: true,
+      strokeLineJoin: "round",
+      strokeLineCap: "round",
+      fill: "transparent",
+      objectCaching: false,
+      selectable: true,
+      evented: true,
+    });
+
+    canvas.add(polyline);
+    canvas.setActiveObject(polyline);
+    state.points = [];
+    canvas.requestRenderAll();
+    commitHistory();
+    setMessage(points.length === 2 ? "Line placed on sheet." : `Polyline placed with ${points.length - 1} segments.`);
+    return true;
+  }, [commitHistory, fabricMod, setMessage]);
+
   const handleSetToolMode = useCallback(
     (mode: ToolMode) => {
       setToolMode(mode);
@@ -670,12 +748,21 @@ export default function Editor({
 
       if (fabricMod) renderSnapMarker(fabricMod, canvas, null);
 
+      // If a polyline is in progress, commit it before switching tools (don't lose work).
       const lineState = lineStateRef.current;
-      if (lineState.previewLine) {
-        canvas.remove(lineState.previewLine);
-        lineState.previewLine = null;
+      if (lineState.points.length >= 2 && toolModeRef.current === "line" && mode !== "line") {
+        if (lineState.previewPolyline) {
+          canvas.remove(lineState.previewPolyline);
+          lineState.previewPolyline = null;
+        }
+        finishLinePolyline();
+      } else {
+        if (lineState.previewPolyline) {
+          canvas.remove(lineState.previewPolyline);
+          lineState.previewPolyline = null;
+        }
+        lineState.points = [];
       }
-      lineState.p1 = undefined;
 
       const wallState = wallStateRef.current;
       if (wallState.previewLine) {
@@ -707,7 +794,7 @@ export default function Editor({
 
       canvas.requestRenderAll();
     },
-    [fabricMod],
+    [fabricMod, finishLinePolyline],
   );
 
   const saveCurrentPage = useCallback(async () => {
@@ -797,9 +884,12 @@ export default function Editor({
 
     const findNearestWall = (
       point: { x: number; y: number },
-      maxDistance = 70,
+      maxDistance?: number,
       ignore: FabricNS.FabricObject[] = [],
     ) => {
+      // Default snap distance is zoom-aware so the click target feels the same at any zoom.
+      const currentZoom = canvas.getZoom() || 1;
+      const effectiveMaxDistance = maxDistance ?? Math.max(30, Math.min(160, 50 / currentZoom));
       let best:
         | {
             object: FabricNS.FabricObject;
@@ -822,7 +912,7 @@ export default function Editor({
         const t = Math.max(0, Math.min(1, ((point.x - wall.p1.x) * vx + (point.y - wall.p1.y) * vy) / lengthSq));
         const projected = { x: wall.p1.x + vx * t, y: wall.p1.y + vy * t };
         const d = distance(point, projected);
-        if (d > maxDistance) continue;
+        if (d > effectiveMaxDistance) continue;
         if (!best || d < best.distance) {
           best = {
             ...wall,
@@ -1062,6 +1152,11 @@ export default function Editor({
     canvasElement.oncontextmenu = (event) => event.preventDefault();
 
     canvas.on("mouse:dblclick", (opt) => {
+      // Double-click finishes an in-progress polyline.
+      if (toolModeRef.current === "line" && lineStateRef.current.points.length > 0) {
+        finishLinePolyline();
+        return;
+      }
       const target = opt.target;
       if (target && (target.type === "itext" || target.type === "textbox")) {
         canvas.setActiveObject(target);
@@ -1137,7 +1232,12 @@ export default function Editor({
         const point: { x: number; y: number } = canvas.getScenePoint(event);
         const host = findNearestWall(point);
         if (!host) {
-          setMessage("Place a wall first, then click near it to host a door or window.");
+          const wallsExist = getWallSegments().length > 0;
+          setMessage(
+            wallsExist
+              ? "Click closer to a wall to host the opening."
+              : `Draw a wall first, then click on it to place a ${toolModeRef.current}.`,
+          );
           return;
         }
 
@@ -1209,43 +1309,36 @@ export default function Editor({
         let point: { x: number; y: number } = canvas.getScenePoint(event);
         const state = lineStateRef.current;
         const snap = snapEnabledRef.current
-          ? findSnapPoint(fabricMod, point, canvas, state.previewLine ? [state.previewLine] : [])
+          ? findSnapPoint(fabricMod, point, canvas, state.previewPolyline ? [state.previewPolyline] : [])
           : null;
         if (snap && !event.shiftKey) point = snap.point;
 
-        if (!state.p1) {
-          state.p1 = { x: point.x, y: point.y };
-        } else {
-          let endX = point.x;
-          let endY = point.y;
-          if (event.shiftKey) {
-            const dx = point.x - state.p1.x;
-            const dy = point.y - state.p1.y;
-            const angle = Math.atan2(dy, dx);
-            const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
-            const length = Math.hypot(dx, dy);
-            endX = state.p1.x + Math.cos(snapAngle) * length;
-            endY = state.p1.y + Math.sin(snapAngle) * length;
-          }
-
-          if (state.previewLine) canvas.remove(state.previewLine);
-          const line = new fabricMod.Line([state.p1.x, state.p1.y, endX, endY], {
-            stroke: "#0f172a",
-            strokeWidth: 1.2,
-            strokeUniform: true,
-            selectable: true,
-            evented: true,
-          });
-
-          canvas.add(line);
-          canvas.setActiveObject(line);
-          canvas.requestRenderAll();
-          state.p1 = undefined;
-          state.previewLine = null;
-          commitHistory();
-          setMessage("Line placed on sheet.");
+        // Apply 45-degree angle snap relative to the previous confirmed point.
+        const lastPoint = state.points[state.points.length - 1];
+        if (lastPoint && event.shiftKey) {
+          const dx = point.x - lastPoint.x;
+          const dy = point.y - lastPoint.y;
+          const angle = Math.atan2(dy, dx);
+          const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+          const length = Math.hypot(dx, dy);
+          point = {
+            x: lastPoint.x + Math.cos(snapAngle) * length,
+            y: lastPoint.y + Math.sin(snapAngle) * length,
+          };
         }
 
+        // Closing the polyline by clicking on the previous point ends the chain.
+        if (lastPoint && Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) < 2) {
+          finishLinePolyline();
+          return;
+        }
+
+        state.points.push({ x: point.x, y: point.y });
+        if (state.points.length >= 2) {
+          setMessage("Click to add the next bend, or press Escape / double-click to finish.");
+        } else {
+          setMessage("Click to add the next vertex. Hold Shift to constrain to 0°/45°/90°.");
+        }
         return;
       }
 
@@ -1428,37 +1521,41 @@ export default function Editor({
         const state = lineStateRef.current;
         let point: { x: number; y: number } = canvas.getScenePoint(event);
         const snap = snapEnabledRef.current
-          ? findSnapPoint(fabricMod, point, canvas, state.previewLine ? [state.previewLine] : [])
+          ? findSnapPoint(fabricMod, point, canvas, state.previewPolyline ? [state.previewPolyline] : [])
           : null;
         if (snap && !event.shiftKey) point = snap.point;
         renderSnapMarker(fabricMod, canvas, snap);
 
-        if (!state.p1) return;
+        if (state.points.length === 0) return;
 
-        let endX = point.x;
-        let endY = point.y;
+        const lastPoint = state.points[state.points.length - 1];
         if (event.shiftKey) {
-          const dx = point.x - state.p1.x;
-          const dy = point.y - state.p1.y;
+          const dx = point.x - lastPoint.x;
+          const dy = point.y - lastPoint.y;
           const angle = Math.atan2(dy, dx);
           const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
           const length = Math.hypot(dx, dy);
-          endX = state.p1.x + Math.cos(snapAngle) * length;
-          endY = state.p1.y + Math.sin(snapAngle) * length;
+          point = {
+            x: lastPoint.x + Math.cos(snapAngle) * length,
+            y: lastPoint.y + Math.sin(snapAngle) * length,
+          };
         }
 
-        if (state.previewLine) canvas.remove(state.previewLine);
-        const previewLine = new fabricMod.Line([state.p1.x, state.p1.y, endX, endY], {
+        if (state.previewPolyline) canvas.remove(state.previewPolyline);
+        const allPoints = [...state.points, point];
+        const previewPolyline = new fabricMod.Polyline(allPoints, {
           stroke: "#2563eb",
           strokeWidth: 1,
           strokeUniform: true,
           strokeDashArray: [8, 4],
+          fill: "transparent",
           selectable: false,
           evented: false,
+          objectCaching: false,
         });
 
-        canvas.add(previewLine);
-        state.previewLine = previewLine;
+        canvas.add(previewPolyline);
+        state.previewPolyline = previewPolyline;
       }
 
       if (toolModeRef.current === "dimension") {
@@ -2186,12 +2283,37 @@ export default function Editor({
 
   const handleSaveProject = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
+    const nextPages = clonePages(syncSheetLabels(await saveCurrentPage()));
+    const cleanName = projectName.trim() || "Untitled Engineering Package";
+
+    // Demo mode (no Supabase): persist to localStorage.
     if (!supabase || !session || !userId) {
-      setMessage("Sign in with Supabase before saving projects.");
+      const nowIso = new Date().toISOString();
+      const id = activeProjectId ?? `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const saved: SavedProject = {
+        id,
+        ownerId: undefined,
+        linkedProjectId: linkedProject?.id ?? null,
+        linkedProjectName: linkedProject?.name ?? null,
+        name: cleanName,
+        owner: session?.name || "Local Engineer",
+        updatedAt: nowIso,
+        pages: nextPages,
+      };
+      const allLocal = loadSavedProjects();
+      const merged = [saved, ...allLocal.filter((item) => item.id !== saved.id)];
+      persistSavedProjects(merged);
+      const scoped = linkedProject?.id
+        ? merged.filter((p) => p.linkedProjectId === linkedProject.id)
+        : merged;
+      setSavedProjects(scoped);
+      setActiveProjectId(saved.id);
+      setLastSavedAt(saved.updatedAt);
+      setProjectName(saved.name);
+      setMessage("Project saved locally.");
       return;
     }
 
-    const nextPages = clonePages(syncSheetLabels(await saveCurrentPage()));
     const { data, error } = await supabase
       .from("drawing_projects")
       .upsert(
@@ -2200,7 +2322,7 @@ export default function Editor({
           owner_id: userId,
           linked_project_id: linkedProject?.id ?? null,
           linked_project_name: linkedProject?.name ?? null,
-          name: projectName.trim() || "Untitled Engineering Package",
+          name: cleanName,
           pages: nextPages,
         },
         { onConflict: "id" },
@@ -2239,15 +2361,21 @@ export default function Editor({
 
   const handleDeleteProject = useCallback(
     async (projectId: string) => {
-      const supabase = getSupabaseBrowserClient();
       const project = savedProjects.find((item) => item.id === projectId);
-      if (!supabase || !project) return;
+      if (!project) return;
       if (!window.confirm(`Delete saved project "${project.name}"?`)) return;
 
-      const { error } = await supabase.from("drawing_projects").delete().eq("id", projectId);
-      if (error) {
-        setMessage(`Could not delete project: ${error.message}`);
-        return;
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        const { error } = await supabase.from("drawing_projects").delete().eq("id", projectId);
+        if (error) {
+          setMessage(`Could not delete project: ${error.message}`);
+          return;
+        }
+      } else {
+        // Demo mode: drop from localStorage.
+        const remaining = loadSavedProjects().filter((item) => item.id !== projectId);
+        persistSavedProjects(remaining);
       }
 
       setSavedProjects((previous) => previous.filter((item) => item.id !== projectId));
@@ -2389,6 +2517,12 @@ export default function Editor({
         event.preventDefault();
         handleDelete();
       } else if (event.key === "Escape") {
+        // If a polyline is being drawn, finish it on first Escape; switch tool on the next.
+        if (toolModeRef.current === "line" && lineStateRef.current.points.length > 0) {
+          event.preventDefault();
+          finishLinePolyline();
+          return;
+        }
         if (toolModeRef.current !== "select") {
           handleSetToolMode("select");
         } else {
@@ -2400,7 +2534,7 @@ export default function Editor({
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleCopy, handleDelete, handleDuplicate, handlePaste, handleRedo, handleSaveProject, handleSetToolMode, handleUndo]);
+  }, [finishLinePolyline, handleCopy, handleDelete, handleDuplicate, handlePaste, handleRedo, handleSaveProject, handleSetToolMode, handleUndo]);
 
   const activeContextObject = fabricRef.current?.getActiveObject();
   const canUndo = historyVersion >= 0 && historyRef.current.past.length > 1;
@@ -2506,6 +2640,7 @@ export default function Editor({
         onZoom100={handleZoom100}
         onSetActiveTray={embedded ? undefined : setStudioTray}
         onBackToDashboard={embedded ? undefined : handleBackToDashboard}
+        backLabel={linkedProject?.name}
         snapEnabled={snapEnabled}
         onToggleSnapping={() => setSnapEnabled((current) => !current)}
         onAddRectangle={handleAddRectangle}
@@ -2559,6 +2694,10 @@ export default function Editor({
           projectName={projectName}
           onProjectNameChange={setProjectName}
           libraryItems={libraryItems}
+          favoriteIds={favoriteIds}
+          recentIds={recentIds}
+          onToggleFavorite={toggleLibraryFavorite}
+          onRecordLibraryUse={recordLibraryUse}
           savedProjects={savedProjects}
           activeProjectId={activeProjectId}
           selectedCount={selectedCount}

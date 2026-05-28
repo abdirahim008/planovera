@@ -15,6 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAppStore, currency } from "@/lib/store";
+import { labelsForType } from "@/lib/project-labels";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
@@ -29,7 +30,16 @@ const COLS = [
 ];
 
 // ─── Create Item Set Modal ────────────────────────────────────────
-function CreateItemSetModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CreateItemSetModal({
+  open,
+  onClose,
+  noun,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Singular noun for the list type, e.g. "Deliverables" or "Items". */
+  noun: string;
+}) {
   const { createSimpleItemSet } = useAppStore();
   const [name, setName] = useState("");
 
@@ -41,10 +51,10 @@ function CreateItemSetModal({ open, onClose }: { open: boolean; onClose: () => v
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Create New Item List" width={420}>
+    <Modal open={open} onClose={onClose} title={`Create ${noun} List`} width={420}>
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block mb-1.5">
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">
             List Name
           </label>
           <input
@@ -53,7 +63,7 @@ function CreateItemSetModal({ open, onClose }: { open: boolean; onClose: () => v
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            placeholder="e.g. Equipment List, Deliverables"
+            placeholder={`e.g. Phase 1 ${noun}, Quarterly ${noun}`}
           />
         </div>
         <div className="flex justify-end gap-3 mt-1">
@@ -71,9 +81,16 @@ function CreateItemSetModal({ open, onClose }: { open: boolean; onClose: () => v
 function ItemsListView({
   onOpen,
   onCreateClick,
+  noun,
+  itemNounSingular,
+  itemNounPlural,
 }: {
   onOpen: (id: string) => void;
   onCreateClick: () => void;
+  /** Title-case noun for the list, e.g. "Deliverables" or "Item". */
+  noun: string;
+  itemNounSingular: string;
+  itemNounPlural: string;
 }) {
   const { savedSimpleItemSets, deleteSimpleItemSet, duplicateSimpleItemSet } = useAppStore();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
@@ -81,16 +98,10 @@ function ItemsListView({
   return (
     <>
       {savedSimpleItemSets.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="w-20 h-20 rounded-2xl bg-accent/10 flex items-center justify-center mb-5">
-            <Table size={32} className="text-accent opacity-60" />
-          </div>
-          <p className="text-txt-muted text-sm font-medium">No item lists created yet</p>
-          <p className="text-xs text-txt-dim mt-1.5 max-w-[280px] text-center">
-            Create an item list for your project deliverables and line items
-          </p>
-          <Button variant="primary" size="md" className="mt-5" onClick={onCreateClick}>
-            <Plus size={14} /> Create First Item List
+        <div className="flex flex-col items-center justify-center py-16">
+          <p className="text-txt-muted text-sm font-medium">No {noun.toLowerCase()} lists yet</p>
+          <Button variant="primary" size="md" className="mt-4" onClick={onCreateClick}>
+            <Plus size={14} /> Create {noun} List
           </Button>
         </div>
       ) : (
@@ -102,18 +113,18 @@ function ItemsListView({
             return (
               <div
                 key={sis.id}
-                className="group flex items-center justify-between p-4 bg-bg-surface border border-border rounded-xl cursor-pointer transition-all duration-200 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5"
+                className="group flex items-center justify-between p-4 bg-bg-surface border border-border rounded-lg cursor-pointer transition-all duration-200 hover:border-accent/50"
                 style={{ animationDelay: `${idx * 60}ms`, animationFillMode: "both" }}
                 onClick={() => onOpen(sis.id)}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center flex-shrink-0">
-                    <Table size={20} className="text-accent" />
+                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                    <Table size={18} className="text-accent" />
                   </div>
                   <div>
                     <div className="font-semibold text-sm">{sis.name}</div>
                     <div className="flex gap-3 mt-1.5 text-[11px] text-txt-dim">
-                      <span>{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
+                      <span>{itemCount} {itemCount === 1 ? itemNounSingular : itemNounPlural}</span>
                       <span>•</span>
                       <span>Modified {new Date(sis.updatedAt).toLocaleDateString()}</span>
                     </div>
@@ -122,8 +133,8 @@ function ItemsListView({
                 <div className="flex items-center gap-3">
                   {totalAmount > 0 && (
                     <div className="text-right mr-2">
-                      <div className="text-[10px] text-txt-dim uppercase tracking-wider">Total</div>
-                      <div className="font-mono text-sm font-bold mt-0.5 text-ok">
+                      <div className="text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">Total</div>
+                      <div className="font-mono text-sm font-semibold mt-0.5 text-ok">
                         $ {currency(totalAmount)}
                       </div>
                     </div>
@@ -153,7 +164,7 @@ function ItemsListView({
       )}
 
       {deleteTarget && (
-        <Modal open={true} onClose={() => setDeleteTarget(null)} title="Delete Item List" width={400}>
+        <Modal open={true} onClose={() => setDeleteTarget(null)} title={`Delete ${noun} List`} width={400}>
           <p className="text-sm text-txt-muted mb-5">
             Are you sure you want to delete <strong>{deleteTarget.name}</strong>? This action cannot be undone.
           </p>
@@ -250,14 +261,14 @@ function ItemsTable({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     <div className="relative">
-      <div className="overflow-auto border border-border rounded-lg" style={{ maxHeight: "calc(100vh - 310px)" }}>
-        <table className="border-collapse w-full" style={{ minWidth: 600 }}>
+      <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 310px)" }}>
+        <table className="data-table data-table-sticky" style={{ minWidth: 600 }}>
           <thead>
             <tr>
               {COLS.map((col) => (
                 <th
                   key={col.key}
-                  className={`${col.width} px-2 py-2 bg-bg-raised border-b-2 border-b-accent border-r border-r-border text-[10px] font-semibold uppercase tracking-wider text-txt-dim ${col.align} sticky top-0 z-10`}
+                  className={`${col.width} ${col.align}`}
                 >
                   {col.label}
                 </th>
@@ -266,54 +277,56 @@ function ItemsTable({ readOnly = false }: { readOnly?: boolean }) {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr 
-                key={item.id} 
-                className={`hover:bg-bg-hover transition-colors ${item.id === selectedRowId ? "bg-accent/10 row-selected" : ""}`}
+              <tr
+                key={item.id}
+                className={item.id === selectedRowId ? "bg-accent/10 row-selected" : ""}
                 onContextMenu={(e) => handleContextMenu(e, item.id)}
                 onClick={() => !readOnly && setSelectedRowId(item.id)}
               >
-                {COLS.map((col) => (
-                  <td
-                    key={col.key}
-                    className={`px-1 h-[34px] border-r border-r-border border-b border-b-border ${col.align} ${col.mono ? "font-mono" : ""}`}
-                  >
-                    {col.key === "amount" ? (
-                      <span className="block px-2 text-[13px] font-mono">
-                        {item.amount
-                          ? parseFloat(item.amount).toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          : ""}
-                      </span>
-                    ) : readOnly ? (
-                      <span
-                        className={`block px-2 text-[13px] text-txt ${col.mono ? "font-mono" : ""}`}
-                        style={{ textAlign: col.align === "text-right" ? "right" : col.align === "text-center" ? "center" : "left" }}
-                      >
-                        {(item as any)[col.key] || "—"}
-                      </span>
-                    ) : (
-                      <input
-                        className={`w-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-txt focus:ring-1 focus:ring-accent/50 ${col.mono ? "font-mono" : ""}`}
-                        style={{ textAlign: col.align === "text-right" ? "right" : col.align === "text-center" ? "center" : "left" }}
-                        value={(item as any)[col.key]}
-                        onChange={(e) => update(item.id, col.key, e.target.value)}
-                        placeholder={col.key === "description" ? "Type description..." : ""}
-                      />
-                    )}
-                  </td>
-                ))}
+                {COLS.map((col) => {
+                  const cellClass = col.mono
+                    ? "data-cell-num"
+                    : col.key === "description"
+                    ? "data-cell-wrap"
+                    : col.align;
+                  const inputAlign =
+                    col.align === "text-right" ? "text-right" : col.align === "text-center" ? "text-center" : "";
+                  return (
+                    <td key={col.key} className={cellClass}>
+                      {col.key === "amount" ? (
+                        <span>
+                          {item.amount
+                            ? parseFloat(item.amount).toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : ""}
+                        </span>
+                      ) : readOnly ? (
+                        <span className={col.mono ? "font-mono" : ""}>
+                          {(item as any)[col.key] || "—"}
+                        </span>
+                      ) : (
+                        <input
+                          className={`data-cell-input ${inputAlign} ${col.mono ? "font-mono" : ""}`}
+                          value={(item as any)[col.key]}
+                          onChange={(e) => update(item.id, col.key, e.target.value)}
+                          placeholder={col.key === "description" ? "Type description..." : ""}
+                        />
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
           {total > 0 && (
             <tfoot>
               <tr className="row-grandtotal">
-                <td colSpan={5} className="px-3 py-2 font-bold text-sm border-t-2 border-t-accent">
+                <td colSpan={5} className="font-bold text-sm border-t-2 border-t-accent">
                   TOTAL
                 </td>
-                <td className="px-2 py-2 font-bold text-sm font-mono text-right border-t-2 border-t-accent">
+                <td className="data-cell-num font-bold text-sm border-t-2 border-t-accent">
                   {total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -330,6 +343,7 @@ function ItemsTable({ readOnly = false }: { readOnly?: boolean }) {
 // ─── Main Simple Items Module ─────────────────────────────────────
 export default function SimpleItemsTable() {
   const {
+    project,
     activeSimpleItemsId,
     openSimpleItemSet,
     saveSimpleItemSet,
@@ -337,10 +351,19 @@ export default function SimpleItemsTable() {
     addSimpleItem: addRow,
   } = useAppStore();
 
+  // Project-type-aware nouns. For construction projects the "Items" module is the
+  // simple flat-list fallback for non-BOQ work; for non-construction it's the primary
+  // way to capture deliverables.
+  const isConstruction = project?.type === "construction";
+  const noun = isConstruction ? "Item" : "Deliverables";
+  const itemNounSingular = isConstruction ? "item" : "deliverable";
+  const itemNounPlural = isConstruction ? "items" : "deliverables";
+  const moduleTitle = labelsForType(project).pageTitle.boqOrItems;
+
   const [mode, setMode] = useState<"list" | "view" | "edit">(activeSimpleItemsId ? "view" : "list");
   const [showCreate, setShowCreate] = useState(false);
 
-  const activeName = savedSimpleItemSets.find((s) => s.id === activeSimpleItemsId)?.name || "Items";
+  const activeName = savedSimpleItemSets.find((s) => s.id === activeSimpleItemsId)?.name || noun;
 
   useEffect(() => {
     if (activeSimpleItemsId && mode === "list") {
@@ -371,19 +394,20 @@ export default function SimpleItemsTable() {
     return (
       <div className="animate-fade-in">
         <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight">Items / Line Items</h2>
-            <p className="text-xs text-txt-muted mt-0.5">
-              Manage your project item lists
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold tracking-tight">{moduleTitle}</h2>
           <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-            <Plus size={14} /> Create Item List
+            <Plus size={14} /> Create {noun} List
           </Button>
         </div>
 
-        <ItemsListView onOpen={handleOpen} onCreateClick={() => setShowCreate(true)} />
-        <CreateItemSetModal open={showCreate} onClose={() => setShowCreate(false)} />
+        <ItemsListView
+          onOpen={handleOpen}
+          onCreateClick={() => setShowCreate(true)}
+          noun={noun}
+          itemNounSingular={itemNounSingular}
+          itemNounPlural={itemNounPlural}
+        />
+        <CreateItemSetModal open={showCreate} onClose={() => setShowCreate(false)} noun={noun} />
       </div>
     );
   }
@@ -400,12 +424,10 @@ export default function SimpleItemsTable() {
           </Button>
           <div className="h-5 w-px bg-border" />
           <div>
-            <h2 className="text-lg font-bold">{activeName}</h2>
-            <p className="text-xs text-txt-muted mt-0.5">
-              {isViewMode
-                ? "View mode — click the edit button to make changes"
-                : "Add your project items or deliverables (Right-click rows for options)"}
-            </p>
+            <h2 className="text-lg font-semibold">{activeName}</h2>
+            {!isViewMode && (
+              <p className="text-xs text-txt-muted mt-0.5">Right-click rows for options</p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">

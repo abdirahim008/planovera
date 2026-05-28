@@ -8,8 +8,8 @@ import {
   Activity,
   BarChart3,
   Building2,
-  CalendarRange,
   ClipboardList,
+  Coins,
   DatabaseZap,
   DollarSign,
   FileText,
@@ -56,7 +56,12 @@ import type {
   SavedWorkPlan,
 } from "@/lib/supabase";
 import { SURP2_PROGRAM_ID, type Surp2ImportPreview } from "@/lib/surp2ImportTypes";
+import {
+  FINAL_CERTIFICATE_PROGRAM_ID,
+  type FinalCertificateImportPreview,
+} from "@/lib/finalCertificateImportTypes";
 import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "@/lib/projectCategories";
+import { PROJECT_PRESETS, getProjectPreset } from "@/lib/project-presets";
 
 type Tone = "accent" | "ok" | "warn" | "err";
 
@@ -68,6 +73,8 @@ type ProjectFormData = {
   categoryId: string;
   newCategoryName: string;
   newCategoryCode: string;
+  /** Preset id chosen via the create-project card picker. */
+  preset: string;
   type: Project["type"];
   role: Project["role"];
   code: string;
@@ -102,6 +109,7 @@ const defaultProjectFormData = (): ProjectFormData => ({
   categoryId: "",
   newCategoryName: "",
   newCategoryCode: "",
+  preset: "construction",
   type: "construction",
   role: "supervision",
   code: "",
@@ -136,6 +144,8 @@ const projectToFormData = (project: Project): ProjectFormData => ({
   categoryId: project.categoryId || (project.categoryName ? `default:${categorySlug(project.categoryName)}` : ""),
   newCategoryName: "",
   newCategoryCode: "",
+  // Falls back to the type-based inference when editing a legacy project that pre-dates presets.
+  preset: project.preset || (project.type === "construction" ? "construction" : "other"),
   type: project.type,
   role: project.role,
   code: project.code || "",
@@ -674,13 +684,6 @@ function RadialGauge({
               }}
             />
           </div>
-          <div className="mt-3 text-xs leading-5 text-txt-muted">
-            {value >= 75
-              ? "Strong control position"
-              : value >= 45
-              ? "Steady progress with room to improve"
-              : "Needs focused recovery and follow-up"}
-          </div>
         </div>
       </div>
     </div>
@@ -779,39 +782,33 @@ function ReferenceMetricTile({
   subtitle,
   icon: Icon,
   tone = "accent",
-  trend,
 }: {
   title: string;
   value: string;
   subtitle: string;
   icon: LucideIcon;
   tone?: Tone;
-  trend: number[];
+  trend?: number[];
 }) {
   const style = toneStyles[tone];
 
   return (
-    <div className="relative overflow-hidden rounded-[22px] border border-border bg-bg-surface p-[18px]">
-      <div
-        className="absolute inset-x-0 top-0 h-px"
-        style={{ background: `linear-gradient(90deg, transparent, ${style.glow}, transparent)` }}
-      />
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">{title}</div>
-          <div className="mt-2 truncate text-[26px] font-black leading-tight tracking-tight text-white">{value}</div>
-          <div className="mt-1.5 line-clamp-2 text-[11px] leading-5 text-txt-muted">{subtitle}</div>
-        </div>
-        <div
-          className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px]"
+    <div className="rounded-xl border border-border bg-bg-surface px-3.5 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
           style={{ background: style.soft, color: style.hex }}
         >
-          <Icon size={17} />
+          <Icon size={14} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">{title}</div>
+          <div className="mt-0.5 truncate text-base font-semibold leading-tight tracking-tight text-white">
+            {value}
+          </div>
         </div>
       </div>
-      <div className="mt-3">
-        <MiniTrendChart values={trend} tone={tone} height={34} />
-      </div>
+      <div className="mt-1 truncate text-[11px] leading-snug text-txt-muted">{subtitle}</div>
     </div>
   );
 }
@@ -879,6 +876,9 @@ export default function Dashboard() {
   const [surp2Importing, setSurp2Importing] = useState(false);
   const [surp2ImportError, setSurp2ImportError] = useState<string | null>(null);
   const [surp2Preview, setSurp2Preview] = useState<Surp2ImportPreview | null>(null);
+  const [finalCertImporting, setFinalCertImporting] = useState(false);
+  const [finalCertImportError, setFinalCertImportError] = useState<string | null>(null);
+  const [finalCertPreview, setFinalCertPreview] = useState<FinalCertificateImportPreview | null>(null);
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     programId: "",
     categoryId: "",
@@ -988,6 +988,7 @@ export default function Dashboard() {
       name: formData.name.trim(),
       type: formData.type,
       role: formData.role,
+      preset: formData.preset || undefined,
       created_at: editingProject?.created_at || now,
       code: formData.code.trim(),
       categoryName:
@@ -1201,6 +1202,33 @@ export default function Dashboard() {
     }
   };
 
+  const handleImportFinalCertificateTest = async () => {
+    setFinalCertImporting(true);
+    setFinalCertImportError(null);
+    try {
+      const response = await fetch("/api/imports/final-certificate-test", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Could not import final certificate test files.");
+      }
+      importLocalTestData(data.payload);
+      setFinalCertPreview(data.preview);
+      setPortfolioFilters({
+        programId: FINAL_CERTIFICATE_PROGRAM_ID,
+        categoryId: "",
+        location: "",
+        client: "",
+      });
+      setActiveModule("dashboard");
+    } catch (error) {
+      setFinalCertImportError(
+        error instanceof Error ? error.message : "Could not import final certificate test files."
+      );
+    } finally {
+      setFinalCertImporting(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-[1360px] animate-fade-in">
       {project && activeSummary ? (
@@ -1225,9 +1253,13 @@ export default function Dashboard() {
           onCreateProject={openCreateProjectModal}
           onEditProject={openEditProjectModal}
           onImportSurp2={handleImportSurp2}
+          onImportFinalCertificateTest={handleImportFinalCertificateTest}
           importingSurp2={surp2Importing}
           surp2Preview={surp2Preview}
           surp2ImportError={surp2ImportError}
+          importingFinalCertificateTest={finalCertImporting}
+          finalCertificatePreview={finalCertPreview}
+          finalCertificateImportError={finalCertImportError}
         />
       )}
 
@@ -1263,9 +1295,13 @@ function PortfolioDashboard({
   onCreateProject,
   onEditProject,
   onImportSurp2,
+  onImportFinalCertificateTest,
   importingSurp2,
   surp2Preview,
   surp2ImportError,
+  importingFinalCertificateTest,
+  finalCertificatePreview,
+  finalCertificateImportError,
 }: {
   summaries: ProjectSummary[];
   allSummaries: ProjectSummary[];
@@ -1277,9 +1313,13 @@ function PortfolioDashboard({
   onCreateProject: () => void;
   onEditProject: (project: Project) => void;
   onImportSurp2: () => void;
+  onImportFinalCertificateTest: () => void;
   importingSurp2: boolean;
   surp2Preview: Surp2ImportPreview | null;
   surp2ImportError: string | null;
+  importingFinalCertificateTest: boolean;
+  finalCertificatePreview: FinalCertificateImportPreview | null;
+  finalCertificateImportError: string | null;
 }) {
   const locations = uniqueFilterValues(allSummaries.map((summary) => projectLocationFilterValue(summary.project)));
   const clients = uniqueFilterValues(allSummaries.map((summary) => summary.project.clientName));
@@ -1370,20 +1410,23 @@ function PortfolioDashboard({
       <div className="mb-5 border-b border-border pb-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-txt-dim">
-              Planovera - Portfolio
-            </div>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-white">
-              Overall Project Control Centre
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-txt-muted">
-              Track programs, projects, locations, and clients from one command surface with live progress,
-              commercial position, and action items.
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Portfolio</h2>
+            <p className="mt-1 text-[13px] text-txt-muted">
+              {totalProjects} {totalProjects === 1 ? "project" : "projects"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" size="sm" onClick={onImportSurp2} disabled={importingSurp2}>
               <DatabaseZap size={14} /> {importingSurp2 ? "Importing..." : "Import SURP2 Test Data"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onImportFinalCertificateTest}
+              disabled={importingFinalCertificateTest}
+            >
+              <DatabaseZap size={14} />{" "}
+              {importingFinalCertificateTest ? "Importing..." : "Import Final Cert Test"}
             </Button>
             <Button variant="primary" size="sm" onClick={onCreateProject}>
               <Plus size={14} /> New Project
@@ -1395,6 +1438,12 @@ function PortfolioDashboard({
       {surp2ImportError ? (
         <div className="mb-5 rounded-[20px] border border-err/40 bg-err/10 p-4 text-sm text-err">
           {surp2ImportError}
+        </div>
+      ) : null}
+
+      {finalCertificateImportError ? (
+        <div className="mb-5 rounded-[20px] border border-err/40 bg-err/10 p-4 text-sm text-err">
+          {finalCertificateImportError}
         </div>
       ) : null}
 
@@ -1429,6 +1478,54 @@ function PortfolioDashboard({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {finalCertificatePreview ? (
+        <div className="mb-5 rounded-[24px] border border-ok/30 bg-ok/10 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-ok">
+                Local final certificate test imported
+              </div>
+              <div className="mt-1 text-lg font-black text-white">
+                {finalCertificatePreview.projectName}
+              </div>
+              <p className="mt-1 text-sm text-txt-muted">
+                Contract {finalCertificatePreview.contractNumber} · {finalCertificatePreview.contractorName}.
+                Supabase cloud data was not changed.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-black/15 px-4 py-3 text-right">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">
+                Final retention release
+              </div>
+              <div className="mt-1 text-2xl font-black text-ok">
+                USD {currency(finalCertificatePreview.finalNetPayable)}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            {[
+              ["Revised contract", finalCertificatePreview.revisedContractSum],
+              ["BOQ grand total", finalCertificatePreview.boqGrandTotal],
+              ["IPC 005 current", finalCertificatePreview.lastIpcThisCertificate],
+              ["IPC 005 net due", finalCertificatePreview.lastIpcNetDue],
+              ["Retention release", finalCertificatePreview.retentionReleaseAmount],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-border bg-black/10 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">
+                  {label}
+                </div>
+                <div className="mt-1 text-sm font-black text-white">USD {currency(Number(value))}</div>
+              </div>
+            ))}
+          </div>
+          {finalCertificatePreview.warnings.length > 0 ? (
+            <div className="mt-3 rounded-2xl border border-warn/30 bg-warn/10 p-3 text-xs text-warn">
+              {finalCertificatePreview.warnings.join(" · ")}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1555,67 +1652,38 @@ function PortfolioDashboard({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <div className="relative overflow-hidden rounded-[24px] border border-border bg-bg-surface p-6">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
-          <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-accent/10 blur-3xl" />
-          <div className="relative">
-            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-              Portfolio Commercial Position
+      <div className="rounded-2xl border border-border bg-bg-surface p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-white">Portfolio summary</h3>
+          <span className="text-[11px] text-txt-dim">
+            Planned {averagePlanned.toFixed(1)}% · Actual {averageActual.toFixed(1)}%
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Contract value</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
+              USD {currency(filteredProjectValue)}
             </div>
-            <div className="mt-3 text-4xl font-black tracking-tight text-white">
-              USD {currency(totalApprovedCommercial)}
+          </div>
+          <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Balance</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-warn">
+              USD {currency(balance)}
             </div>
-            <p className="mt-2 text-sm text-txt-muted">Approved or paid certificates across active projects.</p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-border bg-black/10 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Contract Value</div>
-                <div className="mt-2 text-2xl font-black text-white">USD {currency(filteredProjectValue)}</div>
-              </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Balance</div>
-                <div className="mt-2 text-2xl font-black text-warn">USD {currency(balance)}</div>
-              </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Avg Physical</div>
-                <div className="mt-2 text-2xl font-black text-ok">{averagePhysical.toFixed(0)}%</div>
-              </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Avg Financial</div>
-                <div className="mt-2 text-2xl font-black text-accent">{averageFinancial.toFixed(0)}%</div>
-              </div>
+          </div>
+          <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Pending approvals</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
+              {totalPendingApprovals}
             </div>
           </div>
         </div>
-
-        <div className="rounded-[24px] border border-border bg-bg-surface p-6">
-          <div className="mb-5 text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-            Portfolio Averages
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <CompactGauge value={averagePhysical} label="Physical Progress" tone="ok" />
-            <CompactGauge value={averageFinancial} label="Financial Progress" tone="accent" />
-          </div>
-          <div className="mt-5">
-            <DualTrendChart
-              planned={summaries.map((summary) => summary.progress.planned)}
-              actual={summaries.map((summary) => summary.progress.actual)}
-            />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-border bg-black/10 p-3">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Planned Avg</div>
-              <div className="mt-2 text-xl font-black text-white">{averagePlanned.toFixed(1)}%</div>
-            </div>
-            <div className="rounded-2xl border border-border bg-black/10 p-3">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Actual Avg</div>
-              <div className="mt-2 text-xl font-black text-white">{averageActual.toFixed(1)}%</div>
-            </div>
-            <div className="rounded-2xl border border-border bg-black/10 p-3">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Approvals</div>
-              <div className="mt-2 text-xl font-black text-white">{totalPendingApprovals}</div>
-            </div>
-          </div>
+        <div className="mt-4">
+          <DualTrendChart
+            planned={summaries.map((summary) => summary.progress.planned)}
+            actual={summaries.map((summary) => summary.progress.actual)}
+          />
         </div>
       </div>
 
@@ -1627,21 +1695,12 @@ function PortfolioDashboard({
         ))}
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-[24px] border border-border bg-bg-surface">
-        <div className="border-b border-border px-5 py-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-                Projects Register
-              </div>
-              <div className="mt-1 text-lg font-black text-white">
-                Project list with physical and financial progress
-              </div>
-            </div>
-            <span className="rounded-full border border-border bg-black/10 px-3 py-1 text-xs text-txt-muted">
-              {summaries.length} projects
-            </span>
-          </div>
+      <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-white">Projects</h3>
+          <span className="rounded-full border border-border bg-black/10 px-2.5 py-0.5 text-[11px] text-txt-muted">
+            {summaries.length}
+          </span>
         </div>
 
         <div className="space-y-3 p-4 xl:hidden">
@@ -1689,8 +1748,9 @@ function PortfolioDashboard({
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 inline-flex rounded-full border border-border bg-black/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-muted">
-                  {summary.project.type === "construction" ? "Construction" : "Non-construction"}
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-black/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-muted">
+                  <span className="text-[12px] leading-none">{getProjectPreset(summary.project.preset || (summary.project.type === "construction" ? "construction" : "other")).marker}</span>
+                  {getProjectPreset(summary.project.preset || (summary.project.type === "construction" ? "construction" : "other")).badgeLabel}
                 </div>
               </div>
             ))
@@ -1698,70 +1758,109 @@ function PortfolioDashboard({
         </div>
 
         <div className="hidden overflow-x-auto xl:block">
-          <table className="w-full min-w-[1040px] border-collapse">
+          <table className="w-full min-w-[920px] border-collapse">
             <thead>
-              <tr>
-                <th className="px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-txt-dim">Project</th>
-                <th className="px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-txt-dim">Planned vs Actual</th>
-                <th className="px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-txt-dim">Physical</th>
-                <th className="px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-txt-dim">Financial</th>
-                <th className="px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-txt-dim">Type</th>
-                <th className="px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-txt-dim">Actions</th>
+              <tr className="border-b border-border">
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Project</th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 220 }}>Planned vs Actual</th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 160 }}>Physical</th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 160 }}>Financial</th>
+                <th className="px-2 py-2" style={{ width: 44 }} aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {summaries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-14 text-center text-sm text-txt-muted">
+                  <td colSpan={5} className="px-4 py-14 text-center text-sm text-txt-muted">
                     No projects yet. Create a project to begin.
                   </td>
                 </tr>
               ) : (
-                summaries.map((summary) => (
-                  <tr key={summary.project.id} className="border-t border-border/80 align-top">
-                    <td className="px-4 py-4">
-                      <button
-                        className="bg-transparent p-0 text-left text-lg font-bold text-accent transition hover:underline"
-                        onClick={() => onOpenProject(summary.project.id)}
-                      >
-                        {summary.project.name}
-                      </button>
-                      <div className="mt-2 text-[11px] text-txt-dim">
-                        {[programLabel(programs, summary.project.programId), categoryLabel(categories, summary.project), summary.project.contractNumber, summary.project.code, projectLocationLabel(summary.project), summary.project.contractTitle]
-                          .filter(Boolean)
-                          .join(" - ") || "Project controls workspace"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="space-y-2">
-                        <ProgressStrip label="Plan" value={summary.progress.planned} tone="accent" />
-                        <ProgressStrip
-                          label="Actual"
-                          value={summary.progress.actual}
-                          tone={summary.progress.variance >= 0 ? "ok" : "warn"}
-                        />
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="mb-3 text-2xl font-black text-white">{summary.physical}%</div>
-                      <ProgressStrip label="Delivery" value={summary.physical} tone="ok" />
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="mb-3 text-2xl font-black text-white">{summary.financial}%</div>
-                      <ProgressStrip label="Commercial" value={summary.financial} tone="accent" />
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="inline-flex rounded-full border border-border bg-black/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-muted">
-                        {summary.project.type === "construction" ? "Construction" : "Non-construction"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <Button variant="ghost" size="sm" onClick={() => onEditProject(summary.project)}>
-                        <PenTool size={14} /> Edit
-                      </Button>
-                    </td>
-                  </tr>
-                ))
+                summaries.map((summary) => {
+                  const ahead = summary.progress.actual >= summary.progress.planned;
+                  const meta = [projectLocationLabel(summary.project), summary.project.clientName]
+                    .filter(Boolean)
+                    .join(" · ");
+                  return (
+                    <tr key={summary.project.id} className="border-t border-border/60 align-middle hover:bg-bg-hover/40">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="min-w-0 truncate bg-transparent p-0 text-left text-sm font-semibold text-accent transition hover:underline"
+                            onClick={() => onOpenProject(summary.project.id)}
+                          >
+                            {summary.project.name}
+                          </button>
+                          <span className="shrink-0 rounded border border-border bg-black/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-txt-muted">
+                            {summary.project.type === "construction" ? "Constr" : "Non-c"}
+                          </span>
+                        </div>
+                        {meta ? (
+                          <div className="mt-0.5 truncate text-[11px] text-txt-dim">{meta}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-between text-[11px] font-medium text-txt-muted">
+                          <span><span className="text-txt-dim">Plan</span> {summary.progress.planned.toFixed(0)}%</span>
+                          <span className={ahead ? "text-ok" : "text-warn"}>
+                            <span className="text-txt-dim">Act</span> {summary.progress.actual.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                            <div
+                              className="h-full bg-accent"
+                              style={{ width: `${clamp(summary.progress.planned)}%` }}
+                            />
+                          </div>
+                          <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                            <div
+                              className={`h-full ${ahead ? "bg-ok" : "bg-warn"}`}
+                              style={{ width: `${clamp(summary.progress.actual)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-white">
+                            {summary.physical}%
+                          </span>
+                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/5">
+                            <div
+                              className="h-full bg-ok"
+                              style={{ width: `${clamp(summary.physical)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-white">
+                            {summary.financial}%
+                          </span>
+                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/5">
+                            <div
+                              className="h-full bg-accent"
+                              style={{ width: `${clamp(summary.financial)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => onEditProject(summary.project)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-txt-dim transition hover:bg-bg-hover hover:text-txt"
+                          aria-label={`Edit ${summary.project.name}`}
+                          title="Edit project"
+                        >
+                          <PenTool size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1855,13 +1954,10 @@ function ProjectLocationsCard({ summaries }: { summaries: ProjectSummary[] }) {
           <div className="border-b border-border p-5 lg:border-b-0 lg:border-r">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-                  <MapPin size={14} className="text-accent" /> Project Locations
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                  <MapPin size={14} className="text-accent" /> Locations
                 </div>
-                <div className="mt-2 text-xl font-black text-white">Portfolio map</div>
-                <p className="mt-2 text-sm leading-6 text-txt-muted">
-                  Location dots update with the current program, client, and location filters.
-                </p>
+                <div className="mt-1.5 text-lg font-semibold text-white">Portfolio map</div>
               </div>
               <span className="rounded-xl border border-border bg-black/15 p-2 text-txt-muted">
                 <Maximize2 size={16} />
@@ -2142,14 +2238,23 @@ function ProjectOverviewDashboard({
       tone: "accent" as Tone,
       trend: commercialHistory.map((item) => item.net),
     },
-    {
-      title: "Open Actions",
-      value: String(openActionPoints),
-      subtitle: `${overdueActionPoints} overdue from ${meetingCount} meeting minutes`,
-      icon: ClipboardList,
-      tone: overdueActionPoints > 0 ? ("warn" as Tone) : ("ok" as Tone),
-      trend: [meetingCount, openActionPoints, overdueActionPoints, pendingApprovals],
-    },
+    (() => {
+      const contractValue = parseAmount(project.contractAmount);
+      const certifiedToDate = Math.max(commercial.approved, commercial.paid);
+      const remaining = Math.max(0, contractValue - certifiedToDate);
+      const percentLeft = contractValue > 0 ? (remaining / contractValue) * 100 : 0;
+      return {
+        title: "Contract Remaining",
+        value: `${project.currency || "USD"} ${currency(remaining)}`,
+        subtitle:
+          contractValue > 0
+            ? `${percentLeft.toFixed(1)}% of contract value left`
+            : "Set contract amount to track remaining",
+        icon: Coins,
+        tone: (remaining <= 0 ? "ok" : percentLeft > 50 ? "accent" : "warn") as Tone,
+        trend: [],
+      };
+    })(),
   ];
 
   return (
@@ -2157,18 +2262,22 @@ function ProjectOverviewDashboard({
       <div className="mb-5 border-b border-border pb-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-txt-dim">
-              {[project.contractNumber, project.code || "Project", project.role].filter(Boolean).join(" - ")}
-            </div>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-white">{project.name}</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-txt-muted">
-              {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).join(" - ") ||
-                "Project controls workspace"}
-            </p>
+            {project.contractNumber || project.code ? (
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                {[project.contractNumber, project.code].filter(Boolean).join(" · ")}
+              </div>
+            ) : null}
+            <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-white">{project.name}</h2>
+            {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).length > 0 ? (
+              <p className="mt-1 text-[13px] text-txt-muted">
+                {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).join(" · ")}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-border bg-bg-surface px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-txt-muted">
-              {project.type === "construction" ? "Construction" : "Non-construction"}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-surface px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-txt-muted">
+              <span className="text-[12px] leading-none">{getProjectPreset(project.preset || (project.type === "construction" ? "construction" : "other")).marker}</span>
+              {getProjectPreset(project.preset || (project.type === "construction" ? "construction" : "other")).badgeLabel}
             </span>
             <span className="rounded-full border border-ok/20 bg-ok/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-ok">
               Active
@@ -2190,19 +2299,14 @@ function ProjectOverviewDashboard({
       </div>
 
       <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-[24px] border border-border bg-bg-surface p-5">
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-                Progress Summary
-              </div>
-              <div className="mt-1 text-lg font-black text-white">Planned, actual, earned, and commercial position</div>
-            </div>
+        <div className="rounded-2xl border border-border bg-bg-surface p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-white">Progress</h3>
             <span
-              className={`rounded-full border px-3 py-1 text-xs font-bold ${
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
                 progress.variance >= 0
-                  ? "border-ok/20 bg-ok/10 text-ok"
-                  : "border-warn/20 bg-warn/10 text-warn"
+                  ? "border-ok/25 bg-ok/10 text-ok"
+                  : "border-warn/25 bg-warn/10 text-warn"
               }`}
             >
               {progress.variance >= 0 ? "+" : ""}
@@ -2210,46 +2314,20 @@ function ProjectOverviewDashboard({
             </span>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <ProgressStrip label="Planned" value={progress.planned} tone="accent" />
+              <ProgressStrip label="Actual" value={progress.actual} tone={progress.variance >= 0 ? "ok" : "warn"} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <CompactGauge value={physical} label="Physical" tone="ok" />
               <CompactGauge value={financial} label="Financial" tone="accent" />
-            </div>
-            <div className="space-y-4">
-              <ProgressStrip label="Planned Progress" value={progress.planned} tone="accent" />
-              <ProgressStrip label="Actual Progress" value={progress.actual} tone={progress.variance >= 0 ? "ok" : "warn"} />
-              <ProgressStrip label="Physical Completion" value={physical} tone="ok" />
-              <ProgressStrip label="Financial Completion" value={financial} tone="accent" />
-              <div className="grid gap-3 pt-1 sm:grid-cols-2">
-                <div className="rounded-2xl border border-border bg-black/10 p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Earned Value</div>
-                  <div className="mt-2 text-xl font-black text-white">
-                    {project.currency || "USD"} {currency(progress.earned)}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-border bg-black/10 p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">Approved Commercial</div>
-                  <div className="mt-2 text-xl font-black text-white">
-                    {project.currency || "USD"} {currency(commercial.approved)}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
 
-        <div className="rounded-[24px] border border-border bg-bg-surface p-5">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-                Contract Timeline
-              </div>
-              <div className="mt-1 text-lg font-black text-white">Time elapsed against contract period</div>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-warn/10 text-warn">
-              <CalendarRange size={18} />
-            </div>
-          </div>
+        <div className="rounded-2xl border border-border bg-bg-surface p-5">
+          <h3 className="mb-4 text-sm font-semibold text-white">Timeline</h3>
 
           {timeline ? (
             <>
@@ -2257,79 +2335,78 @@ function ProjectOverviewDashboard({
               <div className="mt-5">
                 <ProgressStrip label={`${timeline.elapsedDays} of ${timeline.totalDays} days`} value={timeline.percent} tone="warn" />
               </div>
-              <div className="mt-5 grid gap-3 text-xs sm:grid-cols-3">
-                <div className="rounded-2xl border border-border bg-black/10 p-3">
-                  <div className="uppercase tracking-[0.16em] text-txt-dim">Start</div>
-                  <div className="mt-1 font-bold text-white">{project.start_date}</div>
+              <div className="mt-5 grid gap-2 text-xs sm:grid-cols-3">
+                <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Start</div>
+                  <div className="mt-0.5 font-semibold text-white">{project.start_date || "—"}</div>
                 </div>
-                <div className="rounded-2xl border border-border bg-black/10 p-3">
-                  <div className="uppercase tracking-[0.16em] text-txt-dim">Remaining</div>
-                  <div className="mt-1 font-bold text-white">{timeline.remainingDays} days</div>
+                <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Remaining</div>
+                  <div className="mt-0.5 font-semibold text-white">{timeline.remainingDays} days</div>
                 </div>
-                <div className="rounded-2xl border border-border bg-black/10 p-3">
-                  <div className="uppercase tracking-[0.16em] text-txt-dim">Finish</div>
-                  <div className="mt-1 font-bold text-white">{project.end_date}</div>
+                <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Finish</div>
+                  <div className="mt-0.5 font-semibold text-white">{project.end_date || "—"}</div>
                 </div>
               </div>
             </>
           ) : (
-            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-txt-muted">
+            <div className="rounded-lg border border-dashed border-border p-6 text-center text-[13px] text-txt-muted">
               Set project start and finish dates to activate timeline tracking.
             </div>
           )}
         </div>
       </div>
 
-      <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-[260px_260px]">
-        <button
-          type="button"
-          onClick={() => setShowChecklistModal(true)}
-          className={`rounded-[24px] border bg-bg-surface p-5 text-left transition ${
-            checklistMetrics.overdue > 0 ? "border-err/30 hover:border-err/60" : "border-border hover:border-ok/35"
-          }`}
-          aria-label={`Open checklist compliance register. ${checklistMetrics.overdue} overdue checklist items.`}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
-                checklistMetrics.overdue > 0 ? "bg-err/10 text-err" : "bg-ok/10 text-ok"
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {[
+          {
+            id: "checklist",
+            label: "Checklist overdue",
+            count: checklistMetrics.overdue,
+            Icon: FileText,
+            onClick: () => setShowChecklistModal(true),
+            aria: `Open checklist register. ${checklistMetrics.overdue} overdue checklist items.`,
+          },
+          {
+            id: "actions",
+            label: "Action points overdue",
+            count: overdueActionPoints,
+            Icon: ClipboardList,
+            onClick: () => setShowActionModal(true),
+            aria: `Open action point register. ${overdueActionPoints} overdue action points.`,
+          },
+        ].map(({ id, label, count, Icon, onClick, aria }) => {
+          const isAlert = count > 0;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={onClick}
+              aria-label={aria}
+              className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                isAlert
+                  ? "border-err/25 bg-err/5 hover:border-err/45 hover:bg-err/10"
+                  : "border-border bg-bg-surface hover:border-ok/30 hover:bg-bg-hover"
               }`}
             >
-              <FileText size={20} />
-            </div>
-            <div className={`text-4xl font-black leading-none ${checklistMetrics.overdue > 0 ? "text-err" : "text-white"}`}>
-              {checklistMetrics.overdue}
-            </div>
-          </div>
-          <div className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">Checklist</div>
-          <div className="mt-1 text-sm font-bold text-white">Overdue items</div>
-          <div className="mt-3 text-xs text-txt-muted">Click to review the full checklist register.</div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setShowActionModal(true)}
-          className={`rounded-[24px] border bg-bg-surface p-5 text-left transition ${
-            overdueActionPoints > 0 ? "border-err/30 hover:border-err/60" : "border-border hover:border-ok/35"
-          }`}
-          aria-label={`Open action point register. ${overdueActionPoints} overdue action points not done.`}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
-                overdueActionPoints > 0 ? "bg-err/10 text-err" : "bg-ok/10 text-ok"
-              }`}
-            >
-              <ClipboardList size={20} />
-            </div>
-            <div className={`text-4xl font-black leading-none ${overdueActionPoints > 0 ? "text-err" : "text-white"}`}>
-              {overdueActionPoints}
-            </div>
-          </div>
-          <div className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">Action Points</div>
-          <div className="mt-1 text-sm font-bold text-white">Overdue not done</div>
-          <div className="mt-3 text-xs text-txt-muted">Click to review the full action register.</div>
-        </button>
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                  isAlert ? "bg-err/15 text-err" : "bg-ok/15 text-ok"
+                }`}
+              >
+                <Icon size={14} />
+              </span>
+              <span className={`font-mono text-lg font-semibold tabular-nums ${isAlert ? "text-err" : "text-txt-muted"}`}>
+                {count}
+              </span>
+              <span className="min-w-0 truncate text-[13px] font-medium text-txt">{label}</span>
+              <span className="ml-auto text-txt-dim" aria-hidden>
+                ›
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-5 grid gap-4 xl:grid-cols-3">
@@ -2351,30 +2428,26 @@ function ProjectOverviewDashboard({
           />
         </div>
 
-        <div className="rounded-[24px] border border-border bg-bg-surface p-5">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ok/10 text-ok">
-              <Wallet size={18} />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-                Commercial Position
-              </div>
-              <div className="mt-1 text-lg font-black text-white">Submitted, approved, paid, and retention</div>
-            </div>
-          </div>
+        <div className="rounded-2xl border border-border bg-bg-surface p-5">
+          <h3 className="mb-4 text-sm font-semibold text-white">Commercial</h3>
 
-          <div className="space-y-3">
-            {[
-              ["Submitted", commercial.submitted],
-              ["Approved", commercial.approved],
-              ["Paid", commercial.paid],
-              ["Retention Held", commercial.retentionHeld],
-            ].map(([label, amount]) => (
-              <div key={label} className="flex items-center justify-between rounded-2xl border border-border bg-black/10 px-4 py-3">
-                <span className="text-sm text-txt-muted">{label}</span>
-                <span className="text-base font-black text-white">
-                  {project.currency || "USD"} {currency(amount as number)}
+          <div className="space-y-1.5">
+            {([
+              ["Submitted", commercial.submitted, "bg-warn"],
+              ["Approved", commercial.approved, "bg-accent"],
+              ["Paid", commercial.paid, "bg-ok"],
+              ["Retention Held", commercial.retentionHeld, "bg-err"],
+            ] as const).map(([label, amount, dot]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between rounded-lg border border-border bg-black/10 px-3 py-2"
+              >
+                <span className="inline-flex items-center gap-2 text-[13px] text-txt-muted">
+                  <span className={`h-2 w-2 rounded-full ${dot}`} />
+                  {label}
+                </span>
+                <span className="font-mono text-sm font-semibold tabular-nums text-white">
+                  {project.currency || "USD"} {currency(amount)}
                 </span>
               </div>
             ))}
@@ -2405,13 +2478,10 @@ function ProjectOverviewDashboard({
 
           {sortedChecklistItems.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center">
-              <div className="text-lg font-black text-white">No checklist items added yet</div>
-              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-txt-muted">
-                Open the Checklist module to add required project documents, deadlines, responsible people, and verification status.
-              </p>
+              <div className="text-sm font-semibold text-white">No checklist items yet</div>
               <Button
                 variant="primary"
-                className="mt-5"
+                className="mt-4"
                 onClick={() => {
                   setShowChecklistModal(false);
                   onOpenChecklist();
@@ -2857,20 +2927,51 @@ function CreateProjectModal({
               ))}
             </select>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2">
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
-              Classification
+              What kind of project is this?
             </label>
-            <select
-              className="w-full appearance-none rounded-xl border border-border bg-bg-input px-3 py-3 text-sm font-semibold text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
-              value={formData.type}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, type: e.target.value as Project["type"] }))
-              }
-            >
-              <option value="construction">Construction</option>
-              <option value="non-construction">Service Ops</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+              {PROJECT_PRESETS.map((preset) => {
+                const selected = formData.preset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        preset: preset.id,
+                        type: preset.type,
+                        // Only nudge the role / category when the user hasn't already typed
+                        // anything else — preserves edits if they jumped back to swap preset.
+                        role: prev.role === "supervision" || prev.role === "contractor" || prev.role === "employer"
+                          ? preset.defaultRole
+                          : prev.role,
+                      }))
+                    }
+                    className={`flex h-full flex-col items-start gap-1 rounded-xl border px-3 py-3 text-left transition-all ${
+                      selected
+                        ? "border-accent bg-accent/10 ring-2 ring-accent/40"
+                        : "border-border bg-bg-input hover:border-accent/45 hover:bg-bg-hover"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base leading-none">{preset.marker}</span>
+                      <span className={`text-[13px] font-semibold leading-tight ${selected ? "text-accent" : "text-txt"}`}>
+                        {preset.title}
+                      </span>
+                    </div>
+                    <div className="text-[10px] leading-snug text-txt-muted">
+                      {preset.blurb}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-txt-dim">
+              {getProjectPreset(formData.preset).helper}
+            </p>
           </div>
           <div className="space-y-2">
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">

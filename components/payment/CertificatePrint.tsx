@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx-js-style";
 import type { PaymentCertificate } from "@/lib/supabase";
 import { currency } from "@/lib/store";
+import {
+  parsePaymentNumber,
+  paymentCertificateCalcs,
+  paymentLineState,
+} from "@/lib/payment-calculations";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 
@@ -12,67 +17,62 @@ interface CertificatePrintProps {
   projectName: string;
 }
 
+const fmt = (value: number) => currency(value);
+
+const certificateTitle = (cert: PaymentCertificate) =>
+  `${cert.type === "final" ? "Final Payment Certificate" : "Interim Payment Certificate"} No. ${String(
+    cert.number
+  ).padStart(2, "0")}${cert.revision ? ` Rev ${cert.revision}` : ""}`;
+
+const selectedSheetTotals = (cert: PaymentCertificate, selectedSheetIds: Set<string>) =>
+  cert.sheets
+    .filter((sheet) => selectedSheetIds.has(sheet.id))
+    .map((sheet, index) => {
+      const totals = sheet.items.reduce(
+        (acc, item) => {
+          const line = paymentLineState(item);
+          acc.boq += line.boqAmount;
+          acc.previous += line.previousAmount;
+          acc.current += line.currentAmount;
+          acc.total += line.totalAmount;
+          return acc;
+        },
+        { boq: 0, previous: 0, current: 0, total: 0 }
+      );
+      return { billNo: index + 1, name: sheet.name, ...totals };
+    });
+
+const safeSheetName = (value: string, fallback: string) =>
+  (value || fallback).replace(/[\\/?*\[\]:]/g, " ").trim().slice(0, 31) || fallback;
+
 export default function CertificatePrint({ cert, projectName }: CertificatePrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [showSelector, setShowSelector] = useState(false);
   const [action, setAction] = useState<"print" | "excel">("print");
   const [includeSummary, setIncludeSummary] = useState(true);
-  const [selectedSheetIds, setSelectedSheetIds] = useState<Set<string>>(new Set(cert.sheets.map((s) => s.id)));
+  const [selectedSheetIds, setSelectedSheetIds] = useState<Set<string>>(
+    new Set(cert.sheets.map((s) => s.id))
+  );
 
-  const allItems = cert.sheets.flatMap((sh) => sh.items);
-  const subTotal = allItems.reduce((s, i) => s + (parseFloat(i.currentAmount) || 0), 0);
-  const prevSubTotal = allItems.reduce((s, i) => s + (parseFloat(i.previousAmount) || 0), 0);
-  const totalSubTotal = allItems.reduce((s, i) => s + (parseFloat(i.totalAmount) || 0), 0);
-  const boqSubTotal = allItems.reduce((s, i) => s + (parseFloat(i.boqAmount) || 0), 0);
-
-  const contingencies = (boqSubTotal * cert.contingenciesPercent) / 100;
-  const afterContingencies = boqSubTotal + contingencies;
-  const govTax = (afterContingencies * cert.governmentTaxPercent) / 100;
-  const grandTotalBoq = afterContingencies + govTax;
-
-  const prevContingencies = (prevSubTotal * cert.contingenciesPercent) / 100;
-  const prevAfterCont = prevSubTotal + prevContingencies;
-  const prevGovTax = (prevAfterCont * cert.governmentTaxPercent) / 100;
-  const prevGrandTotal = prevAfterCont + prevGovTax;
-
-  const currContingencies = (subTotal * cert.contingenciesPercent) / 100;
-  const currAfterCont = subTotal + currContingencies;
-  const currGovTax = (currAfterCont * cert.governmentTaxPercent) / 100;
-  const currGrandTotal = currAfterCont + currGovTax;
-
-  const totalContingencies = (totalSubTotal * cert.contingenciesPercent) / 100;
-  const totalAfterCont = totalSubTotal + totalContingencies;
-  const totalGovTax = (totalAfterCont * cert.governmentTaxPercent) / 100;
-  const totalGrandTotal = totalAfterCont + totalGovTax;
-
-  const prevRetention = (prevGrandTotal * cert.retentionPercent) / 100;
-  const prevAdvance = (prevGrandTotal * cert.advancePaymentPercent) / 100;
-  const prevWithholding = (prevGrandTotal * cert.withholdingTaxPercent) / 100;
-  const prevNet = prevGrandTotal - prevRetention - prevAdvance - prevWithholding;
-
-  const currRetention = (currGrandTotal * cert.retentionPercent) / 100;
-  const currAdvance = (currGrandTotal * cert.advancePaymentPercent) / 100;
-  const currWithholding = (currGrandTotal * cert.withholdingTaxPercent) / 100;
-  const currNet = currGrandTotal - currRetention - currAdvance - currWithholding;
-
-  const totalRetention = (totalGrandTotal * cert.retentionPercent) / 100;
-  const totalAdvance = (totalGrandTotal * cert.advancePaymentPercent) / 100;
-  const totalWithholding = (totalGrandTotal * cert.withholdingTaxPercent) / 100;
-  const totalNet = totalGrandTotal - totalRetention - totalAdvance - totalWithholding;
-
-  const fmt = (v: number) => currency(v);
-  const sheetSummaries = cert.sheets.map((sh, i) => {
-    const boq = sh.items.reduce((s, item) => s + (parseFloat(item.boqAmount) || 0), 0);
-    const prev = sh.items.reduce((s, item) => s + (parseFloat(item.previousAmount) || 0), 0);
-    const curr = sh.items.reduce((s, item) => s + (parseFloat(item.currentAmount) || 0), 0);
-    const total = sh.items.reduce((s, item) => s + (parseFloat(item.totalAmount) || 0), 0);
-    return { billNo: i + 1, name: sh.name, boq, prev, curr, total };
-  });
+  useEffect(() => {
+    setSelectedSheetIds(new Set(cert.sheets.map((s) => s.id)));
+  }, [cert.id, cert.sheets]);
 
   const selectedSheets = useMemo(
-    () => cert.sheets.filter((s) => selectedSheetIds.has(s.id)),
+    () => cert.sheets.filter((sheet) => selectedSheetIds.has(sheet.id)),
     [cert.sheets, selectedSheetIds]
   );
+  const sheetSummaries = useMemo(
+    () => selectedSheetTotals(cert, selectedSheetIds),
+    [cert, selectedSheetIds]
+  );
+  const calcs = paymentCertificateCalcs(cert);
+  const adjustmentAdditions = (cert.adjustments || [])
+    .filter((line) => line.type === "addition")
+    .reduce((sum, line) => sum + parsePaymentNumber(line.amount), 0);
+  const adjustmentDeductions = (cert.adjustments || [])
+    .filter((line) => line.type === "deduction")
+    .reduce((sum, line) => sum + parsePaymentNumber(line.amount), 0);
 
   const toggleSheet = (sheetId: string) => {
     setSelectedSheetIds((prev) => {
@@ -83,34 +83,34 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
     });
   };
 
-  const excelBorder = {
-    top: { style: "thin", color: { rgb: "2A2A2A" } },
-    bottom: { style: "thin", color: { rgb: "2A2A2A" } },
-    left: { style: "thin", color: { rgb: "2A2A2A" } },
-    right: { style: "thin", color: { rgb: "2A2A2A" } },
-  };
-  const baseFont = { name: "Times New Roman", sz: 11, color: { rgb: "111827" } };
-  const greenFill = { patternType: "solid", fgColor: { rgb: "0D7C66" } };
-  const softGreenFill = { patternType: "solid", fgColor: { rgb: "D1FAE5" } };
-
-  const styleRow = (
-    ws: XLSX.WorkSheet,
-    rowNumber: number,
-    colCount: number,
-    style: Record<string, any>,
-    startCol = 0
-  ) => {
-    for (let c = startCol; c < colCount; c++) {
-      const addr = XLSX.utils.encode_cell({ r: rowNumber - 1, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-      (cell as any).s = {
-        font: baseFont,
-        ...((cell as any).s || {}),
-        ...style,
-      };
-    }
-  };
+  const printStyles = `
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; line-height: 1.35; }
+    .page { padding: 0; color: #111827; }
+    .header { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 12px; }
+    .kicker { color: #4b5563; font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 700; }
+    .title { margin-top: 3px; font-size: 18px; font-weight: 800; color: #111827; }
+    .subtitle { margin-top: 3px; font-size: 10.5px; color: #374151; }
+    .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 14px; }
+    .meta div { border: 1px solid #cbd5e1; padding: 6px; min-height: 38px; }
+    .label { display: block; color: #64748b; font-size: 8px; text-transform: uppercase; letter-spacing: 0.13em; font-weight: 700; margin-bottom: 3px; }
+    .value { color: #111827; font-weight: 700; overflow-wrap: anywhere; }
+    h2 { margin: 14px 0 7px; padding-top: 7px; border-top: 1.5px solid #111827; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #111827; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 12px; page-break-inside: auto; }
+    th, td { border: 1px solid #cbd5e1; padding: 4px 5px; color: #111827; vertical-align: top; overflow-wrap: anywhere; word-break: normal; }
+    th { background: #f1f5f9; font-size: 8.5px; text-align: center; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.center { text-align: center; }
+    td.desc { text-align: left; }
+    tr.subtotal td { background: #f8fafc; font-weight: 800; }
+    tr.net td { background: #ecfdf5; font-weight: 900; }
+    tr.warn td { background: #fff7ed; }
+    .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; page-break-inside: avoid; }
+    .sig { min-height: 78px; border-top: 1px solid #111827; padding-top: 6px; }
+    .footer { margin-top: 14px; color: #64748b; font-size: 8px; text-align: center; }
+    .page-break { page-break-before: always; }
+    @media print { @page { size: A4 landscape; margin: 12mm 10mm 14mm; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } tr { page-break-inside: avoid; } }
+  `;
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -118,143 +118,147 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
-      <!DOCTYPE html><html><head><title>Payment Certificate #${cert.number}</title>
-      <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; padding: 20px; }
-      .cert-title { text-align: center; font-size: 14px; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; }
-      .cert-subtitle { text-align: center; font-size: 12px; margin-bottom: 16px; color: #444; } .cert-info { display: flex; justify-content: space-between; margin-bottom: 12px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; } th, td { border: 1px solid #333; padding: 5px 8px; text-align: right; font-size: 10.5px; } th { background: #f0f0f0; text-align: center; }
-      .row-subtotal td { font-weight: 600; background: #f8f8f8; } .row-addition td { background: #fafafa; } .row-grandtotal td { font-weight: 700; background: #eef; } .row-deduction td { color: #c00; } .row-net td { font-weight: 700; background: #e8f5e9; }
-      @media print { @page { margin: 15mm; size: landscape; } }
-      </style></head><body>${content.innerHTML}</body></html>
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${certificateTitle(cert)}</title>
+          <style>${printStyles}</style>
+        </head>
+        <body>${content.innerHTML}</body>
+      </html>
     `);
     printWindow.document.close();
-    setTimeout(() => printWindow.print(), 400);
+    setTimeout(() => printWindow.print(), 350);
+  };
+
+  const excelBorder = {
+    top: { style: "thin", color: { rgb: "CBD5E1" } },
+    bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+    left: { style: "thin", color: { rgb: "CBD5E1" } },
+    right: { style: "thin", color: { rgb: "CBD5E1" } },
+  };
+  const baseFont = { name: "Arial", sz: 10, color: { rgb: "111827" } };
+  const headerFill = { patternType: "solid", fgColor: { rgb: "E2E8F0" } };
+
+  const styleRow = (ws: XLSX.WorkSheet, rowNumber: number, colCount: number, style: Record<string, any>) => {
+    for (let c = 0; c < colCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r: rowNumber - 1, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+      (cell as any).s = {
+        font: baseFont,
+        border: excelBorder,
+        alignment: { vertical: "top", wrapText: true },
+        ...((cell as any).s || {}),
+        ...style,
+      };
+    }
   };
 
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
-    if (includeSummary) {
-      const rows: Array<(string | number)>[] = [
-        [`${cert.type === "final" ? "FINAL" : "INTERIM"} PAYMENT CERTIFICATE No. ${cert.number}`],
-        [`PROJECT: ${projectName.toUpperCase()}`],
-        [`DATE: ${cert.date}`],
-        [],
-        ["BILL NO.", "DESCRIPTION", "BOQ AMOUNT (USD)", "PREVIOUS AMOUNT (USD)", "CURRENT AMOUNT (USD)", "TOTAL AMOUNT (USD)"],
-      ];
-      sheetSummaries.filter((row) => selectedSheets.some((s) => s.name === row.name)).forEach((row) => {
-        rows.push([row.billNo, row.name, row.boq, row.prev, row.curr, row.total]);
-      });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [{ wch: 10 }, { wch: 36 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 20 }];
-      const subtotalRow = rows.length + 1;
-      XLSX.utils.sheet_add_aoa(ws, [
-        ["", "Sub - Total", boqSubTotal, prevSubTotal, subTotal, totalSubTotal],
-        ["", `Add ${cert.contingenciesPercent}% Contingencies`, contingencies, "", "", ""],
-        ["", `Add ${cert.governmentTaxPercent}% Government Tax`, govTax, prevGovTax, currGovTax, totalGovTax],
-        ["", "Grand Total", grandTotalBoq, prevGrandTotal, currGrandTotal, totalGrandTotal],
-        ["", `Less Retention = ${cert.retentionPercent}%`, "", prevRetention, currRetention, totalRetention],
-        ["", `Less Advance Payment = ${cert.advancePaymentPercent}%`, "", prevAdvance, currAdvance, totalAdvance],
-        ["", `Less Withholding Tax = ${cert.withholdingTaxPercent}%`, "", prevWithholding, currWithholding, totalWithholding],
-        ["", "Final Net Amount", "", prevNet, currNet, totalNet],
-      ], { origin: -1 });
-      ws[`C${subtotalRow}`] = { t: "n", f: `SUM(C6:C${subtotalRow - 1})` };
-      ws[`D${subtotalRow}`] = { t: "n", f: `SUM(D6:D${subtotalRow - 1})` };
-      ws[`E${subtotalRow}`] = { t: "n", f: `SUM(E6:E${subtotalRow - 1})` };
-      ws[`F${subtotalRow}`] = { t: "n", f: `SUM(F6:F${subtotalRow - 1})` };
 
-      // Merge top title rows to match print layout
+    if (includeSummary) {
+      const rows: Array<Array<string | number>> = [
+        [certificateTitle(cert)],
+        [`Project: ${projectName}`],
+        [`Period: ${cert.periodStart || cert.date} to ${cert.periodEnd || cert.date}`],
+        [],
+        ["Bill", "Description", "BOQ Amount", "Previous Amount", "Current Amount", "Cumulative Amount"],
+        ...sheetSummaries.map((row) => [row.billNo, row.name, row.boq, row.previous, row.current, row.total]),
+        ["", "Works subtotal", calcs.boqSubTotal, calcs.prevSubTotal, calcs.currSubTotal, calcs.totalSubTotal],
+        ["", "Contingencies", calcs.boq.cont, calcs.prev.cont, calcs.curr.cont, calcs.total.cont],
+        ["", "Government tax", calcs.boq.gov, calcs.prev.gov, calcs.curr.gov, calcs.total.gov],
+        ["", "Gross certified", calcs.boq.grand, calcs.prev.grand, calcs.curr.grand, calcs.total.grand],
+        ["", "Retention deducted", "", calcs.prev.ret, calcs.curr.ret, calcs.total.ret],
+        ["", "Retention released", "", "", calcs.curr.retentionRelease, calcs.curr.retentionRelease],
+        ["", "Advance recovered", "", calcs.prev.advance, calcs.curr.advance, calcs.total.advance],
+        ["", "Withholding tax", "", calcs.prev.wh, calcs.curr.wh, calcs.total.wh],
+        ["", "Adjustment additions", "", "", adjustmentAdditions, adjustmentAdditions],
+        ["", "Adjustment deductions", "", "", adjustmentDeductions, adjustmentDeductions],
+        ["", "Current net payable", "", "", calcs.curr.net, calcs.total.net],
+        ["", "Retention held", "", "", "", calcs.total.retentionHeld],
+        ["", "Advance balance", "", "", "", calcs.total.advanceBalance],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [{ wch: 8 }, { wch: 34 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
       (ws as any)["!merges"] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
         { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
       ];
-
-      // Header + table formatting
-      styleRow(ws, 1, 6, {
-        font: { ...baseFont, bold: true, sz: 14, color: { rgb: "FFFFFF" } },
-        fill: greenFill,
-        border: excelBorder,
-        alignment: { horizontal: "center", vertical: "center" },
-      });
-      styleRow(ws, 2, 6, {
-        font: { ...baseFont, bold: true, sz: 12, color: { rgb: "FFFFFF" } },
-        fill: greenFill,
-        border: excelBorder,
-        alignment: { horizontal: "center", vertical: "center" },
-      });
-      styleRow(ws, 3, 6, {
-        font: { ...baseFont, bold: true, sz: 11, color: { rgb: "FFFFFF" } },
-        fill: greenFill,
-        border: excelBorder,
-        alignment: { horizontal: "center", vertical: "center" },
-      });
-
-      styleRow(ws, 5, 6, {
-        font: { ...baseFont, bold: true, color: { rgb: "FFFFFF" } },
-        fill: greenFill,
-        border: excelBorder,
-        alignment: { horizontal: "center", vertical: "center", wrapText: true },
-      });
-
-      for (let r = 6; r < subtotalRow; r++) {
-        styleRow(ws, r, 6, {
-          border: excelBorder,
-          font: baseFont,
-          alignment: { vertical: "center" },
-        });
-        // text alignment for first two cols, numbers right-aligned
-        styleRow(ws, r, 2, { alignment: { horizontal: "left", vertical: "center" } }, 1);
-        styleRow(ws, r, 6, { alignment: { horizontal: "right", vertical: "center" }, numFmt: "#,##0.00" }, 2);
+      styleRow(ws, 1, 6, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
+      styleRow(ws, 2, 6, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+      styleRow(ws, 3, 6, { alignment: { horizontal: "center" } });
+      styleRow(ws, 5, 6, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+      for (let row = 6; row <= rows.length; row++) {
+        styleRow(ws, row, 6, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
       }
-
-      const summaryStyles: Array<{ row: number; fill: any; bold?: boolean; textColor?: string }> = [
-        { row: subtotalRow, fill: softGreenFill, bold: true, textColor: "065F46" },
-        { row: subtotalRow + 1, fill: softGreenFill },
-        { row: subtotalRow + 2, fill: softGreenFill },
-        { row: subtotalRow + 3, fill: greenFill, bold: true, textColor: "FFFFFF" },
-        { row: subtotalRow + 4, fill: softGreenFill, textColor: "065F46" },
-        { row: subtotalRow + 5, fill: softGreenFill, textColor: "065F46" },
-        { row: subtotalRow + 6, fill: softGreenFill, textColor: "065F46" },
-        { row: subtotalRow + 7, fill: greenFill, bold: true, textColor: "FFFFFF" },
-      ];
-      summaryStyles.forEach(({ row, fill, bold, textColor }) => {
-        styleRow(ws, row, 6, {
-          font: { ...baseFont, bold: !!bold, color: textColor ? { rgb: textColor } : baseFont.color },
-          fill,
-          border: excelBorder,
-          alignment: { vertical: "center" },
-        });
-        styleRow(ws, row, 2, { alignment: { horizontal: "left", vertical: "center" } }, 1);
-        styleRow(ws, row, 6, { alignment: { horizontal: "right", vertical: "center" }, numFmt: "#,##0.00" }, 2);
-      });
-
       XLSX.utils.book_append_sheet(wb, ws, "Summary");
     }
+
     selectedSheets.forEach((sheet) => {
-      const rows: Array<(string | number)>[] = [["#", "Item No.", "Description", "Unit", "BOQ Qty", "Rate", "BOQ Amount", "Previous Amount", "Current Amount", "Total Qty", "Total Amount"]];
-      sheet.items.forEach((item, idx) => rows.push([
-        idx + 1, item.billNo, item.description, item.unit,
-        parseFloat(item.boqQty) || 0, parseFloat(item.boqRate) || 0, parseFloat(item.boqAmount) || 0,
-        parseFloat(item.previousAmount) || 0, parseFloat(item.currentAmount) || 0, parseFloat(item.totalQty) || 0, parseFloat(item.totalAmount) || 0,
-      ]));
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [{ wch: 6 }, { wch: 12 }, { wch: 42 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
-      styleRow(ws, 1, 11, {
-        font: { ...baseFont, bold: true, color: { rgb: "FFFFFF" } },
-        fill: greenFill,
-        border: excelBorder,
-        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      const rows: Array<Array<string | number>> = [[
+        "#",
+        "Item No.",
+        "Description",
+        "Unit",
+        "BOQ Qty",
+        "Rate",
+        "BOQ Amount",
+        "Previous Qty",
+        "Current Qty",
+        "Cumulative Qty",
+        "Balance Qty",
+        "Current Amount",
+        "Cumulative Amount",
+        "Warning / Note",
+      ]];
+      sheet.items.forEach((item, index) => {
+        const line = paymentLineState(item);
+        rows.push([
+          index + 1,
+          item.billNo,
+          item.description,
+          item.unit,
+          line.boqQty,
+          line.rate,
+          line.boqAmount,
+          line.previousQty,
+          line.currentQty,
+          line.totalQty,
+          line.balanceQty,
+          line.currentAmount,
+          line.totalAmount,
+          item.overrideNote || (line.warningStatus === "over-certified" ? "Over BOQ quantity" : ""),
+        ]);
       });
-      for (let r = 2; r <= rows.length; r++) {
-        styleRow(ws, r, 11, { border: excelBorder, alignment: { vertical: "center" }, font: baseFont });
-        styleRow(ws, r, 4, { alignment: { horizontal: "left", vertical: "center" } }, 1);
-        styleRow(ws, r, 11, { alignment: { horizontal: "right", vertical: "center" }, numFmt: "#,##0.00" }, 4);
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 5 },
+        { wch: 12 },
+        { wch: 46 },
+        { wch: 8 },
+        { wch: 11 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 15 },
+        { wch: 16 },
+        { wch: 28 },
+      ];
+      styleRow(ws, 1, 14, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+      for (let row = 2; row <= rows.length; row++) {
+        styleRow(ws, row, 14, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
       }
-      XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31) || "Sheet");
+      XLSX.utils.book_append_sheet(wb, ws, safeSheetName(sheet.name, "Sheet"));
     });
+
     const safeDate = String(cert.date || "").replace(/[^\d-]/g, "") || "date";
-    const safeName = `certificate-${cert.number}-${safeDate}.xlsx`.replace(/[<>:"/\\|?*]+/g, "-");
+    const safeName = `${certificateTitle(cert)}-${safeDate}.xlsx`.replace(/[<>:"/\\|?*]+/g, "-");
     const wbArray = XLSX.write(wb, { bookType: "xlsx", type: "array", compression: true });
     const blob = new Blob([wbArray], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -279,75 +283,260 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
   return (
     <>
       <button
-        onClick={() => { setAction("print"); setShowSelector(true); }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-md text-xs font-medium hover:bg-accent-hover transition-colors cursor-pointer"
+        onClick={() => {
+          setAction("print");
+          setShowSelector(true);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
       >
         Print Certificate
       </button>
       <button
-        onClick={() => { setAction("excel"); setShowSelector(true); }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg-raised text-txt rounded-md text-xs font-medium hover:bg-bg-hover transition-colors cursor-pointer border border-border ml-2"
+        onClick={() => {
+          setAction("excel");
+          setShowSelector(true);
+        }}
+        className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-raised px-3 py-1.5 text-xs font-medium text-txt transition-colors hover:bg-bg-hover"
       >
         Export Excel
       </button>
 
       <div ref={printRef} style={{ position: "absolute", left: "-9999px", top: 0 }}>
-        {includeSummary && (
-          <>
-            <div className="cert-title">{cert.type === "final" ? "FINAL" : "INTERIM"} PAYMENT CERTIFICATE No. {cert.number}</div>
-            <div className="cert-subtitle">SUMMARY BILLS OF QUANTITIES: {projectName.toUpperCase()}</div>
-            <div className="cert-info"><span>Certificate Date: {cert.date}</span><span>Status: {cert.status.toUpperCase()}</span></div>
-            <table>
-              <thead>
-                <tr><th rowSpan={2}>BILL NO.</th><th rowSpan={2}>DESCRIPTION</th><th>1</th><th>2</th><th>3</th><th>4</th></tr>
-                <tr><th>BoQ AMOUNT (USD)</th><th>PREVIOUS AMOUNT (USD)</th><th>CURRENT AMOUNT (USD)</th><th>TOTAL AMOUNT (USD)</th></tr>
-              </thead>
-              <tbody>
-                {sheetSummaries.filter((row) => selectedSheets.some((s) => s.name === row.name)).map((row) => (
-                  <tr key={row.billNo}><td>{row.billNo}</td><td>{row.name}</td><td>{fmt(row.boq)}</td><td>{fmt(row.prev)}</td><td>{fmt(row.curr)}</td><td>{fmt(row.total)}</td></tr>
-                ))}
-                <tr className="row-subtotal"><td></td><td>Sub - Total</td><td>{fmt(boqSubTotal)}</td><td>{fmt(prevSubTotal)}</td><td>{fmt(subTotal)}</td><td>{fmt(totalSubTotal)}</td></tr>
-                <tr className="row-addition"><td></td><td>Add {cert.contingenciesPercent}% Contingencies</td><td>{fmt(contingencies)}</td><td></td><td></td><td></td></tr>
-                <tr className="row-addition"><td></td><td>Add {cert.governmentTaxPercent}% Government Tax</td><td>{fmt(govTax)}</td><td>{fmt(prevGovTax)}</td><td>{fmt(currGovTax)}</td><td>{fmt(totalGovTax)}</td></tr>
-                <tr className="row-grandtotal"><td></td><td>Grand Total</td><td>{fmt(grandTotalBoq)}</td><td>{fmt(prevGrandTotal)}</td><td>{fmt(currGrandTotal)}</td><td>{fmt(totalGrandTotal)}</td></tr>
-                <tr className="row-deduction"><td></td><td>Less Retention = {cert.retentionPercent}%</td><td></td><td>{fmt(prevRetention)}</td><td>{fmt(currRetention)}</td><td>{fmt(totalRetention)}</td></tr>
-                <tr className="row-deduction"><td></td><td>Less Advance Payment = {cert.advancePaymentPercent}%</td><td></td><td>{fmt(prevAdvance)}</td><td>{fmt(currAdvance)}</td><td>{fmt(totalAdvance)}</td></tr>
-                <tr className="row-deduction"><td></td><td>Less Withholding Tax = {cert.withholdingTaxPercent}%</td><td></td><td>{fmt(prevWithholding)}</td><td>{fmt(currWithholding)}</td><td>{fmt(totalWithholding)}</td></tr>
-                <tr className="row-net"><td></td><td>Final Net Amount</td><td></td><td>{fmt(prevNet)}</td><td>{fmt(currNet)}</td><td>{fmt(totalNet)}</td></tr>
-              </tbody>
-            </table>
-          </>
-        )}
-        {selectedSheets.map((sheet, i) => (
-          <div key={sheet.id} style={{ pageBreakBefore: includeSummary || i > 0 ? "always" : "auto" }}>
-            <div className="cert-title">CERTIFICATE DETAIL — {sheet.name}</div>
-            <table>
-              <thead><tr><th>#</th><th>Item No.</th><th>Description</th><th>Unit</th><th>BOQ Qty</th><th>Rate</th><th>BOQ Amt</th><th>Prev Amt</th><th>Curr Amt</th><th>Total Qty</th><th>Total Amt</th></tr></thead>
-              <tbody>
-                {sheet.items.map((item, idx) => (
-                  <tr key={item.id}><td>{idx + 1}</td><td>{item.billNo}</td><td>{item.description}</td><td>{item.unit}</td><td>{currency(item.boqQty)}</td><td>{currency(item.boqRate)}</td><td>{currency(item.boqAmount)}</td><td>{currency(item.previousAmount)}</td><td>{currency(item.currentAmount)}</td><td>{currency(item.totalQty)}</td><td>{currency(item.totalAmount)}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+        <div className="page">
+          {includeSummary && (
+            <>
+              <div className="header">
+                <div className="kicker">Payment certificate</div>
+                <div className="title">{certificateTitle(cert)}</div>
+                <div className="subtitle">{projectName}</div>
+              </div>
+              <div className="meta">
+                <div>
+                  <span className="label">Certificate Date</span>
+                  <span className="value">{cert.date}</span>
+                </div>
+                <div>
+                  <span className="label">Period</span>
+                  <span className="value">{cert.periodStart || cert.date} to {cert.periodEnd || cert.date}</span>
+                </div>
+                <div>
+                  <span className="label">Status</span>
+                  <span className="value">{cert.status.toUpperCase()}</span>
+                </div>
+                <div>
+                  <span className="label">Previous Certificate</span>
+                  <span className="value">{cert.previousCertificateId ? "Linked" : "None"}</span>
+                </div>
+              </div>
+
+              <h2>Summary bills of quantities</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: "7%" }}>Bill</th>
+                    <th style={{ width: "31%" }}>Description</th>
+                    <th>BOQ Amount</th>
+                    <th>Previous Amount</th>
+                    <th>Current Amount</th>
+                    <th>Cumulative Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sheetSummaries.map((row) => (
+                    <tr key={row.name}>
+                      <td className="center">{row.billNo}</td>
+                      <td className="desc">{row.name}</td>
+                      <td className="num">{fmt(row.boq)}</td>
+                      <td className="num">{fmt(row.previous)}</td>
+                      <td className="num">{fmt(row.current)}</td>
+                      <td className="num">{fmt(row.total)}</td>
+                    </tr>
+                  ))}
+                  <tr className="subtotal">
+                    <td />
+                    <td className="desc">Works subtotal</td>
+                    <td className="num">{fmt(calcs.boqSubTotal)}</td>
+                    <td className="num">{fmt(calcs.prevSubTotal)}</td>
+                    <td className="num">{fmt(calcs.currSubTotal)}</td>
+                    <td className="num">{fmt(calcs.totalSubTotal)}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="desc">Contingencies</td>
+                    <td className="num">{fmt(calcs.boq.cont)}</td>
+                    <td className="num">{fmt(calcs.prev.cont)}</td>
+                    <td className="num">{fmt(calcs.curr.cont)}</td>
+                    <td className="num">{fmt(calcs.total.cont)}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="desc">Government tax</td>
+                    <td className="num">{fmt(calcs.boq.gov)}</td>
+                    <td className="num">{fmt(calcs.prev.gov)}</td>
+                    <td className="num">{fmt(calcs.curr.gov)}</td>
+                    <td className="num">{fmt(calcs.total.gov)}</td>
+                  </tr>
+                  <tr className="subtotal">
+                    <td />
+                    <td className="desc">Gross certified</td>
+                    <td className="num">{fmt(calcs.boq.grand)}</td>
+                    <td className="num">{fmt(calcs.prev.grand)}</td>
+                    <td className="num">{fmt(calcs.curr.grand)}</td>
+                    <td className="num">{fmt(calcs.total.grand)}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="desc">Retention deducted</td>
+                    <td />
+                    <td className="num">{fmt(calcs.prev.ret)}</td>
+                    <td className="num">{fmt(calcs.curr.ret)}</td>
+                    <td className="num">{fmt(calcs.total.ret)}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="desc">Retention released</td>
+                    <td />
+                    <td />
+                    <td className="num">{fmt(calcs.curr.retentionRelease)}</td>
+                    <td className="num">{fmt(calcs.curr.retentionRelease)}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="desc">Advance recovered</td>
+                    <td />
+                    <td className="num">{fmt(calcs.prev.advance)}</td>
+                    <td className="num">{fmt(calcs.curr.advance)}</td>
+                    <td className="num">{fmt(calcs.total.advance)}</td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="desc">Withholding tax</td>
+                    <td />
+                    <td className="num">{fmt(calcs.prev.wh)}</td>
+                    <td className="num">{fmt(calcs.curr.wh)}</td>
+                    <td className="num">{fmt(calcs.total.wh)}</td>
+                  </tr>
+                  {(cert.adjustments || []).map((line) => (
+                    <tr key={line.id} className={line.type === "deduction" ? "warn" : undefined}>
+                      <td />
+                      <td className="desc">
+                        {line.type === "deduction" ? "Less" : "Add"} {line.label}
+                        {line.note ? ` - ${line.note}` : ""}
+                      </td>
+                      <td />
+                      <td />
+                      <td className="num">{fmt(parsePaymentNumber(line.amount))}</td>
+                      <td className="num">{fmt(parsePaymentNumber(line.amount))}</td>
+                    </tr>
+                  ))}
+                  <tr className="net">
+                    <td />
+                    <td className="desc">Current net payable</td>
+                    <td />
+                    <td className="num">{fmt(calcs.prev.net)}</td>
+                    <td className="num">{fmt(calcs.curr.net)}</td>
+                    <td className="num">{fmt(calcs.total.net)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="signatures">
+                <div className="sig">
+                  <span className="label">Prepared by</span>
+                  <div className="value">{cert.contractorName || "Contractor representative"}</div>
+                  <div>{cert.contractorCompany}</div>
+                </div>
+                <div className="sig">
+                  <span className="label">Checked by</span>
+                  <div className="value">{cert.engineerName || "Engineer representative"}</div>
+                  <div>{cert.engineerOrg}</div>
+                </div>
+                <div className="sig">
+                  <span className="label">Approved by</span>
+                  <div className="value">{cert.employerName || "Employer representative"}</div>
+                  <div>{cert.employerOrg}</div>
+                </div>
+              </div>
+              <div className="footer">Generated from Planovera project controls.</div>
+            </>
+          )}
+
+          {selectedSheets.map((sheet, sheetIndex) => (
+            <div key={sheet.id} className={includeSummary || sheetIndex > 0 ? "page-break" : ""}>
+              <div className="header">
+                <div className="kicker">Certificate detail</div>
+                <div className="title">{sheet.name}</div>
+                <div className="subtitle">{certificateTitle(cert)} - {projectName}</div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: "4%" }}>#</th>
+                    <th style={{ width: "8%" }}>Item No.</th>
+                    <th style={{ width: "25%" }}>Description</th>
+                    <th style={{ width: "6%" }}>Unit</th>
+                    <th>BOQ Qty</th>
+                    <th>Rate</th>
+                    <th>BOQ Amount</th>
+                    <th>Prev Qty</th>
+                    <th>Curr Qty</th>
+                    <th>Cum Qty</th>
+                    <th>Balance</th>
+                    <th>Curr Amount</th>
+                    <th>Cum Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sheet.items.map((item, index) => {
+                    const line = paymentLineState(item);
+                    return (
+                      <tr key={item.id} className={line.warningStatus === "over-certified" ? "warn" : ""}>
+                        <td className="center">{index + 1}</td>
+                        <td className="center">{item.billNo}</td>
+                        <td className="desc">
+                          {item.description}
+                          {item.overrideNote ? <div><strong>Note:</strong> {item.overrideNote}</div> : null}
+                        </td>
+                        <td className="center">{item.unit}</td>
+                        <td className="num">{fmt(line.boqQty)}</td>
+                        <td className="num">{fmt(line.rate)}</td>
+                        <td className="num">{fmt(line.boqAmount)}</td>
+                        <td className="num">{fmt(line.previousQty)}</td>
+                        <td className="num">{fmt(line.currentQty)}</td>
+                        <td className="num">{fmt(line.totalQty)}</td>
+                        <td className="num">{fmt(line.balanceQty)}</td>
+                        <td className="num">{fmt(line.currentAmount)}</td>
+                        <td className="num">{fmt(line.totalAmount)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <Modal open={showSelector} onClose={() => setShowSelector(false)} title={action === "excel" ? "Export to Excel" : "Print Certificate"} width={520}>
-        <p className="text-sm text-txt-muted mb-3">Select which pages/sheets to include.</p>
-        <div className="space-y-2 max-h-[300px] overflow-auto border border-border rounded-lg p-3 bg-bg-raised/30">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
+      <Modal
+        open={showSelector}
+        onClose={() => setShowSelector(false)}
+        title={action === "excel" ? "Export to Excel" : "Print Certificate"}
+        width={520}
+      >
+        <p className="mb-3 text-sm text-txt-muted">Select which pages/sheets to include.</p>
+        <div className="max-h-[300px] space-y-2 overflow-auto rounded-lg border border-border bg-bg-raised/30 p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input type="checkbox" checked={includeSummary} onChange={(e) => setIncludeSummary(e.target.checked)} />
             Include Summary Page
           </label>
           {cert.sheets.map((sheet) => (
-            <label key={sheet.id} className="flex items-center gap-2 text-sm cursor-pointer">
+            <label key={sheet.id} className="flex cursor-pointer items-center gap-2 text-sm">
               <input type="checkbox" checked={selectedSheetIds.has(sheet.id)} onChange={() => toggleSheet(sheet.id)} />
               {sheet.name}
             </label>
           ))}
         </div>
-        <div className="flex justify-end gap-3 mt-4">
+        <div className="mt-4 flex justify-end gap-3">
           <Button variant="ghost" onClick={() => setShowSelector(false)}>Cancel</Button>
           <Button variant="primary" disabled={!includeSummary && selectedSheets.length === 0} onClick={runAction}>
             {action === "excel" ? "Export Selected" : "Print Selected"}

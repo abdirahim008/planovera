@@ -21,11 +21,14 @@ import type {
   MeetingAttendee,
   MeetingAttendeeGroup,
   MeetingMinute,
+  MeetingSeries,
   Project,
 } from "@/lib/supabase";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
+import RichTextEditor from "@/components/ui/RichTextEditor";
+import { sanitizeRichTextHtml, stripRichTextToPlain } from "@/lib/richText";
 
 const todayIso = () => new Date().toISOString().split("T")[0];
 
@@ -80,6 +83,18 @@ const createEmptyActionItem = (projectId: string): MeetingActionItem => ({
   notes: "",
 });
 
+const createEmptySeries = (): MeetingSeries => ({
+  id: uuid(),
+  name: "",
+  description: "",
+  cadence: "biweekly",
+  projectIds: [],
+  defaultAttendees: [],
+  defaultAgendas: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+});
+
 const createEmptyGroup = (): MeetingAttendeeGroup => ({
   id: uuid(),
   name: "",
@@ -99,14 +114,8 @@ const escapeMeetingPrintHtml = (value: string | number | null | undefined) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const escapeMeetingPrintMultiline = (value: string | number | null | undefined) =>
-  escapeMeetingPrintHtml(value).replace(/\n/g, "<br />");
-
 const meetingStatusLabel = (status: MeetingMinute["status"]) =>
   status === "final" ? "Final" : "Draft";
-
-const meetingPriorityLabel = (priority: MeetingActionItem["priority"]) =>
-  priority.charAt(0).toUpperCase() + priority.slice(1);
 
 const meetingActionStatusLabel = (status: MeetingActionItem["status"]) =>
   status === "in-progress" ? "In Progress" : status.charAt(0).toUpperCase() + status.slice(1);
@@ -299,6 +308,13 @@ const meetingPrintStyles = () => `
     white-space: normal;
     overflow-wrap: anywhere;
   }
+  .agenda-discussion p { margin: 0 0 6px; }
+  .agenda-discussion p:last-child { margin-bottom: 0; }
+  .agenda-discussion ul { list-style: disc; margin: 0 0 6px; padding-left: 22px; }
+  .agenda-discussion ol { list-style: decimal; margin: 0 0 6px; padding-left: 22px; }
+  .agenda-discussion li { margin-bottom: 2px; }
+  .agenda-discussion strong { font-weight: 700; color: #0f172a; }
+  .agenda-discussion u { text-underline-offset: 2px; }
   .project-group {
     margin-bottom: 10px;
     break-inside: avoid;
@@ -408,7 +424,9 @@ function buildMeetingMinutePrintHtml(minute: MeetingMinute, projects: Project[])
                 <div class="agenda-title">${escapeMeetingPrintHtml(agenda.title || "Agenda topic")}</div>
               </div>
               <div class="agenda-discussion">${
-                agenda.discussion ? escapeMeetingPrintMultiline(agenda.discussion) : "No discussion notes recorded."
+                agenda.discussion && stripRichTextToPlain(agenda.discussion)
+                  ? sanitizeRichTextHtml(agenda.discussion)
+                  : "No discussion notes recorded."
               }</div>
             </div>
           `
@@ -425,13 +443,12 @@ function buildMeetingMinutePrintHtml(minute: MeetingMinute, projects: Project[])
               (actionItem, index) => `
                 <tr>
                   <td style="width:6%">${index + 1}</td>
-                  <td style="width:38%">
+                  <td style="width:48%">
                     ${escapeMeetingPrintHtml(actionItem.description || "Action item")}
                   </td>
-                  <td style="width:18%">${escapeMeetingPrintHtml(actionItem.responsiblePerson || "-")}</td>
+                  <td style="width:20%">${escapeMeetingPrintHtml(actionItem.responsiblePerson || "-")}</td>
                   <td style="width:13%">${escapeMeetingPrintHtml(meetingPrintDate(actionItem.deadline))}</td>
                   <td style="width:13%">${escapeMeetingPrintHtml(meetingActionStatusLabel(actionItem.status))}</td>
-                  <td style="width:12%">${escapeMeetingPrintHtml(meetingPriorityLabel(actionItem.priority))}</td>
                 </tr>
               `
             )
@@ -451,7 +468,6 @@ function buildMeetingMinutePrintHtml(minute: MeetingMinute, projects: Project[])
                           <th>Responsible</th>
                           <th>Deadline</th>
                           <th>Status</th>
-                          <th>Priority</th>
                         </tr>
                       </thead>
                       <tbody>${rows}</tbody>
@@ -595,11 +611,21 @@ function openMeetingMinutePdf(minute: MeetingMinute, projects: Project[]) {
 
 function createMinuteDraft(
   projects: Project[],
-  meetingMinutes: MeetingMinute[]
+  meetingMinutes: MeetingMinute[],
+  series?: MeetingSeries | null,
 ) {
   const now = new Date().toISOString();
   const date = todayIso();
-  const liveActions = getLiveMeetingActionItems(meetingMinutes).filter((action) => action.status !== "closed");
+
+  // If a series is provided, restrict carry-forward to projects in the series scope.
+  const scopedProjectIds = series ? new Set(series.projectIds) : null;
+  const scopedProjects = scopedProjectIds
+    ? projects.filter((project) => scopedProjectIds.has(project.id))
+    : projects;
+
+  const liveActions = getLiveMeetingActionItems(meetingMinutes)
+    .filter((action) => action.status !== "closed")
+    .filter((action) => (scopedProjectIds ? scopedProjectIds.has(action.project_id) : true));
 
   const groupsByProject = new Map<string, MeetingActionItem[]>();
   liveActions.forEach((action) => {
@@ -627,9 +653,23 @@ function createMinuteDraft(
     })
   );
 
+  // Default attendees from series (deep-copied so future edits to the series don't mutate this minute).
+  const defaultAttendees = series?.defaultAttendees?.length
+    ? series.defaultAttendees.map((attendee) => ({ ...attendee, id: uuid() }))
+    : [];
+
+  // Default agendas from series (deep-copied). Falls back to a single blank agenda.
+  const defaultAgendas = series?.defaultAgendas?.length
+    ? series.defaultAgendas.map((agenda) => ({ ...agenda, id: uuid() }))
+    : [createEmptyAgenda()];
+
+  const fallbackProject = scopedProjects[0] ?? projects[0];
+
+  const titlePrefix = series?.name ? series.name : "Project Review Meeting";
+
   return {
     id: uuid(),
-    title: `Project Review Meeting - ${new Date(date).toLocaleDateString("en-GB", {
+    title: `${titlePrefix} - ${new Date(date).toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -637,13 +677,14 @@ function createMinuteDraft(
     meetingDate: date,
     status: "draft" as const,
     referenceNo: `MM-${String(meetingMinutes.length + 1).padStart(3, "0")}`,
-    attendees: [],
-    agendas: [createEmptyAgenda()],
+    meetingSeriesId: series?.id,
+    attendees: defaultAttendees,
+    agendas: defaultAgendas,
     actionGroups:
-      actionGroups.length > 0 && projects.length > 0
+      actionGroups.length > 0 && fallbackProject
         ? actionGroups
-        : projects.length > 0
-        ? [{ id: uuid(), project_id: projects[0].id, actionItems: [createEmptyActionItem(projects[0].id)] }]
+        : fallbackProject
+        ? [{ id: uuid(), project_id: fallbackProject.id, actionItems: [createEmptyActionItem(fallbackProject.id)] }]
         : [],
     createdAt: now,
     updatedAt: now,
@@ -746,14 +787,9 @@ function AttendeeGroupsModal({
 
         <div className="rounded-2xl border border-border bg-bg-raised p-4">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-txt-dim">
-                {editingId ? "Edit Group" : "Create Group"}
-              </div>
-              <div className="mt-1 text-lg font-bold text-white">
-                Reusable attendees for recurring meetings
-              </div>
-            </div>
+            <h3 className="text-base font-semibold text-white">
+              {editingId ? "Edit Group" : "Create Group"}
+            </h3>
             <Button variant="ghost" size="sm" onClick={resetDraft}>
               <X size={14} /> Clear
             </Button>
@@ -874,6 +910,462 @@ function AttendeeGroupsModal({
   );
 }
 
+function MeetingSeriesModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { projects, meetingSeries, saveMeetingSeries, deleteMeetingSeries } = useAppStore();
+  const [draft, setDraft] = useState<MeetingSeries>(createEmptySeries());
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const startEdit = (series: MeetingSeries) => {
+    setDraft({
+      ...series,
+      projectIds: [...series.projectIds],
+      defaultAttendees: series.defaultAttendees.map((attendee) => ({ ...attendee })),
+      defaultAgendas: series.defaultAgendas.map((agenda) => ({ ...agenda })),
+    });
+    setEditingId(series.id);
+  };
+
+  const resetDraft = () => {
+    setDraft(createEmptySeries());
+    setEditingId(null);
+  };
+
+  const toggleProject = (projectId: string) => {
+    setDraft((current) => ({
+      ...current,
+      projectIds: current.projectIds.includes(projectId)
+        ? current.projectIds.filter((id) => id !== projectId)
+        : [...current.projectIds, projectId],
+    }));
+  };
+
+  const saveSeries = () => {
+    if (!draft.name.trim()) return;
+    saveMeetingSeries({
+      ...draft,
+      id: editingId || draft.id,
+      name: draft.name.trim(),
+      description: draft.description?.trim() || "",
+      defaultAttendees: draft.defaultAttendees
+        .map((attendee) => ({
+          ...attendee,
+          name: attendee.name.trim(),
+          designation: attendee.designation.trim(),
+          organization: attendee.organization.trim(),
+        }))
+        .filter((attendee) => attendee.name),
+      defaultAgendas: draft.defaultAgendas
+        .map((agenda) => ({
+          ...agenda,
+          title: agenda.title.trim(),
+          discussion: agenda.discussion.trim(),
+        }))
+        .filter((agenda) => agenda.title),
+      createdAt: editingId ? draft.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    resetDraft();
+  };
+
+  const cadenceOptions: Array<{ value: NonNullable<MeetingSeries["cadence"]>; label: string }> = [
+    { value: "weekly", label: "Weekly" },
+    { value: "biweekly", label: "Bi-weekly" },
+    { value: "monthly", label: "Monthly" },
+    { value: "adhoc", label: "Ad hoc" },
+  ];
+
+  return (
+    <Modal open={open} onClose={onClose} title="Meeting Series" width={1040}>
+      <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-border bg-bg-raised p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Saved series</div>
+            <div className="mt-3 flex flex-col gap-2">
+              {meetingSeries.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-txt-muted">
+                  No series yet. Create one to scope a recurring meeting to specific projects.
+                </div>
+              ) : (
+                meetingSeries.map((series) => (
+                  <button
+                    key={series.id}
+                    type="button"
+                    onClick={() => startEdit(series)}
+                    className={`rounded-xl border bg-bg-surface p-3 text-left transition ${
+                      editingId === series.id ? "border-accent/50" : "border-border hover:border-accent/30"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-white">{series.name}</div>
+                        <div className="mt-1 truncate text-xs text-txt-muted">
+                          {series.projectIds.length} project{series.projectIds.length !== 1 ? "s" : ""} ·{" "}
+                          {series.defaultAttendees.length} default attendee
+                          {series.defaultAttendees.length !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (window.confirm(`Delete series "${series.name}"? Past minutes will be kept but unlinked.`)) {
+                            deleteMeetingSeries(series.id);
+                            if (editingId === series.id) resetDraft();
+                          }
+                        }}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-txt-dim transition hover:bg-err/15 hover:text-err"
+                        aria-label="Delete series"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-bg-raised p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-white">
+              {editingId ? "Edit series" : "Create series"}
+            </h3>
+            <Button variant="ghost" size="sm" onClick={resetDraft}>
+              <X size={14} /> Clear
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr]">
+              <div>
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Series name
+                </label>
+                <input
+                  value={draft.name}
+                  onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                  className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
+                  placeholder="e.g. Bi-weekly Road Package Review"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Cadence
+                </label>
+                <select
+                  value={draft.cadence}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      cadence: event.target.value as MeetingSeries["cadence"],
+                    }))
+                  }
+                  className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
+                >
+                  {cadenceOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                Description
+              </label>
+              <input
+                value={draft.description ?? ""}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, description: event.target.value }))
+                }
+                className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
+                placeholder="Optional note about the series"
+              />
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Projects in scope
+                </div>
+                <span className="text-[11px] text-txt-muted">
+                  {draft.projectIds.length} selected
+                </span>
+              </div>
+              {projects.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-3 text-xs text-txt-muted">
+                  Create a project first to assign it to a series.
+                </div>
+              ) : (
+                <div className="max-h-44 overflow-y-auto rounded-lg border border-border bg-bg-input">
+                  {projects.map((project) => {
+                    const checked = draft.projectIds.includes(project.id);
+                    return (
+                      <label
+                        key={project.id}
+                        className="flex cursor-pointer items-center gap-2.5 border-b border-border/50 px-3 py-2 text-[13px] last:border-b-0 hover:bg-bg-hover"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleProject(project.id)}
+                          className="h-4 w-4 cursor-pointer accent-accent"
+                        />
+                        <span className="min-w-0 flex-1 truncate text-txt">{project.name}</span>
+                        <span className="shrink-0 text-[10px] text-txt-dim">
+                          {project.type === "construction" ? "Constr" : "Non-c"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Default attendees
+                </div>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      defaultAttendees: [...current.defaultAttendees, createEmptyAttendee()],
+                    }))
+                  }
+                >
+                  <Plus size={13} /> Add
+                </Button>
+              </div>
+              {draft.defaultAttendees.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-txt-muted">
+                  Add attendees to pre-fill the attendee list when a new meeting is created from this series.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {draft.defaultAttendees.map((attendee) => (
+                    <div
+                      key={attendee.id}
+                      className="grid gap-1.5 rounded-lg border border-border bg-bg-input p-2 sm:grid-cols-[1.2fr_1fr_1fr_36px]"
+                    >
+                      <input
+                        value={attendee.name}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            defaultAttendees: current.defaultAttendees.map((item) =>
+                              item.id === attendee.id ? { ...item, name: event.target.value } : item,
+                            ),
+                          }))
+                        }
+                        className="data-cell-input px-2 py-1 text-sm"
+                        placeholder="Name"
+                      />
+                      <input
+                        value={attendee.designation}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            defaultAttendees: current.defaultAttendees.map((item) =>
+                              item.id === attendee.id
+                                ? { ...item, designation: event.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        className="data-cell-input px-2 py-1 text-sm"
+                        placeholder="Designation"
+                      />
+                      <input
+                        value={attendee.organization}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            defaultAttendees: current.defaultAttendees.map((item) =>
+                              item.id === attendee.id
+                                ? { ...item, organization: event.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        className="data-cell-input px-2 py-1 text-sm"
+                        placeholder="Organization"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            defaultAttendees: current.defaultAttendees.filter(
+                              (item) => item.id !== attendee.id,
+                            ),
+                          }))
+                        }
+                        className="inline-flex h-8 w-8 items-center justify-center self-center rounded-md text-txt-dim transition hover:bg-err/15 hover:text-err"
+                        aria-label="Remove attendee"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Default agenda topics
+                </div>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      defaultAgendas: [...current.defaultAgendas, createEmptyAgenda()],
+                    }))
+                  }
+                >
+                  <Plus size={13} /> Add
+                </Button>
+              </div>
+              {draft.defaultAgendas.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-txt-muted">
+                  Add standing agenda topics (e.g. Safety, Progress, Variations). They&apos;ll be pre-filled
+                  in each new meeting from this series.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {draft.defaultAgendas.map((agenda, index) => (
+                    <div
+                      key={agenda.id}
+                      className="grid gap-1.5 rounded-lg border border-border bg-bg-input p-2 sm:grid-cols-[24px_1fr_36px]"
+                    >
+                      <div className="flex items-center justify-center text-xs font-medium text-txt-dim">
+                        {index + 1}
+                      </div>
+                      <input
+                        value={agenda.title}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            defaultAgendas: current.defaultAgendas.map((item) =>
+                              item.id === agenda.id ? { ...item, title: event.target.value } : item,
+                            ),
+                          }))
+                        }
+                        className="data-cell-input px-2 py-1 text-sm"
+                        placeholder="Agenda topic (e.g. Progress per package)"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            defaultAgendas: current.defaultAgendas.filter(
+                              (item) => item.id !== agenda.id,
+                            ),
+                          }))
+                        }
+                        className="inline-flex h-8 w-8 items-center justify-center self-center rounded-md text-txt-dim transition hover:bg-err/15 hover:text-err"
+                        aria-label="Remove agenda"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={onClose}>Close</Button>
+            <Button variant="primary" onClick={saveSeries} disabled={!draft.name.trim()}>
+              {editingId ? "Update series" : "Create series"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SeriesPickerModal({
+  open,
+  seriesList,
+  onCancel,
+  onPick,
+}: {
+  open: boolean;
+  seriesList: MeetingSeries[];
+  onCancel: () => void;
+  onPick: (series: MeetingSeries | null) => void;
+}) {
+  return (
+    <Modal open={open} onClose={onCancel} title="Start a new meeting" width={520}>
+      <div className="space-y-2">
+        <p className="text-[13px] text-txt-muted">
+          Choose a series to pre-fill projects, attendees, and agenda — or skip to start an ad-hoc meeting.
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {seriesList.map((series) => (
+            <button
+              key={series.id}
+              type="button"
+              onClick={() => onPick(series)}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-bg-surface px-3 py-2.5 text-left transition hover:border-accent/40 hover:bg-bg-hover"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-white">{series.name}</div>
+                <div className="mt-0.5 truncate text-[11px] text-txt-muted">
+                  {series.projectIds.length} project{series.projectIds.length !== 1 ? "s" : ""}
+                  {series.cadence ? ` · ${series.cadence}` : ""}
+                  {series.defaultAttendees.length
+                    ? ` · ${series.defaultAttendees.length} default attendee${
+                        series.defaultAttendees.length !== 1 ? "s" : ""
+                      }`
+                    : ""}
+                </div>
+              </div>
+              <span className="shrink-0 text-[11px] font-medium text-accent">Use series ›</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-bg-surface/60 px-3 py-2.5 text-left transition hover:border-txt-muted/50 hover:bg-bg-hover"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-txt">No series</div>
+              <div className="mt-0.5 text-[11px] text-txt-muted">
+                Pull open action points from all projects (ad-hoc).
+              </div>
+            </div>
+            <span className="shrink-0 text-[11px] font-medium text-txt-muted">Continue ›</span>
+          </button>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end border-t border-border pt-3">
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function MeetingMinutesModule() {
   const {
     projects,
@@ -882,12 +1374,21 @@ export default function MeetingMinutesModule() {
     saveMeetingMinute,
     deleteMeetingMinute,
     duplicateMeetingMinute,
+    reopenMeetingAction,
+    meetingSeries,
   } = useAppStore();
 
   const [showGroupsModal, setShowGroupsModal] = useState(false);
+  const [showSeriesModal, setShowSeriesModal] = useState(false);
+  const [showSeriesPicker, setShowSeriesPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [draftMinute, setDraftMinute] = useState<MeetingMinute | null>(null);
+
+  const seriesById = useMemo(
+    () => Object.fromEntries(meetingSeries.map((series) => [series.id, series])),
+    [meetingSeries],
+  );
 
   const sortedMinutes = useMemo(
     () =>
@@ -916,9 +1417,20 @@ export default function MeetingMinutesModule() {
     setSelectedGroupId("");
   };
 
-  const startNewMinute = () => {
-    setDraftMinute(createMinuteDraft(projects, meetingMinutes));
+  const startNewMinute = (series?: MeetingSeries | null) => {
+    setDraftMinute(createMinuteDraft(projects, meetingMinutes, series));
     setSelectedGroupId("");
+    setShowSeriesPicker(false);
+  };
+
+  const handleClickNewMinute = () => {
+    // If at least one series exists, prompt the user to pick one (or none).
+    // Otherwise, fall straight through to an ad-hoc minute (current behavior).
+    if (meetingSeries.length > 0) {
+      setShowSeriesPicker(true);
+    } else {
+      startNewMinute(null);
+    }
   };
 
   const saveCurrentMinute = () => {
@@ -988,11 +1500,19 @@ export default function MeetingMinutesModule() {
               group.id === groupId
                 ? {
                     ...group,
-                    actionItems: group.actionItems.map((actionItem) =>
-                      actionItem.id === actionItemId
-                        ? { ...actionItem, ...patch }
-                        : actionItem
-                    ),
+                    actionItems: group.actionItems.map((actionItem) => {
+                      if (actionItem.id !== actionItemId) return actionItem;
+                      const merged = { ...actionItem, ...patch };
+                      // Stamp / clear closedAt automatically when status flips.
+                      if (patch.status !== undefined) {
+                        if (patch.status === "closed" && actionItem.status !== "closed") {
+                          merged.closedAt = new Date().toISOString();
+                        } else if (patch.status !== "closed" && actionItem.status === "closed") {
+                          merged.closedAt = undefined;
+                        }
+                      }
+                      return merged;
+                    }),
                   }
                 : group
             ),
@@ -1024,23 +1544,16 @@ export default function MeetingMinutesModule() {
     return (
       <div className="animate-fade-in">
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border bg-bg-surface px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
-              <ClipboardList size={13} className="text-accent" />
-              Portfolio Meetings
-            </div>
-            <h2 className="text-3xl font-black tracking-tight text-white">Meeting Minutes</h2>
-            <p className="mt-2 max-w-3xl text-sm text-txt-muted">
-              Create weekly or monthly minutes across multiple projects, reuse attendee groups,
-              and keep project action points flowing into the next meeting until they are closed.
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold tracking-tight text-white">Meeting Minutes</h2>
           <div className="flex flex-wrap gap-2">
+            <Button variant="default" size="sm" onClick={() => setShowSeriesModal(true)}>
+              <CalendarDays size={14} /> Meeting Series
+            </Button>
             <Button variant="default" size="sm" onClick={() => setShowGroupsModal(true)}>
               <Users size={14} /> Attendee Groups
             </Button>
-            <Button variant="primary" size="sm" onClick={startNewMinute}>
-              <Plus size={14} /> Create Minutes
+            <Button variant="primary" size="sm" onClick={handleClickNewMinute}>
+              <Plus size={14} /> New Minutes
             </Button>
           </div>
         </div>
@@ -1049,42 +1562,33 @@ export default function MeetingMinutesModule() {
           <SummaryCard
             title="Meeting Minutes"
             value={String(sortedMinutes.length)}
-            subtitle="Stored meeting records"
             tone="accent"
             icon={<CalendarDays size={18} />}
           />
           <SummaryCard
             title="Open Actions"
             value={String(openActions.length)}
-            subtitle="Live action points across all projects"
             tone="warn"
             icon={<ClipboardList size={18} />}
           />
           <SummaryCard
             title="Overdue Actions"
             value={String(overdueActions.length)}
-            subtitle="Items that need urgent follow-up"
             tone={overdueActions.length > 0 ? "err" : "ok"}
             icon={<CheckCircle2 size={18} />}
           />
           <SummaryCard
             title="Attendee Groups"
             value={String(attendeeGroups.length)}
-            subtitle="Reusable attendance packs"
             tone="accent"
             icon={<Users size={18} />}
           />
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[26px] border border-border bg-bg-surface p-5">
+          <div className="rounded-2xl border border-border bg-bg-surface p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-txt-dim">Minutes Register</div>
-                <div className="mt-1 text-lg font-black text-white">
-                  Saved meeting minutes and carried actions
-                </div>
-              </div>
+              <h3 className="text-base font-semibold text-white">Minutes Register</h3>
             </div>
 
             {sortedMinutes.length === 0 ? (
@@ -1116,6 +1620,11 @@ export default function MeetingMinutesModule() {
                             <Badge color={minute.status === "final" ? "ok" : "warn"}>
                               {minute.status.toUpperCase()}
                             </Badge>
+                            {minute.meetingSeriesId && seriesById[minute.meetingSeriesId] ? (
+                              <Badge color="accent">
+                                {seriesById[minute.meetingSeriesId].name}
+                              </Badge>
+                            ) : null}
                           </div>
                           <div className="mt-2 text-xs text-txt-muted">
                             {minute.meetingDate} • {minute.referenceNo} • {minuteAttendees} attendees •{" "}
@@ -1144,12 +1653,9 @@ export default function MeetingMinutesModule() {
             )}
           </div>
 
-          <div className="rounded-[26px] border border-border bg-bg-surface p-5">
+          <div className="rounded-2xl border border-border bg-bg-surface p-5">
             <div className="mb-4">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-txt-dim">Live Action Register</div>
-              <div className="mt-1 text-lg font-black text-white">
-                Latest project action points from all meetings
-              </div>
+              <h3 className="text-base font-semibold text-white">Live Action Register</h3>
             </div>
 
             <div className="space-y-3">
@@ -1160,6 +1666,8 @@ export default function MeetingMinutesModule() {
               ) : (
                 liveActions.slice(0, 8).map((action) => {
                   const overdue = action.status !== "closed" && action.deadline && action.deadline < todayIso();
+                  const isClosed = action.status === "closed";
+                  const closedAtIso = (action as { closedAt?: string }).closedAt;
                   return (
                     <div key={action.id} className="rounded-2xl border border-border bg-bg-raised p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -1171,11 +1679,28 @@ export default function MeetingMinutesModule() {
                         </div>
                         <div className="flex flex-wrap justify-end gap-2">
                           <Badge color={statusBadge(action.status)}>{action.status.toUpperCase()}</Badge>
-                          <Badge color={overdue ? "err" : "accent"}>{action.priority.toUpperCase()}</Badge>
+                          {overdue ? <Badge color="err">OVERDUE</Badge> : null}
                         </div>
                       </div>
-                      <div className="mt-3 text-xs text-txt-muted">
-                        Due {action.deadline || "not set"} • From {action.meetingTitle}
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-txt-muted">
+                        <span>
+                          {isClosed && closedAtIso
+                            ? `Closed ${new Date(closedAtIso).toLocaleDateString()}`
+                            : `Due ${action.deadline || "not set"}`}
+                          {" • "}
+                          {action.meetingTitle}
+                          {action.meetingDate ? ` (${action.meetingDate})` : ""}
+                        </span>
+                        {isClosed ? (
+                          <button
+                            type="button"
+                            onClick={() => reopenMeetingAction(action.actionKey)}
+                            className="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent transition hover:border-accent/60 hover:bg-accent/15"
+                            title="Reopen this action point so it appears in the next meeting"
+                          >
+                            Reopen
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -1193,7 +1718,7 @@ export default function MeetingMinutesModule() {
             width={420}
           >
             <p className="mb-5 text-sm text-txt-muted">
-              Delete this meeting record? Historical actions captured only in this minute will also be removed.
+              Delete this meeting record?
             </p>
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => setShowDeleteConfirm(null)}>
@@ -1213,6 +1738,13 @@ export default function MeetingMinutesModule() {
         )}
 
         <AttendeeGroupsModal open={showGroupsModal} onClose={() => setShowGroupsModal(false)} />
+        <MeetingSeriesModal open={showSeriesModal} onClose={() => setShowSeriesModal(false)} />
+        <SeriesPickerModal
+          open={showSeriesPicker}
+          seriesList={meetingSeries}
+          onCancel={() => setShowSeriesPicker(false)}
+          onPick={(series) => startNewMinute(series)}
+        />
       </div>
     );
   }
@@ -1221,9 +1753,6 @@ export default function MeetingMinutesModule() {
     <div className="animate-fade-in">
       <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
-            Create Meeting Minutes
-          </div>
           <input
             value={draftMinute.title}
             onChange={(event) =>
@@ -1288,12 +1817,9 @@ export default function MeetingMinutesModule() {
       </div>
 
       <div className="space-y-5">
-        <section className="rounded-[26px] border border-border bg-bg-surface p-5">
+        <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-txt-dim">Members Present</div>
-              <div className="mt-1 text-lg font-black text-white">Attendance list for this meeting</div>
-            </div>
+            <h3 className="text-base font-semibold text-white">Attendees</h3>
             <div className="flex flex-wrap gap-2">
               <select
                 value={selectedGroupId}
@@ -1342,102 +1868,117 @@ export default function MeetingMinutesModule() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            {draftMinute.attendees.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border p-5 text-sm text-txt-muted">
-                No attendees added yet. Load a group or add attendees manually.
-              </div>
-            ) : (
-              draftMinute.attendees.map((attendee, index) => (
-                <div
-                  key={attendee.id}
-                  className="grid gap-2 rounded-xl border border-border bg-bg-raised p-3 lg:grid-cols-[56px_1.1fr_1fr_1fr_48px]"
-                >
-                  <div className="flex items-center text-sm text-txt-dim">{index + 1}</div>
-                  <input
-                    value={attendee.name}
-                    onChange={(event) =>
-                      setDraftMinute((current) =>
-                        current
-                          ? {
-                              ...current,
-                              attendees: current.attendees.map((item) =>
-                                item.id === attendee.id ? { ...item, name: event.target.value } : item
-                              ),
-                            }
-                          : current
-                      )
-                    }
-                    className={meetingEditableCellClass}
-                    placeholder="Name"
-                  />
-                  <input
-                    value={attendee.designation}
-                    onChange={(event) =>
-                      setDraftMinute((current) =>
-                        current
-                          ? {
-                              ...current,
-                              attendees: current.attendees.map((item) =>
-                                item.id === attendee.id
-                                  ? { ...item, designation: event.target.value }
-                                  : item
-                              ),
-                            }
-                          : current
-                      )
-                    }
-                    className={meetingEditableCellClass}
-                    placeholder="Designation / role"
-                  />
-                  <input
-                    value={attendee.organization}
-                    onChange={(event) =>
-                      setDraftMinute((current) =>
-                        current
-                          ? {
-                              ...current,
-                              attendees: current.attendees.map((item) =>
-                                item.id === attendee.id
-                                  ? { ...item, organization: event.target.value }
-                                  : item
-                              ),
-                            }
-                          : current
-                      )
-                    }
-                    className={meetingEditableCellClass}
-                    placeholder="Organization"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDraftMinute((current) =>
-                        current
-                          ? {
-                              ...current,
-                              attendees: current.attendees.filter((item) => item.id !== attendee.id),
-                            }
-                          : current
-                      )
-                    }
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-transparent text-txt-dim transition hover:border-err/30 hover:text-err"
-                    aria-label="Remove attendee"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+          {draftMinute.attendees.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border px-4 py-3 text-[13px] text-txt-muted">
+              No attendees added yet. Load a group or add attendees manually.
+            </div>
+          ) : (
+            <div className="data-table-shell">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 44 }}>#</th>
+                    <th>Name</th>
+                    <th>Designation / role</th>
+                    <th>Organization</th>
+                    <th style={{ width: 36 }} aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {draftMinute.attendees.map((attendee, index) => (
+                    <tr key={attendee.id}>
+                      <td className="data-cell-index">{index + 1}</td>
+                      <td>
+                        <input
+                          value={attendee.name}
+                          onChange={(event) =>
+                            setDraftMinute((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    attendees: current.attendees.map((item) =>
+                                      item.id === attendee.id ? { ...item, name: event.target.value } : item
+                                    ),
+                                  }
+                                : current
+                            )
+                          }
+                          className="data-cell-input"
+                          placeholder="Name"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={attendee.designation}
+                          onChange={(event) =>
+                            setDraftMinute((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    attendees: current.attendees.map((item) =>
+                                      item.id === attendee.id
+                                        ? { ...item, designation: event.target.value }
+                                        : item
+                                    ),
+                                  }
+                                : current
+                            )
+                          }
+                          className="data-cell-input"
+                          placeholder="Designation / role"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={attendee.organization}
+                          onChange={(event) =>
+                            setDraftMinute((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    attendees: current.attendees.map((item) =>
+                                      item.id === attendee.id
+                                        ? { ...item, organization: event.target.value }
+                                        : item
+                                    ),
+                                  }
+                                : current
+                            )
+                          }
+                          className="data-cell-input"
+                          placeholder="Organization"
+                        />
+                      </td>
+                      <td className="data-cell-action">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDraftMinute((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    attendees: current.attendees.filter((item) => item.id !== attendee.id),
+                                  }
+                                : current
+                            )
+                          }
+                          className="data-row-action danger"
+                          aria-label="Remove attendee"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
-        <section className="rounded-[26px] border border-border bg-bg-surface p-5">
+        <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-txt-dim">Agendas</div>
-              <div className="mt-1 text-lg font-black text-white">Agenda items and discussion notes</div>
-            </div>
+            <h3 className="text-base font-semibold text-white">Agenda</h3>
             <Button
               variant="primary"
               onClick={() =>
@@ -1476,25 +2017,20 @@ export default function MeetingMinutesModule() {
                   className="mb-3 w-full rounded-lg border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent"
                   placeholder="Agenda description"
                 />
-                <textarea
+                <RichTextEditor
                   value={agenda.discussion}
-                  onChange={(event) => updateAgenda(agenda.id, { discussion: event.target.value })}
-                  className="min-h-[140px] w-full rounded-xl border border-border bg-bg-input px-3 py-3 text-sm text-txt outline-none transition focus:border-accent"
+                  onChange={(next) => updateAgenda(agenda.id, { discussion: next })}
                   placeholder="Discussion notes, decisions, and comments"
+                  minHeight={140}
                 />
               </div>
             ))}
           </div>
         </section>
 
-        <section className="rounded-[26px] border border-border bg-bg-surface p-5">
+        <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-txt-dim">Project Action Registry</div>
-              <div className="mt-1 text-lg font-black text-white">
-                Group action points by project and carry them into the next meeting
-              </div>
-            </div>
+            <h3 className="text-base font-semibold text-white">Project Action Registry</h3>
             <Button variant="primary" onClick={addProjectActionGroup} disabled={projects.length === 0}>
               <Plus size={14} /> Assign Action Points to Project
             </Button>
@@ -1639,20 +2175,6 @@ export default function MeetingMinutesModule() {
                           <option value="in-progress">In Progress</option>
                           <option value="closed">Closed</option>
                         </select>
-                        <select
-                          value={actionItem.priority}
-                          onChange={(event) =>
-                            updateActionItem(group.id, actionItem.id, {
-                              priority: event.target.value as MeetingActionItem["priority"],
-                            })
-                          }
-                          className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent"
-                        >
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                          <option value="critical">Critical</option>
-                        </select>
                       </div>
                       {actionItem.carriedForwardFromMinuteId && (
                         <Badge color="accent" className="mt-3">Carried Forward</Badge>
@@ -1669,16 +2191,15 @@ export default function MeetingMinutesModule() {
                         <th className="px-3 py-2">Responsible Person</th>
                         <th className="px-3 py-2">Deadline</th>
                         <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Priority</th>
                         <th className="px-3 py-2">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.actionItems.map((actionItem, index) => (
-                        <tr key={actionItem.id} className="border-t border-border/70 align-top">
-                          <td className="px-3 py-3 text-sm text-txt-dim">{index + 1}</td>
-                          <td className="px-3 py-3">
-                            <div className="space-y-2">
+                        <tr key={actionItem.id} className="border-t border-border/70">
+                          <td className="data-cell-index px-3 py-1.5 align-middle">{index + 1}</td>
+                          <td className="px-3 py-1.5 align-middle">
+                            <div className="space-y-1.5">
                               <textarea
                                 ref={(element) => {
                                   if (element) resizeMeetingTextarea(element);
@@ -1690,7 +2211,8 @@ export default function MeetingMinutesModule() {
                                     description: event.target.value,
                                   });
                                 }}
-                                className={`${meetingEditableCellClass} min-h-[72px] resize-none overflow-hidden`}
+                                rows={1}
+                                className="data-cell-textarea"
                                 placeholder="Action item description"
                               />
                               {actionItem.carriedForwardFromMinuteId && (
@@ -1698,7 +2220,7 @@ export default function MeetingMinutesModule() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-1.5 align-middle">
                             <input
                               value={actionItem.responsiblePerson}
                               onChange={(event) =>
@@ -1706,11 +2228,11 @@ export default function MeetingMinutesModule() {
                                   responsiblePerson: event.target.value,
                                 })
                               }
-                              className={meetingEditableCellClass}
+                              className="data-cell-input"
                               placeholder="Responsible person"
                             />
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-1.5 align-middle">
                             <input
                               type="date"
                               value={actionItem.deadline}
@@ -1719,10 +2241,10 @@ export default function MeetingMinutesModule() {
                                   deadline: event.target.value,
                                 })
                               }
-                              className={`${meetingEditableCellClass} [color-scheme:dark]`}
+                              className="data-cell-input [color-scheme:dark]"
                             />
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-1.5 align-middle">
                             <select
                               value={actionItem.status}
                               onChange={(event) =>
@@ -1730,30 +2252,14 @@ export default function MeetingMinutesModule() {
                                   status: event.target.value as MeetingActionItem["status"],
                                 })
                               }
-                              className={meetingEditableSelectClass}
+                              className="data-cell-select"
                             >
                               <option value="open">Open</option>
                               <option value="in-progress">In Progress</option>
                               <option value="closed">Closed</option>
                             </select>
                           </td>
-                          <td className="px-3 py-3">
-                            <select
-                              value={actionItem.priority}
-                              onChange={(event) =>
-                                updateActionItem(group.id, actionItem.id, {
-                                  priority: event.target.value as MeetingActionItem["priority"],
-                                })
-                              }
-                              className={meetingEditableSelectClass}
-                            >
-                              <option value="low">Low</option>
-                              <option value="medium">Medium</option>
-                              <option value="high">High</option>
-                              <option value="critical">Critical</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-3">
+                          <td className="data-cell-action px-3 py-1.5 align-middle">
                             <button
                               type="button"
                               onClick={() =>
@@ -1775,7 +2281,7 @@ export default function MeetingMinutesModule() {
                                     : current
                                 )
                               }
-                              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-transparent text-txt-dim transition hover:border-err/30 hover:text-err"
+                              className="data-row-action danger"
                               aria-label="Delete action item"
                             >
                               <Trash2 size={14} />
@@ -1818,6 +2324,7 @@ export default function MeetingMinutesModule() {
       </div>
 
       <AttendeeGroupsModal open={showGroupsModal} onClose={() => setShowGroupsModal(false)} />
+      <MeetingSeriesModal open={showSeriesModal} onClose={() => setShowSeriesModal(false)} />
     </div>
   );
 }
@@ -1831,7 +2338,7 @@ function SummaryCard({
 }: {
   title: string;
   value: string;
-  subtitle: string;
+  subtitle?: string;
   tone: "accent" | "ok" | "warn" | "err";
   icon: ReactNode;
 }) {
@@ -1845,14 +2352,14 @@ function SummaryCard({
       : "bg-accent/10 text-accent";
 
   return (
-    <div className="rounded-[24px] border border-border bg-bg-surface p-4">
+    <div className="rounded-2xl border border-border bg-bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">{title}</div>
-          <div className="mt-3 text-3xl font-black text-white">{value}</div>
-          <div className="mt-2 text-xs text-txt-muted">{subtitle}</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{title}</div>
+          <div className="mt-3 text-2xl font-semibold text-white">{value}</div>
+          {subtitle ? <div className="mt-2 text-xs text-txt-muted">{subtitle}</div> : null}
         </div>
-        <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${toneClass}`}>
+        <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneClass}`}>
           {icon}
         </div>
       </div>

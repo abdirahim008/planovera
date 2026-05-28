@@ -206,7 +206,7 @@ function RichObservationEditor({
                 event.preventDefault();
                 item.action();
               }}
-              className="inline-flex min-h-10 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-bg-surface px-2 py-2 text-xs font-black text-txt-muted transition hover:border-accent hover:text-white sm:px-3"
+              className="inline-flex min-h-10 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-bg-surface px-2 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-white sm:px-3"
               title={item.label}
               aria-label={item.label}
             >
@@ -219,7 +219,7 @@ function RichObservationEditor({
       <div className="relative">
         {!plainValue && !focused ? (
           <div className="pointer-events-none absolute left-4 top-4 text-sm leading-6 text-txt-dim">
-            Write the site observation, issue, instruction, or progress note...
+            Write your observation...
           </div>
         ) : null}
         <div
@@ -238,9 +238,6 @@ function RichObservationEditor({
           onPaste={handlePaste}
           className="rich-text-editor min-h-[190px] w-full overflow-y-auto px-4 py-4 text-sm leading-6 text-txt outline-none"
         />
-      </div>
-      <div className="border-t border-border px-3 py-2 text-[11px] leading-5 text-txt-dim">
-        Tip: use Enter for new paragraphs. Paste is cleaned automatically so reports stay professional.
       </div>
     </div>
   );
@@ -467,19 +464,9 @@ export default function SiteNotesModule() {
   return (
     <div className="mx-auto w-full max-w-[1500px] animate-fade-in px-2 sm:px-0">
       <div className="mb-4 flex flex-col gap-3 sm:mb-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-txt-dim">
-            Site Notes
-          </p>
-          <h2 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">
-            Field observations and photo records
-          </h2>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-txt-muted">
-            Capture quick site notes, attach captioned photos, and prepare a simple visit report.
-          </p>
-        </div>
-        <Button size="lg" variant="primary" onClick={addBlankNote} className="w-full justify-center sm:w-auto">
-          <Plus size={16} /> Add note
+        <h2 className="text-lg font-semibold tracking-tight text-white">Site Notes</h2>
+        <Button size="sm" variant="primary" onClick={addBlankNote} className="w-full justify-center sm:w-auto">
+          <Plus size={14} /> Add note
         </Button>
       </div>
 
@@ -491,10 +478,10 @@ export default function SiteNotesModule() {
           { label: "Open", value: metrics.openObservations, tone: "text-warn" },
         ].map((card) => (
           <div key={card.label} className="rounded-2xl border border-border bg-bg-surface p-3 sm:p-4">
-            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-txt-dim sm:text-[10px]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
               {card.label}
             </div>
-            <div className={`mt-2 truncate text-xl font-black sm:text-2xl ${card.tone}`}>{card.value}</div>
+            <div className={`mt-2 truncate text-xl font-semibold sm:text-2xl ${card.tone}`}>{card.value}</div>
           </div>
         ))}
       </div>
@@ -502,12 +489,7 @@ export default function SiteNotesModule() {
       {projectNotes.length > 0 ? (
         <section className="mb-4 overflow-visible rounded-2xl border border-border bg-bg-surface p-3 sm:p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-txt-dim">
-                Existing site notes
-              </p>
-              <h3 className="mt-1 text-base font-black text-white sm:text-lg">Saved field records</h3>
-            </div>
+            <h3 className="text-base font-semibold text-white sm:text-lg">Saved notes</h3>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="rounded-xl border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted">
                 Showing: <span className="text-white">{filterLabel}</span> · {visibleNotes.length} / {projectNotes.length}
@@ -546,7 +528,7 @@ export default function SiteNotesModule() {
               </div>
             </div>
           </div>
-          <div className="mt-3 overflow-visible rounded-2xl border border-border">
+          <div className="mt-3 space-y-3 sm:hidden">
             {visibleNotes.map((note) => {
               const isActive = activeNote?.id === note.id;
               const isDirty = Boolean(dirtyNoteIds[note.id]);
@@ -567,27 +549,27 @@ export default function SiteNotesModule() {
                     setExpandedNotes((current) => ({ ...current, [note.id]: true }));
                     setOpenMenuNoteId(null);
                   }}
-                  className={`group flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left transition last:border-b-0 ${
-                    isActive
-                      ? "border-l-4 border-l-accent bg-accent/10"
-                      : "border-l-4 border-l-transparent bg-bg hover:bg-bg-hover"
+                  className={`flex w-full items-start gap-3 rounded-2xl border bg-bg-surface p-3 text-left transition ${
+                    isActive ? "border-accent" : "border-border"
                   }`}
                 >
-                  <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[110px_120px_minmax(0,1fr)_90px_100px] sm:items-center">
-                    <div className="text-xs font-semibold text-txt-muted">{note.noteDate || "No date"}</div>
-                    <div className="text-xs font-bold text-accent">{categoryLabels[note.category]}</div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-black text-white">{note.title || "Site observation"}</div>
-                      <div className="mt-0.5 truncate text-xs leading-5 text-txt-muted">
-                        {note.authorName ? `${note.authorName} · ` : ""}
-                        {notePreview(note.observationText)}
-                      </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-accent">{categoryLabels[note.category]}</span>
+                      <span className="text-xs font-semibold text-txt-muted">{note.noteDate || "No date"}</span>
                     </div>
-                    <div className="text-xs font-semibold text-txt-muted">
-                      {note.photos.length} photo{note.photos.length === 1 ? "" : "s"}
+                    <div className="mt-1 truncate text-sm font-semibold text-white">{note.title || "Site observation"}</div>
+                    <div className="mt-0.5 truncate text-xs leading-5 text-txt-muted">
+                      {note.authorName ? `${note.authorName} · ` : ""}
+                      {notePreview(note.observationText)}
                     </div>
-                    <div className={`text-xs font-semibold ${isDirty ? "text-warn" : "text-txt-dim"}`}>
-                      {isDirty ? "Unsaved" : "Saved"}
+                    <div className="mt-1 flex items-center gap-3 text-xs">
+                      <span className="font-semibold text-txt-muted">
+                        {note.photos.length} photo{note.photos.length === 1 ? "" : "s"}
+                      </span>
+                      <span className={`font-semibold ${isDirty ? "text-warn" : "text-txt-dim"}`}>
+                        {isDirty ? "Unsaved" : "Saved"}
+                      </span>
                     </div>
                   </div>
                   {renderNoteMenu(note)}
@@ -595,30 +577,83 @@ export default function SiteNotesModule() {
               );
             })}
           </div>
+          <div className="data-table-shell mt-3 hidden sm:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 110 }}>Date</th>
+                  <th style={{ width: 120 }}>Category</th>
+                  <th>Title</th>
+                  <th style={{ width: 90 }}>Photos</th>
+                  <th style={{ width: 100 }}>Status</th>
+                  <th style={{ width: 44 }} aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {visibleNotes.map((note) => {
+                  const isActive = activeNote?.id === note.id;
+                  const isDirty = Boolean(dirtyNoteIds[note.id]);
+                  return (
+                    <tr
+                      key={note.id}
+                      onClick={() => {
+                        setActiveNoteId(note.id);
+                        setExpandedNotes((current) => ({ ...current, [note.id]: true }));
+                        setOpenMenuNoteId(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        setActiveNoteId(note.id);
+                        setExpandedNotes((current) => ({ ...current, [note.id]: true }));
+                        setOpenMenuNoteId(null);
+                      }}
+                      tabIndex={0}
+                      className={`cursor-pointer ${isActive ? "bg-accent/10" : ""}`}
+                    >
+                      <td className="text-xs font-semibold text-txt-muted">{note.noteDate || "No date"}</td>
+                      <td className="text-xs font-bold text-accent">{categoryLabels[note.category]}</td>
+                      <td className="data-cell-wrap">
+                        <div className="truncate text-sm font-semibold text-white">{note.title || "Site observation"}</div>
+                        <div className="mt-0.5 truncate text-xs leading-5 text-txt-muted">
+                          {note.authorName ? `${note.authorName} · ` : ""}
+                          {notePreview(note.observationText)}
+                        </div>
+                      </td>
+                      <td className="text-xs font-semibold text-txt-muted">
+                        {note.photos.length} photo{note.photos.length === 1 ? "" : "s"}
+                      </td>
+                      <td className={`text-xs font-semibold ${isDirty ? "text-warn" : "text-txt-dim"}`}>
+                        {isDirty ? "Unsaved" : "Saved"}
+                      </td>
+                      <td className="data-cell-action" onClick={(event) => event.stopPropagation()}>
+                        {renderNoteMenu(note)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 
       {visibleNotes.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-border bg-bg-surface p-6 text-center sm:p-8">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-bg">
+        <div className="rounded-2xl border border-dashed border-border bg-bg-surface p-6 text-center sm:p-8">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-bg">
             <NotebookPen size={22} className="text-accent" />
           </div>
-          <h3 className="mt-4 text-lg font-black text-white">
-            {projectNotes.length > 0 && filter !== "all" ? `No ${filterLabel} notes found` : "No site notes yet"}
+          <h3 className="mt-4 text-lg font-semibold text-white">
+            {projectNotes.length > 0 && filter !== "all" ? `No ${filterLabel} notes` : "No site notes yet"}
           </h3>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-txt-muted">
-            {projectNotes.length > 0 && filter !== "all"
-              ? "Try another category or clear the filter to see all saved field records."
-              : "Add a quick note from site now. You can attach photos and turn it into a report later."}
-          </p>
-          <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
             {projectNotes.length > 0 && filter !== "all" ? (
-              <Button size="lg" onClick={() => setFilter("all")} className="justify-center">
+              <Button size="md" onClick={() => setFilter("all")} className="justify-center">
                 Clear filter
               </Button>
             ) : null}
-            <Button variant="primary" size="lg" onClick={addBlankNote} className="justify-center">
-              <Plus size={16} /> {projectNotes.length > 0 ? "Add note" : "Add first note"}
+            <Button variant="primary" size="md" onClick={addBlankNote} className="justify-center">
+              <Plus size={14} /> Add note
             </Button>
           </div>
         </div>
@@ -632,7 +667,7 @@ export default function SiteNotesModule() {
             return (
               <article
                 key={note.id}
-                className="rounded-2xl border border-border bg-bg-surface p-3 shadow-[0_18px_55px_rgba(0,0,0,0.18)] transition sm:p-4"
+                className="rounded-2xl border border-border bg-bg-surface p-3 transition sm:p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -654,7 +689,7 @@ export default function SiteNotesModule() {
                         {isDirty ? "Unsaved changes" : recentlySaved ? "Saved now" : "Saved"}
                       </span>
                     </div>
-                    <h3 className="mt-3 break-words text-lg font-black leading-tight text-white">
+                    <h3 className="mt-3 break-words text-lg font-semibold leading-tight text-white">
                       {note.title || "Site observation"}
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-txt-muted">{notePreview(note.observationText)}</p>
@@ -695,7 +730,7 @@ export default function SiteNotesModule() {
                 </div>
 
                 {expanded ? (
-                  <div className="mt-4 rounded-3xl border border-border bg-bg p-3 sm:p-4">
+                  <div className="mt-4 rounded-2xl border border-border bg-bg p-3 sm:p-4">
                     <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-border bg-bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2 text-sm font-semibold">
                         <CheckCircle2 size={16} className={isDirty ? "text-warn" : "text-ok"} />
@@ -714,19 +749,19 @@ export default function SiteNotesModule() {
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="block md:col-span-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Title</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Title</span>
                         <input
                           value={note.title}
                           onChange={(event) => handleUpdateNote(note.id, { title: event.target.value })}
-                          className="mt-2 w-full rounded-2xl border border-border bg-bg-surface px-3 py-3 text-base font-black text-white outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-base font-semibold text-white outline-none focus:border-accent"
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Category</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Category</span>
                         <select
                           value={note.category}
                           onChange={(event) => handleUpdateNote(note.id, { category: event.target.value as SiteNoteCategory })}
-                          className="mt-2 w-full rounded-2xl border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
                         >
                           {categories.map((category) => (
                             <option key={category} value={category}>
@@ -736,43 +771,43 @@ export default function SiteNotesModule() {
                         </select>
                       </label>
                       <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Visit date</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Visit date</span>
                         <input
                           type="date"
                           value={note.noteDate}
                           onChange={(event) => handleUpdateNote(note.id, { noteDate: event.target.value })}
-                          className="mt-2 w-full rounded-2xl border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Author</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Author</span>
                         <input
                           value={note.authorName}
                           onChange={(event) => handleUpdateNote(note.id, { authorName: event.target.value })}
                           placeholder="Prepared by"
-                          className="mt-2 w-full rounded-2xl border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Weather</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Weather</span>
                         <input
                           value={note.weather}
                           onChange={(event) => handleUpdateNote(note.id, { weather: event.target.value })}
                           placeholder="Clear, rainy, windy..."
-                          className="mt-2 w-full rounded-2xl border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
                         />
                       </label>
                       <label className="block md:col-span-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Site area / location note</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Site area / location note</span>
                         <input
                           value={note.locationNote}
                           onChange={(event) => handleUpdateNote(note.id, { locationNote: event.target.value })}
                           placeholder="Block A, drainage line, chainage..."
-                          className="mt-2 w-full rounded-2xl border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-txt outline-none focus:border-accent"
                         />
                       </label>
                       <div className="block md:col-span-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Observation text</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Observation text</span>
                         <RichObservationEditor
                           value={note.observationText}
                           onChange={(observationText) => handleUpdateNote(note.id, { observationText })}
@@ -781,7 +816,7 @@ export default function SiteNotesModule() {
                     </div>
 
                     <div className="mt-4">
-                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Photo gallery</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Photo gallery</div>
                       {note.photos.length > 0 ? (
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           {[...note.photos]
@@ -838,14 +873,10 @@ export default function SiteNotesModule() {
         title="Prepare Site Visit Report"
         width={720}
       >
-        <p className="text-sm leading-6 text-txt-muted">
-          Choose what to include from the project and this note. Defaults keep the report complete without making it crowded.
-        </p>
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {reportOptionGroups.map((group) => (
             <section key={group.title} className="rounded-2xl border border-border bg-bg p-3">
-              <div className="text-sm font-bold text-white">{group.title}</div>
-              <p className="mt-1 text-xs leading-5 text-txt-muted">{group.helper}</p>
+              <div className="text-sm font-semibold text-white">{group.title}</div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {group.options.map((option) => (
                   <label
@@ -881,7 +912,7 @@ export default function SiteNotesModule() {
         title="Delete Site Note"
       >
         <p className="text-sm leading-6 text-txt-muted">
-          Delete <span className="font-semibold text-white">{deleteTarget?.title}</span>? This will also remove its photo captions from this project workspace.
+          Delete <span className="font-semibold text-white">{deleteTarget?.title}</span>?
         </p>
         <div className="mt-5 grid gap-2 sm:flex sm:justify-end">
           <Button onClick={() => setDeleteTarget(null)} className="justify-center">

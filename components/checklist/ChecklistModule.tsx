@@ -225,14 +225,14 @@ export default function ChecklistModule() {
         <button
           type="button"
           onClick={() => setOpenActionItemId((current) => (current === item.id ? null : item.id))}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-bg-raised text-txt-muted transition hover:bg-bg-hover hover:text-white"
+          className="data-row-action"
           aria-label={`Actions for ${item.title}`}
           aria-expanded={isOpen}
         >
-          <MoreVertical size={16} />
+          <MoreVertical size={14} />
         </button>
         {isOpen ? (
-          <div className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-2xl border border-border bg-bg-surface py-1 text-left shadow-[0_18px_55px_rgba(0,0,0,0.45)]">
+          <div className="absolute right-0 top-9 z-40 w-52 overflow-hidden rounded-2xl border border-border bg-bg-surface py-1 text-left shadow-[0_18px_55px_rgba(0,0,0,0.45)]">
             <button
               type="button"
               onClick={() => {
@@ -292,17 +292,7 @@ export default function ChecklistModule() {
   return (
     <div className="mx-auto w-full max-w-[1500px] animate-fade-in px-1 sm:px-0">
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-txt-dim">
-            Compliance Checklist
-          </p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
-            Project document requirements
-          </h2>
-          <p className="mt-1 text-sm text-txt-muted">
-            Track required submissions, links, due dates, responsible people, and verification status.
-          </p>
-        </div>
+        <h2 className="text-lg font-semibold tracking-tight text-white">Checklist</h2>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => addChecklistItems(starterTemplates)}>
             <FilePlus2 size={14} /> Insert starter checklist
@@ -322,10 +312,10 @@ export default function ChecklistModule() {
           { label: "Overdue", value: metrics.overdue, tone: "text-err" },
         ].map((card) => (
           <div key={card.label} className="rounded-2xl border border-border bg-bg-surface p-4">
-            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-txt-dim">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
               {card.label}
             </div>
-            <div className={`mt-2 text-2xl font-black ${card.tone}`}>{card.value}</div>
+            <div className={`mt-2 text-2xl font-semibold ${card.tone}`}>{card.value}</div>
           </div>
         ))}
       </div>
@@ -343,7 +333,7 @@ export default function ChecklistModule() {
               key={item.id}
               type="button"
               onClick={() => setFilter(item.id as ChecklistFilter)}
-              className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 filter === item.id
                   ? "border-accent bg-accent text-white"
                   : "border-border bg-bg-surface text-txt-muted hover:bg-bg-hover hover:text-white"
@@ -357,31 +347,31 @@ export default function ChecklistModule() {
           <button
             type="button"
             onClick={() => setShowColumnMenu((current) => !current)}
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm font-semibold text-txt transition hover:bg-bg-hover sm:w-auto"
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg-surface px-3 py-2 text-sm font-semibold text-txt transition hover:bg-bg-hover sm:w-auto"
             aria-expanded={showColumnMenu}
           >
             <SlidersHorizontal size={15} /> Columns
           </button>
           {showColumnMenu ? (
-            <div className="absolute right-0 top-12 z-40 w-[min(92vw,320px)] rounded-2xl border border-border bg-bg-surface p-3 shadow-[0_18px_55px_rgba(0,0,0,0.45)]">
+            <div className="absolute right-0 top-12 z-40 w-[min(92vw,320px)] rounded-xl border border-border bg-bg-surface p-3 shadow-[0_18px_55px_rgba(0,0,0,0.45)]">
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={setSimpleColumns}
-                  className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-xs font-bold text-txt-muted transition hover:border-accent hover:text-white"
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-white"
                 >
                   Simple
                 </button>
                 <button
                   type="button"
                   onClick={setDetailedColumns}
-                  className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-xs font-bold text-txt-muted transition hover:border-accent hover:text-white"
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-white"
                 >
                   Detailed
                 </button>
               </div>
-              <div className="mt-3 rounded-xl border border-border bg-bg p-2">
-                <div className="px-1 pb-2 text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+              <div className="mt-3 rounded-lg border border-border bg-bg p-2">
+                <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                   Locked fields
                 </div>
                 <div className="flex flex-wrap gap-1 px-1 pb-2 text-[11px] font-semibold text-txt-muted">
@@ -418,19 +408,19 @@ export default function ChecklistModule() {
           return (
             <div
               key={item.id}
-              className={`rounded-3xl border bg-bg-surface p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)] ${
+              className={`rounded-2xl border bg-bg-surface p-4 ${
                 overdue ? "border-err/35" : "border-border"
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <label className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                     Checklist item
                   </label>
                   <input
                     value={item.title}
                     onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
-                    className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-base font-semibold text-white outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-base font-semibold text-white outline-none focus:border-accent"
                   />
                   {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
                     <button
@@ -452,11 +442,11 @@ export default function ChecklistModule() {
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {isFieldVisible("category") ? (
                   <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Category</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Category</span>
                     <select
                       value={item.category}
                       onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
-                      className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                      className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                     >
                       {categoryOptions.map((category) => (
                         <option key={category} value={category}>
@@ -468,32 +458,32 @@ export default function ChecklistModule() {
                 ) : null}
                 {isFieldVisible("responsiblePerson") ? (
                   <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Responsible</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Responsible</span>
                     <input
                       value={item.responsiblePerson}
                       onChange={(event) => updateChecklistItem(item.id, { responsiblePerson: event.target.value })}
                       placeholder="Responsible person"
-                      className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                      className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                     />
                   </label>
                 ) : null}
                 <label className="block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Due date</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Due date</span>
                   <input
                     type="date"
                     value={item.dueDate}
                     onChange={(event) => updateChecklistItem(item.id, { dueDate: event.target.value })}
-                    className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Status</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Status</span>
                   <select
                     value={item.status}
                     onChange={(event) =>
                       updateChecklistItem(item.id, { status: event.target.value as ChecklistStatus })
                     }
-                    className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                   >
                     {(Object.keys(statusLabels) as ChecklistStatus[]).map((status) => (
                       <option key={status} value={status}>
@@ -506,7 +496,7 @@ export default function ChecklistModule() {
 
               {isFieldVisible("documentUrl") ? (
               <div className="mt-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Document link</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Document link</span>
                 <div className="mt-2 flex gap-2">
                   <input
                     value={item.documentUrl}
@@ -518,7 +508,7 @@ export default function ChecklistModule() {
                     type="button"
                     onClick={() => openDocument(item)}
                     disabled={!item.documentUrl.trim()}
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-bg-raised text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-bg-raised text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     title="Open document link"
                   >
                     <ExternalLink size={16} />
@@ -531,34 +521,34 @@ export default function ChecklistModule() {
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {isFieldVisible("submittedDate") ? (
                 <label className="block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Submitted</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Submitted</span>
                   <input
                     type="date"
                     value={item.submittedDate}
                     onChange={(event) => updateChecklistItem(item.id, { submittedDate: event.target.value })}
-                    className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                   />
                 </label>
                 ) : null}
                 {isFieldVisible("verifiedDate") ? (
                 <label className="block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Verified date</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Verified date</span>
                   <input
                     type="date"
                     value={item.verifiedDate}
                     onChange={(event) => updateChecklistItem(item.id, { verifiedDate: event.target.value })}
-                    className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                   />
                 </label>
                 ) : null}
                 {isFieldVisible("verifiedBy") ? (
                 <label className="block md:col-span-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Verified by</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Verified by</span>
                   <input
                     value={item.verifiedBy}
                     onChange={(event) => updateChecklistItem(item.id, { verifiedBy: event.target.value })}
                     placeholder="Verified by"
-                    className="mt-2 w-full rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                   />
                 </label>
                 ) : null}
@@ -567,12 +557,12 @@ export default function ChecklistModule() {
 
               {isFieldVisible("notes") ? (
               <label className="mt-4 block">
-                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">Notes</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Notes</span>
                 <textarea
                   value={item.notes}
                   onChange={(event) => updateChecklistItem(item.id, { notes: event.target.value })}
                   placeholder="Notes"
-                  className="mt-2 h-24 w-full resize-none rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                  className="mt-2 h-24 w-full resize-none rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
                 />
               </label>
               ) : null}
@@ -582,7 +572,7 @@ export default function ChecklistModule() {
           );
         })}
         {visibleItems.length === 0 ? (
-          <div className="rounded-3xl border border-border bg-bg-surface px-6 py-14 text-center">
+          <div className="rounded-2xl border border-border bg-bg-surface px-6 py-14 text-center">
             <ClipboardCheck className="mx-auto text-txt-dim" size={34} />
             <h3 className="mt-3 text-lg font-semibold text-white">No checklist items yet</h3>
             <p className="mt-1 text-sm text-txt-muted">
@@ -592,36 +582,22 @@ export default function ChecklistModule() {
         ) : null}
       </div>
 
-      <div className="hidden overflow-hidden rounded-3xl border border-border bg-bg-surface shadow-[0_20px_70px_rgba(0,0,0,0.22)] xl:block">
+      <div className="data-table-shell hidden xl:block">
         <div className="overflow-x-auto">
-          <table className="min-w-[820px] w-full border-collapse text-sm">
-            <thead className="bg-bg-raised/80 text-[10px] font-black uppercase tracking-[0.18em] text-txt-dim">
+          <table className="data-table data-table-sticky min-w-[820px]">
+            <thead>
               <tr>
-                <th className="border-b border-border px-4 py-3 text-left">Item</th>
-                {isFieldVisible("category") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Category</th>
-                ) : null}
-                {isFieldVisible("responsiblePerson") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Responsible</th>
-                ) : null}
-                <th className="border-b border-border px-4 py-3 text-left">Due Date</th>
-                <th className="border-b border-border px-4 py-3 text-left">Status</th>
-                {isFieldVisible("documentUrl") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Document Link</th>
-                ) : null}
-                {isFieldVisible("submittedDate") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Submitted</th>
-                ) : null}
-                {isFieldVisible("verifiedDate") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Verified Date</th>
-                ) : null}
-                {isFieldVisible("verifiedBy") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Verified By</th>
-                ) : null}
-                {isFieldVisible("notes") ? (
-                  <th className="border-b border-border px-4 py-3 text-left">Notes</th>
-                ) : null}
-                <th className="border-b border-border px-4 py-3 text-right">Actions</th>
+                <th>Item</th>
+                {isFieldVisible("category") ? <th>Category</th> : null}
+                {isFieldVisible("responsiblePerson") ? <th>Responsible</th> : null}
+                <th>Due Date</th>
+                <th>Status</th>
+                {isFieldVisible("documentUrl") ? <th>Document Link</th> : null}
+                {isFieldVisible("submittedDate") ? <th>Submitted</th> : null}
+                {isFieldVisible("verifiedDate") ? <th>Verified Date</th> : null}
+                {isFieldVisible("verifiedBy") ? <th>Verified By</th> : null}
+                {isFieldVisible("notes") ? <th>Notes</th> : null}
+                <th style={{ width: 44 }} aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -629,71 +605,64 @@ export default function ChecklistModule() {
                 const overdue = isOverdue(item);
                 const submittedWithoutLink = item.status === "submitted" && !item.documentUrl.trim();
                 return (
-                  <tr
-                    key={item.id}
-                    className={`border-b border-border/80 transition hover:bg-bg-hover/60 ${
-                      overdue ? "bg-err/5" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3 align-top">
-                      <div className="min-w-[280px]">
-                        <input
-                          value={item.title}
-                          onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
-                          className="w-full rounded-xl border border-transparent bg-transparent px-2 py-2 font-semibold text-white outline-none transition focus:border-accent focus:bg-bg"
-                        />
-                        {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() => openDocument(item)}
-                            className="ml-2 mt-1 inline-flex items-center gap-1 text-xs font-semibold text-accent transition hover:text-white"
-                          >
-                            <ExternalLink size={12} /> Link
-                          </button>
-                        ) : null}
-                      </div>
+                  <tr key={item.id} className={overdue ? "bg-err/5" : ""}>
+                    <td className="data-cell-wrap">
+                      <input
+                        value={item.title}
+                        onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
+                        className="data-cell-input font-semibold text-white"
+                      />
+                      {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => openDocument(item)}
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-accent transition hover:text-white"
+                        >
+                          <ExternalLink size={12} /> Link
+                        </button>
+                      ) : null}
                     </td>
                     {isFieldVisible("category") ? (
-                    <td className="px-4 py-3 align-top">
-                      <select
-                        value={item.category}
-                        onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
-                        className="w-48 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                      >
-                        {categoryOptions.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
+                      <td>
+                        <select
+                          value={item.category}
+                          onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
+                          className="data-cell-select"
+                        >
+                          {categoryOptions.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                     ) : null}
                     {isFieldVisible("responsiblePerson") ? (
-                    <td className="px-4 py-3 align-top">
-                      <input
-                        value={item.responsiblePerson}
-                        onChange={(event) => updateChecklistItem(item.id, { responsiblePerson: event.target.value })}
-                        placeholder="Responsible person"
-                        className="w-44 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                      />
-                    </td>
+                      <td>
+                        <input
+                          value={item.responsiblePerson}
+                          onChange={(event) => updateChecklistItem(item.id, { responsiblePerson: event.target.value })}
+                          placeholder="Responsible person"
+                          className="data-cell-input"
+                        />
+                      </td>
                     ) : null}
-                    <td className="px-4 py-3 align-top">
+                    <td>
                       <input
                         type="date"
                         value={item.dueDate}
                         onChange={(event) => updateChecklistItem(item.id, { dueDate: event.target.value })}
-                        className="w-40 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
+                        className="data-cell-input"
                       />
-                      {overdue ? <div className="mt-2 text-xs font-semibold text-err">Overdue</div> : null}
+                      {overdue ? <div className="mt-1 text-xs font-semibold text-err">Overdue</div> : null}
                     </td>
-                    <td className="px-4 py-3 align-top">
+                    <td>
                       <select
                         value={item.status}
                         onChange={(event) =>
                           updateChecklistItem(item.id, { status: event.target.value as ChecklistStatus })
                         }
-                        className="mb-2 w-36 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
+                        className="data-cell-select"
                       >
                         {(Object.keys(statusLabels) as ChecklistStatus[]).map((status) => (
                           <option key={status} value={status}>
@@ -701,75 +670,73 @@ export default function ChecklistModule() {
                           </option>
                         ))}
                       </select>
-                      <div>{statusBadge(item.status)}</div>
                       {submittedWithoutLink ? (
-                        <div className="mt-2 text-xs font-semibold text-warn">Link missing</div>
+                        <div className="mt-1 text-xs font-semibold text-warn">Link missing</div>
                       ) : null}
                     </td>
                     {isFieldVisible("documentUrl") ? (
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex min-w-[260px] gap-2">
-                        <input
-                          value={item.documentUrl}
-                          onChange={(event) => updateChecklistItem(item.id, { documentUrl: event.target.value })}
-                          placeholder="Paste SharePoint, Drive, OneDrive, or URL"
-                          className="min-w-0 flex-1 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => openDocument(item)}
-                          disabled={!item.documentUrl.trim()}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-bg-raised text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Open document link"
-                        >
-                          <ExternalLink size={15} />
-                        </button>
-                      </div>
-                    </td>
+                      <td>
+                        <div className="flex min-w-[220px] items-center gap-1">
+                          <input
+                            value={item.documentUrl}
+                            onChange={(event) => updateChecklistItem(item.id, { documentUrl: event.target.value })}
+                            placeholder="Paste URL"
+                            className="data-cell-input min-w-0 flex-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => openDocument(item)}
+                            disabled={!item.documentUrl.trim()}
+                            className="data-row-action"
+                            title="Open document link"
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                        </div>
+                      </td>
                     ) : null}
                     {isFieldVisible("submittedDate") ? (
-                    <td className="px-4 py-3 align-top">
-                      <input
-                        type="date"
-                        value={item.submittedDate}
-                        onChange={(event) => updateChecklistItem(item.id, { submittedDate: event.target.value })}
-                        className="w-40 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                      />
-                    </td>
+                      <td>
+                        <input
+                          type="date"
+                          value={item.submittedDate}
+                          onChange={(event) => updateChecklistItem(item.id, { submittedDate: event.target.value })}
+                          className="data-cell-input"
+                        />
+                      </td>
                     ) : null}
                     {isFieldVisible("verifiedDate") ? (
-                    <td className="px-4 py-3 align-top">
-                      <input
-                        type="date"
-                        value={item.verifiedDate}
-                        onChange={(event) => updateChecklistItem(item.id, { verifiedDate: event.target.value })}
-                        className="w-40 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                      />
-                    </td>
+                      <td>
+                        <input
+                          type="date"
+                          value={item.verifiedDate}
+                          onChange={(event) => updateChecklistItem(item.id, { verifiedDate: event.target.value })}
+                          className="data-cell-input"
+                        />
+                      </td>
                     ) : null}
                     {isFieldVisible("verifiedBy") ? (
-                    <td className="px-4 py-3 align-top">
-                      <input
-                        value={item.verifiedBy}
-                        onChange={(event) => updateChecklistItem(item.id, { verifiedBy: event.target.value })}
-                        placeholder="Verified by"
-                        className="w-40 rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                      />
-                    </td>
+                      <td>
+                        <input
+                          value={item.verifiedBy}
+                          onChange={(event) => updateChecklistItem(item.id, { verifiedBy: event.target.value })}
+                          placeholder="Verified by"
+                          className="data-cell-input"
+                        />
+                      </td>
                     ) : null}
                     {isFieldVisible("notes") ? (
-                    <td className="px-4 py-3 align-top">
-                      <textarea
-                        value={item.notes}
-                        onChange={(event) => updateChecklistItem(item.id, { notes: event.target.value })}
-                        placeholder="Notes"
-                        className="h-20 w-56 resize-none rounded-xl border border-border bg-bg px-2 py-2 text-txt outline-none focus:border-accent"
-                      />
-                    </td>
+                      <td className="data-cell-wrap">
+                        <textarea
+                          value={item.notes}
+                          onChange={(event) => updateChecklistItem(item.id, { notes: event.target.value })}
+                          placeholder="Notes"
+                          rows={1}
+                          className="data-cell-textarea"
+                        />
+                      </td>
                     ) : null}
-                    <td className="px-4 py-3 align-top">
-                      {renderRowActions(item)}
-                    </td>
+                    <td className="data-cell-action">{renderRowActions(item)}</td>
                   </tr>
                 );
               })}
@@ -792,8 +759,7 @@ export default function ChecklistModule() {
       {deleteTarget ? (
         <Modal open={true} onClose={() => setDeleteTarget(null)} title="Delete Checklist Item" width={420}>
           <p className="mb-5 text-sm leading-6 text-txt-muted">
-            Are you sure you want to delete <strong>{deleteTarget.title}</strong>? This will remove the
-            compliance row from this project checklist.
+            Delete <strong>{deleteTarget.title}</strong>?
           </p>
           <div className="flex gap-3">
             <Button variant="ghost" className="flex-1 justify-center" onClick={() => setDeleteTarget(null)}>

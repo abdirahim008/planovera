@@ -16,6 +16,8 @@ import DocumentsModule from "@/components/documents/DocumentsModule";
 import CorrespondenceModule from "@/components/correspondence/CorrespondenceModule";
 import ChecklistModule from "@/components/checklist/ChecklistModule";
 import SiteNotesModule from "@/components/site-notes/SiteNotesModule";
+import RiskRegisterModule from "@/components/risks/RiskRegisterModule";
+import StakeholderLogModule from "@/components/stakeholders/StakeholderLogModule";
 import MeetingMinutesModule from "@/components/meetings/MeetingMinutesModule";
 import ConstructionDrawingsModule from "@/components/drawings/ConstructionDrawingsModule";
 import {
@@ -55,6 +57,8 @@ const moduleLabels: Record<string, string> = {
   correspondence: "Correspondence",
   checklist: "Checklist",
   "site-notes": "Site Notes",
+  risks: "Risk Register",
+  stakeholders: "Stakeholder Log",
   meetings: "Meetings",
 };
 
@@ -92,39 +96,29 @@ type SubscriptionBlockState = {
 function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6">
-      <div className="w-full max-w-2xl rounded-[32px] border border-err/25 bg-bg-surface p-8 text-center shadow-[0_28px_90px_rgba(0,0,0,0.36)]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-err/30 bg-err/10 text-err">
-          <Menu size={22} />
-        </div>
-        <p className="mt-5 text-[11px] font-black uppercase tracking-[0.24em] text-err">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-bg-surface p-7 text-center">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-err">
           Subscription expired
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold text-white">
-          {block.organizationName} needs manual reactivation.
+        </div>
+        <h1 className="mt-2 text-xl font-semibold text-white">
+          {block.organizationName}
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-txt-muted">
-          Access ended on {block.expiresAt}. Project dashboards, drawings, documents, and
-          collaboration are paused until Planovera reactivates or extends this organization.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
+        <p className="mt-1.5 text-sm text-txt-muted">Access ended {block.expiresAt}.</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
           <a
             href="/organization"
-            className="inline-flex items-center justify-center rounded-xl border border-border bg-bg-raised px-4 py-2 text-sm font-semibold text-txt transition hover:bg-bg-hover"
+            className="inline-flex items-center justify-center rounded-lg border border-border bg-bg-raised px-3.5 py-2 text-[13px] font-medium text-txt transition hover:bg-bg-hover"
           >
-            View organization status
+            Organization
           </a>
           {block.canManage ? (
             <a
               href="mailto:support@planovera.com?subject=Planovera subscription reactivation"
-              className="inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
+              className="inline-flex items-center justify-center rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-accent-hover"
             >
-              Contact Planovera
+              Contact support
             </a>
-          ) : (
-            <span className="inline-flex items-center justify-center rounded-xl border border-warn/25 bg-warn/10 px-4 py-2 text-sm font-semibold text-warn">
-              Ask your organization admin to renew access
-            </span>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -161,6 +155,16 @@ function Workspace({
     }
   }, [activeModule, pathname, setActiveModule]);
 
+  // Non-construction projects don't surface Site Notes or Drawings in the sidebar.
+  // If a stale activeModule (e.g. from before the project type was changed) points at
+  // a hidden module, bounce the user back to the Overview so they don't see a blank canvas.
+  useEffect(() => {
+    if (!hasProject || isConstruction) return;
+    if (activeModule === "site-notes" || activeModule === "drawings" || activeModule === "payment") {
+      setActiveModule("dashboard");
+    }
+  }, [activeModule, hasProject, isConstruction, setActiveModule]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       <Sidebar forceCollapsed={isDrawingWorkspace} />
@@ -192,29 +196,32 @@ function Workspace({
 
         <main className={`flex-1 overflow-auto bg-bg ${isDrawingWorkspace ? "p-2 lg:p-3" : "p-3 sm:p-4 lg:p-6"}`}>
           {hasProject && visibleCollaborators.length > 0 ? (
-            <div className="mb-4 rounded-2xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-txt">
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-accent">
-                Collaboration
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {visibleCollaborators.map((collaborator) => (
-                  <div
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              {visibleCollaborators.map((collaborator) => {
+                const label = collaborator.isCurrentUser ? "You" : collaborator.name;
+                const initials = label
+                  .split(" ")
+                  .map((part) => part[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase();
+                return (
+                  <span
                     key={collaborator.id}
-                    className="rounded-xl border border-border bg-bg-surface px-3 py-2"
+                    title={`${label} · ${moduleLabels[collaborator.activeModule || ""] || "Workspace"}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-bg-surface py-1 pl-1 pr-3 text-[12px] font-medium text-txt"
                   >
-                    <div className="text-sm font-semibold text-white">
-                      {collaborator.isCurrentUser ? "You" : collaborator.name}
-                    </div>
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-txt-dim">
-                      {moduleLabels[collaborator.activeModule || ""] || "Workspace"} · Active
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/15 text-[10px] font-semibold text-accent">
+                      {initials || "?"}
+                    </span>
+                    {label}
+                  </span>
+                );
+              })}
             </div>
           ) : null}
           {notice ? (
-            <div className="mb-4 rounded-2xl border border-warn/30 bg-warn/10 px-4 py-3 text-sm text-warn">
+            <div className="mb-4 rounded-lg border border-warn/30 bg-warn/10 px-3.5 py-2.5 text-[13px] text-warn">
               {notice}
             </div>
           ) : null}
@@ -225,11 +232,13 @@ function Workspace({
           {module === "progress" && hasProject && <ProgressModule />}
           {module === "payment" && hasProject && <PaymentModule />}
           {module === "workplan" && hasProject && <WorkPlanModule />}
-          {module === "drawings" && hasProject && <ConstructionDrawingsModule />}
+          {module === "drawings" && hasProject && isConstruction && <ConstructionDrawingsModule />}
           {module === "documents" && hasProject && <DocumentsModule />}
           {module === "correspondence" && hasProject && <CorrespondenceModule />}
           {module === "checklist" && hasProject && <ChecklistModule />}
-          {module === "site-notes" && hasProject && <SiteNotesModule />}
+          {module === "site-notes" && hasProject && isConstruction && <SiteNotesModule />}
+          {module === "risks" && hasProject && <RiskRegisterModule />}
+          {module === "stakeholders" && hasProject && <StakeholderLogModule />}
         </main>
       </div>
     </div>
@@ -279,6 +288,7 @@ export default function WorkspaceShell() {
     siteNotes: state.siteNotes,
     attendeeGroups: state.attendeeGroups,
     meetingMinutes: state.meetingMinutes,
+    meetingSeries: state.meetingSeries,
   }));
 
   useEffect(() => {
@@ -847,18 +857,10 @@ export default function WorkspaceShell() {
   if (!hasHydrated) return null;
   if (!projectsReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg px-6">
-        <div className="w-full max-w-lg rounded-[28px] border border-border bg-bg-surface p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
-          <div className="text-[11px] font-black uppercase tracking-[0.24em] text-accent">
-            Planovera Sync
-          </div>
-          <h1 className="mt-3 text-2xl font-semibold text-white">
-            Loading your shared workspace
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-txt-muted">
-            Pulling construction projects from Supabase so the controls modules and
-            drawing workspace stay attached to the same account.
-          </p>
+      <div className="flex min-h-screen items-center justify-center bg-bg">
+        <div className="inline-flex items-center gap-3 text-[13px] text-txt-muted">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+          Loading workspace
         </div>
       </div>
     );

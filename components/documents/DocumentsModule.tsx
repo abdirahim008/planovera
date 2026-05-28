@@ -13,22 +13,31 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useAppStore, currency } from "@/lib/store";
+import { useAppStore, currency, getLiveMeetingActionItems } from "@/lib/store";
 import { sanitizeRichTextHtml } from "@/lib/richText";
 import type {
   DocumentTemplateType,
   GeneratedDocument,
+  MeetingMinute,
   PaymentCertificate,
   ProgressReport,
   Project,
+  ReportSectionToggles,
+  SavedWorkPlan,
   SiteNotePhoto,
   UserSignatureProfile,
 } from "@/lib/supabase";
+import { DEFAULT_PROGRESS_REPORT_SECTIONS } from "@/lib/supabase";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { isTemplateVisibleForProject, labelsForType } from "@/lib/project-labels";
 
+// Construction-flavored default labels. Non-construction projects swap in alternative
+// vocabulary via labelsForType() — we resolve per-document below so the same module
+// renders the right label whether the user is in a construction or non-construction
+// project. The "default" labels here are also used when no project is in context yet.
 const templateLabels: Record<DocumentTemplateType, string> = {
   "commencement-letter": "Commencement Letter",
   "instruction-letter": "Instruction Letter",
@@ -36,7 +45,40 @@ const templateLabels: Record<DocumentTemplateType, string> = {
   "payment-certificate-summary": "Payment Certificate Summary",
   "completion-certificate": "Completion Certificate",
   "site-visit-report": "Site Visit Report",
+  "milestone-invoice": "Tax Invoice",
+  "status-report": "Status Report",
 };
+
+/**
+ * Resolve a template's display label given the current project context. Falls back
+ * to the construction-flavored default when no project is selected.
+ */
+function templateLabelFor(
+  templateType: DocumentTemplateType,
+  project: Project | null,
+): string {
+  const labels = labelsForType(project).documentTemplates;
+  switch (templateType) {
+    case "commencement-letter":
+      return labels.commencementLetter;
+    case "instruction-letter":
+      return labels.instructionLetter;
+    case "progress-report":
+      return labels.progressReport;
+    case "payment-certificate-summary":
+      return labels.paymentCertificateSummary;
+    case "completion-certificate":
+      return labels.completionCertificate;
+    case "site-visit-report":
+      return labels.siteVisitReport;
+    case "milestone-invoice":
+      return labels.milestoneInvoice;
+    case "status-report":
+      return labels.statusReport;
+    default:
+      return templateLabels[templateType];
+  }
+}
 
 function toNumber(value: string | number | undefined | null) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -71,6 +113,30 @@ function progressMetrics(report: ProgressReport) {
   return { planned, actual, variance: actual - planned, earned, items: items.length };
 }
 
+function resolveReportSections(doc: Pick<GeneratedDocument, "reportSections">): ReportSectionToggles & Required<Pick<ReportSectionToggles, "cover" | "executiveSummary" | "keyMetrics" | "itemTable" | "sheetBreakdown" | "forecast" | "signoff">> {
+  return {
+    ...DEFAULT_PROGRESS_REPORT_SECTIONS,
+    ...(doc.reportSections || {}),
+  } as ReportSectionToggles & Required<Pick<ReportSectionToggles, "cover" | "executiveSummary" | "keyMetrics" | "itemTable" | "sheetBreakdown" | "forecast" | "signoff">>;
+}
+
+const PROGRESS_REPORT_SECTION_META: Array<{
+  id: keyof ReportSectionToggles;
+  label: string;
+  description: string;
+}> = [
+  { id: "cover", label: "Cover page", description: "Title page with project, period and reference" },
+  { id: "executiveSummary", label: "Executive summary", description: "Narrative overview of the period" },
+  { id: "keyMetrics", label: "Key metrics", description: "Planned / Actual / Variance / Earned tiles" },
+  { id: "itemTable", label: "Item-level progress", description: "Full table from the linked progress register" },
+  { id: "sheetBreakdown", label: "Section breakdown", description: "Per-section aggregated progress" },
+  { id: "workPlan", label: "Work plan", description: "Activities, durations and status from the saved work plan" },
+  { id: "paymentCertificates", label: "Financial progress (IPCs)", description: "Payment certificates and net certified amounts" },
+  { id: "actionPoints", label: "Open action points", description: "Outstanding actions for this project across all meeting minutes" },
+  { id: "forecast", label: "Forecast & recovery", description: "Next period plan and recovery actions" },
+  { id: "signoff", label: "Sign-off", description: "Signature blocks at the end" },
+];
+
 function layoutForTemplate(templateType: DocumentTemplateType): GeneratedDocument["layoutStyle"] {
   if (
     templateType === "progress-report" ||
@@ -80,6 +146,9 @@ function layoutForTemplate(templateType: DocumentTemplateType): GeneratedDocumen
     return "report";
   }
   if (templateType === "completion-certificate") return "certificate";
+  // Milestone invoice has its own self-contained print path (buildMilestoneInvoicePrintHtml).
+  // We keep its layoutStyle as "letter" so any shared letter chrome still works as a sane
+  // fallback, but the dedicated branch in buildDocumentPrintHtml takes priority.
   return "letter";
 }
 
@@ -161,20 +230,9 @@ function buildDocumentContent({
   const certAmount = certificate ? certificateNet(certificate) : null;
 
   switch (templateType) {
-    case "commencement-letter":
-      return `Purpose
-Formal notice to commence the works for ${contractTitle} at ${location}.
-
-Instruction
-The contractor shall mobilize and commence the works in accordance with the contract, approved drawings, specifications, and the accepted work program.
-
-Required Actions
-- confirm mobilization arrangements and key personnel deployment
-- submit updated work program, method statements, and insurance records
-- maintain quality, safety, and progress reporting throughout execution
-
-Closing
-Please acknowledge receipt of this commencement notice and confirm readiness to proceed.`;
+    // "commencement-letter" intentionally has no buildDocumentContent case — the
+    // FIDIC commencement order is rendered by buildCommencementLetterPrintHtml
+    // with its own structured body and never reads doc.content.
     case "instruction-letter":
       return `Purpose
 This instruction relates to ${contractTitle} at ${location}.
@@ -279,8 +337,8 @@ function createDocumentDefaults({
         : templateType === "payment-certificate-summary"
         ? "Commercial Summary"
         : templateType === "site-visit-report"
-        ? "Site Visit Report"
-        : templateLabels[templateType],
+        ? templateLabelFor("site-visit-report", project)
+        : templateLabelFor(templateType, project),
     coverSubtitle:
       templateType === "progress-report"
         ? `${project?.contractTitle || project?.name || "Project"}${project?.location ? ` • ${project.location}` : ""}`
@@ -316,6 +374,54 @@ function createDocumentDefaults({
         ? "Prepared from field site notes and photo records stored in Planovera."
         : "Issued as controlled project correspondence.",
     content: buildDocumentContent({ templateType, project, progressReport, certificate }),
+    reportSections:
+      templateType === "progress-report"
+        ? { ...DEFAULT_PROGRESS_REPORT_SECTIONS }
+        : undefined,
+    executiveSummary:
+      templateType === "progress-report"
+        ? "Progress during the reporting period tracked the approved baseline, with key activities advanced as detailed in the section breakdown below."
+        : undefined,
+    forecastNarrative:
+      templateType === "progress-report"
+        ? "Next-period focus: maintain critical path activities, close out outstanding items, and progress upcoming milestones in line with the approved programme."
+        : undefined,
+    // ── Milestone invoice defaults ───────────────────────────────
+    invoiceLines:
+      templateType === "milestone-invoice"
+        ? [
+            { id: uuid(), description: "Milestone deliverable", unit: "ea", qty: "1", rate: "0" },
+          ]
+        : undefined,
+    invoiceTaxPercent: templateType === "milestone-invoice" ? "0" : undefined,
+    invoiceDiscountPercent: templateType === "milestone-invoice" ? "0" : undefined,
+    invoicePaymentTerms:
+      templateType === "milestone-invoice"
+        ? "Payment due within 30 days of invoice date."
+        : undefined,
+    // ── Status report defaults ───────────────────────────────────
+    statusOverall:
+      templateType === "status-report" ? ("green" as const) : undefined,
+    statusHighlights:
+      templateType === "status-report"
+        ? "- Key milestone achieved this period\n- Team capacity at planned levels"
+        : undefined,
+    statusIssues:
+      templateType === "status-report"
+        ? "- No blocking issues at this time"
+        : undefined,
+    statusUpcoming:
+      templateType === "status-report"
+        ? "- Continue planned work\n- Prepare for upcoming milestone"
+        : undefined,
+    statusTopRisks:
+      templateType === "status-report"
+        ? "- No critical risks currently"
+        : undefined,
+    statusResourceAsks:
+      templateType === "status-report"
+        ? ""
+        : undefined,
   };
 }
 
@@ -502,9 +608,11 @@ function documentPrintStyles() {
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: #e9eef5;
-      color: #102033;
-      font-family: Georgia, "Times New Roman", serif;
+      background: #f1f5f9;
+      color: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.55;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -524,14 +632,107 @@ function documentPrintStyles() {
     }
     .certificate-page .page-inner {
       padding: 8mm 9mm 10mm;
+      min-height: 297mm;
+      display: flex;
+      flex-direction: column;
+    }
+    .certificate-page .certificate-shell {
+      flex: 0 0 auto;
+    }
+    .certificate-page .certificate-signature-grid {
+      margin-top: auto;
     }
     .cover {
-      background:
-        radial-gradient(circle at top right, rgba(20, 91, 133, 0.18), transparent 34%),
-        linear-gradient(180deg, #0f2742 0%, #12395d 48%, #ffffff 48%, #ffffff 100%);
-      color: #102033;
+      background: #ffffff;
+      color: #0f172a;
+      page-break-after: always;
+      break-after: page;
+      position: relative;
     }
-    .cover .page-inner { padding-top: 36mm; }
+    /* Decorative double-line page border on the cover */
+    .cover::before {
+      content: '';
+      position: absolute;
+      top: 9mm;
+      right: 9mm;
+      bottom: 9mm;
+      left: 9mm;
+      border: 3px double #0f172a;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .cover .page-inner {
+      padding: 0;
+      min-height: 297mm;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 1;
+    }
+    .cover-hero {
+      background: transparent;
+      color: #0f172a;
+      flex: 1 1 auto;
+      padding: 22mm 26mm 14mm;
+      display: flex;
+      flex-direction: column;
+      min-height: 180mm;
+    }
+    .cover-hero .letterhead {
+      margin-bottom: 0;
+      gap: 12px;
+    }
+    .cover-hero .letterhead-subtitle {
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .cover-hero .letterhead-address {
+      color: #64748b;
+    }
+    .cover-hero .letterhead-mark {
+      background: #0f172a;
+      color: white;
+      font-weight: 600;
+    }
+    .cover-hero .letterhead-logo {
+      background: white;
+    }
+    .cover-hero-spacer {
+      flex: 1 1 auto;
+      min-height: 24mm;
+    }
+    /* Dedicated image region inside the hero. The image is contained so any size fits without cropping.
+       No frame chrome — just the picture. Negative side margins let the image extend close to the
+       cover border (since the hero itself has 26mm side padding for letterhead/title alignment). */
+    .cover-image-frame {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      padding: 0;
+      margin: 6mm -15mm 10mm;
+      min-height: 115mm;
+      overflow: hidden;
+    }
+    .cover-image-frame img {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+    }
+    .cover-meta-band {
+      background: #0f172a;
+      color: white;
+      /* Inset from page edges so the cover border can enclose the navy band too. */
+      margin: 0 11mm 11mm;
+      padding: 14mm 22mm 16mm;
+      flex: 0 0 auto;
+    }
     .letterhead-band {
       position: absolute;
       top: 0;
@@ -541,18 +742,17 @@ function documentPrintStyles() {
       background: linear-gradient(90deg, #0f2742 0%, #145b85 100%);
     }
     .letterhead-mark {
-      width: 54px;
-      height: 54px;
-      border-radius: 0;
-      background: linear-gradient(135deg, #145b85 0%, #0f2742 100%);
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      background: #0f172a;
       color: white;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-family: "Arial", sans-serif;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      font-size: 15px;
       box-shadow: none;
     }
     .letterhead-logo {
@@ -583,133 +783,149 @@ function documentPrintStyles() {
       z-index: 1;
     }
     .letterhead-title {
-      font-size: 22px;
-      line-height: 1.15;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      color: #102033;
-      margin: 0 0 4px;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 600;
+      letter-spacing: 0;
+      color: #0f172a;
+      margin: 0 0 2px;
     }
     .letterhead-subtitle {
-      font-family: Arial, sans-serif;
-      font-size: 11px;
-      letter-spacing: 0.18em;
+      font-size: 10px;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: #145b85;
-      margin: 0 0 8px;
+      color: #64748b;
+      margin: 0 0 6px;
+      font-weight: 500;
     }
     .letterhead-address {
-      font-family: Arial, sans-serif;
-      font-size: 12px;
-      color: #576879;
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
       margin: 0;
     }
     .document-title {
-      font-size: 24px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin: 20px 0 18px;
-      color: #102033;
-      font-weight: 700;
+      font-size: 22px;
+      text-transform: none;
+      letter-spacing: -0.01em;
+      margin: 24px 0 16px;
+      color: #0f172a;
+      font-weight: 600;
     }
     .cover-title {
-      color: white;
-      font-size: 34px;
-      line-height: 1.05;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin: 46mm 0 18px;
-      max-width: 70%;
-    }
-    .cover-meta {
-      width: 72%;
-      background: rgba(255,255,255,0.94);
-      padding: 18px 20px;
-      border-radius: 0;
-      box-shadow: 0 18px 40px rgba(15, 39, 66, 0.15);
-      margin-top: 18px;
-      font-family: Arial, sans-serif;
+      color: #0f172a;
+      font-size: 44px;
+      line-height: 1.08;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-transform: none;
+      margin: 0;
+      max-width: 96%;
     }
     .cover-subtitle {
-      margin-top: 10px;
-      max-width: 72%;
-      color: rgba(255,255,255,0.86);
-      font-family: Arial, sans-serif;
-      font-size: 13px;
-      line-height: 1.7;
-      letter-spacing: 0.04em;
+      margin: 14px 0 0;
+      max-width: 92%;
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.55;
+      letter-spacing: 0;
+    }
+    .cover-meta-band .meta-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px 32px;
+      margin: 0;
+    }
+    .cover-meta-band .meta-item {
+      border-top: none;
+      padding-top: 0;
+    }
+    .cover-meta-band .meta-label {
+      color: rgba(255,255,255,0.65);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 500;
+      margin-bottom: 5px;
+    }
+    .cover-meta-band .meta-value {
+      color: white;
+      font-weight: 600;
+      font-size: 17px;
+      line-height: 1.3;
+      margin-top: 0;
     }
     .meta-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px 18px;
       margin-bottom: 22px;
-      font-family: Arial, sans-serif;
     }
     .meta-item {
-      border-top: 1px solid #d8e1ea;
-      padding-top: 8px;
+      border-top: none;
+      padding-top: 0;
     }
     .meta-label {
       font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.18em;
-      color: #718193;
-      margin-bottom: 4px;
+      letter-spacing: 0.1em;
+      color: #64748b;
+      margin-bottom: 3px;
+      font-weight: 500;
     }
     .meta-value {
       font-size: 13px;
-      color: #102033;
-      font-weight: 600;
+      color: #0f172a;
+      font-weight: 500;
     }
     .doc-section { margin-bottom: 18px; }
     .doc-section-title {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-      color: #145b85;
-      font-family: Arial, sans-serif;
+      font-size: 14px;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #0f172a;
       margin: 0 0 8px;
-      font-weight: 700;
+      font-weight: 600;
     }
     .doc-paragraph {
-      font-size: 14px;
-      line-height: 1.85;
-      color: #273849;
-      margin: 0 0 14px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #334155;
+      margin: 0 0 12px;
     }
     .doc-list {
-      margin: 0 0 14px;
+      margin: 0 0 12px;
       padding-left: 18px;
-      color: #273849;
-      font-size: 14px;
-      line-height: 1.75;
+      color: #334155;
+      font-size: 13px;
+      line-height: 1.65;
     }
     .doc-list li { margin-bottom: 6px; }
     .report-summary {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 22px;
-      font-family: Arial, sans-serif;
+      gap: 14px;
+      margin-bottom: 6px;
     }
     .report-card {
-      border: 1px solid #d8e1ea;
+      border: none;
+      border-left: 3px solid #0f172a;
       border-radius: 0;
-      padding: 14px 16px;
-      background: linear-gradient(180deg, #f9fbfd 0%, #ffffff 100%);
+      padding: 8px 14px;
+      background: transparent;
     }
     .report-card-label {
       font-size: 10px;
-      letter-spacing: 0.16em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #718193;
-      margin-bottom: 8px;
+      color: #64748b;
+      margin-bottom: 4px;
+      font-weight: 500;
     }
     .report-card-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: #102033;
+      font-size: 22px;
+      font-weight: 600;
+      color: #0f172a;
+      font-variant-numeric: tabular-nums;
     }
     .certificate-panel {
       border: 1px solid #d8e1ea;
@@ -722,12 +938,11 @@ function documentPrintStyles() {
     .signature-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 24px;
-      margin-top: 38px;
-      font-family: Arial, sans-serif;
+      gap: 28px;
+      margin-top: 42px;
     }
     .signature-box {
-      border-top: 1px solid #8896a6;
+      border-top: 1px solid #cbd5e1;
       padding-top: 10px;
       min-height: 52px;
     }
@@ -739,30 +954,29 @@ function documentPrintStyles() {
       margin: -28px 0 8px;
     }
     .signature-name {
-      font-weight: 700;
-      color: #102033;
+      font-weight: 600;
+      color: #0f172a;
       margin-bottom: 4px;
+      font-size: 13px;
     }
     .signature-role {
-      font-size: 12px;
-      color: #718193;
+      font-size: 11.5px;
+      color: #64748b;
     }
     .page-number {
       position: absolute;
-      right: 22mm;
-      bottom: 14mm;
-      font-family: Arial, sans-serif;
-      font-size: 11px;
-      color: #8190a1;
+      right: 15mm;
+      bottom: 8mm;
+      font-size: 10px;
+      color: #94a3b8;
     }
     .footer-note {
       margin-top: 26px;
       padding-top: 12px;
-      border-top: 1px solid #d8e1ea;
-      font-family: Arial, sans-serif;
-      font-size: 11px;
-      color: #718193;
-      line-height: 1.6;
+      border-top: 1px solid #e5e7eb;
+      font-size: 10.5px;
+      color: #64748b;
+      line-height: 1.55;
     }
     .brand-shell {
       display: flex;
@@ -1131,7 +1345,269 @@ function documentPrintStyles() {
       max-width: 150mm;
       text-align: left;
     }
-    @page { size: A4; margin: 12mm; }
+    /* ── Progress report sections ─────────────────────────────────────── */
+    .report-body { counter-reset: section; }
+    .report-section {
+      margin: 22px 0 14px;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+      counter-increment: section;
+    }
+    .report-section.section-fluid {
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+    .report-section-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: none;
+      color: #0f172a;
+      margin: 0 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .report-section-title::before {
+      content: counter(section) ".";
+      color: #94a3b8;
+      font-weight: 500;
+      font-size: 13.5px;
+    }
+    .report-section-prose {
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: #334155;
+    }
+    .report-section-prose p { margin: 0 0 8px; }
+    .report-section-prose p:last-child { margin-bottom: 0; }
+
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      color: #1f2937;
+    }
+    .report-table thead {
+      display: table-header-group;
+    }
+    .report-table thead tr {
+      background: transparent;
+      color: #0f172a;
+    }
+    .report-table thead th {
+      padding: 10px 6px 6px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #475569;
+      border: none;
+      border-bottom: 1.5px solid #0f172a;
+    }
+    .report-table tbody tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .report-table tbody td {
+      padding: 8px 6px;
+      border: none;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
+    }
+    .report-table tbody tr.section-row td {
+      background: transparent;
+      font-weight: 600;
+      color: #0f172a;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 11px;
+      padding-top: 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .report-table .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .report-table tfoot tr {
+      background: transparent;
+      font-weight: 600;
+    }
+    .report-table tfoot td {
+      padding: 10px 6px;
+      border: none;
+      border-top: 1.5px solid #0f172a;
+      color: #0f172a;
+    }
+
+    /* ── Item-level progress: bar layout ──────────────────────────────── */
+    .item-bars { font-size: 11.5px; }
+    .item-bar-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 10px;
+      color: #64748b;
+      margin: 0 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .item-bar-legend-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 6px;
+      border-radius: 1px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .bar-section-header {
+      font-size: 11px;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 12px 0 4px;
+    }
+    .item-bar-row {
+      display: grid;
+      grid-template-columns: 22px 1fr 110px 42px;
+      gap: 10px;
+      padding: 6px 0;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .item-bar-num {
+      font-size: 10px;
+      color: #64748b;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .item-bar-name {
+      font-size: 11px;
+      color: #1f2937;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .item-bar-track {
+      height: 8px;
+      background: #f1f5f9;
+      position: relative;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .item-bar-planned {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: #cbd5e1;
+    }
+    .item-bar-actual {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: #0f172a;
+    }
+    .item-bar-value {
+      font-size: 11px;
+      font-weight: 600;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: #0f172a;
+    }
+
+    /* ── Work plan Gantt ──────────────────────────────────────────────── */
+    .gantt-chart { font-size: 10.5px; }
+    .gantt-axis {
+      display: grid;
+      grid-template-columns: 30% 1fr;
+      border-bottom: 1.5px solid #0f172a;
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+    }
+    .gantt-axis-track {
+      position: relative;
+      height: 14px;
+    }
+    .gantt-axis .gantt-task {
+      font-size: 9.5px;
+      color: #64748b;
+      letter-spacing: 0.06em;
+    }
+    .gantt-axis-tick {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      font-size: 9px;
+      color: #64748b;
+      padding-left: 3px;
+      border-left: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    .gantt-row {
+      display: grid;
+      grid-template-columns: 30% 1fr;
+      padding: 5px 0;
+      border-bottom: 1px solid #e5e7eb;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .gantt-task {
+      padding-right: 10px;
+      font-size: 10.5px;
+      color: #1f2937;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .gantt-track {
+      position: relative;
+      height: 16px;
+      background: #f8fafc;
+      border-radius: 2px;
+    }
+    .gantt-bar {
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      background: #0f172a;
+      border-radius: 2px;
+    }
+    .gantt-bar-completed { background: #047857; }
+    .gantt-bar-delayed { background: #b91c1c; }
+    .gantt-bar-in-progress { background: #1d4ed8; }
+    .gantt-bar-pending { background: #94a3b8; }
+    .gantt-unscheduled {
+      margin-top: 14px;
+      font-size: 10.5px;
+      color: #475569;
+    }
+    .gantt-unscheduled-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .gantt-unscheduled-item {
+      padding: 3px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    @page {
+      size: A4;
+      margin: 15mm 15mm 18mm;
+      @bottom-right {
+        content: counter(page);
+        font-size: 9px;
+        color: #94a3b8;
+      }
+    }
+    @page :first {
+      /* Cover prints edge-to-edge */
+      margin: 0;
+      @bottom-right { content: ""; }
+    }
     @media print {
       body { background: white; }
       .print-root { padding: 0; }
@@ -1143,6 +1619,18 @@ function documentPrintStyles() {
         page-break-after: always;
       }
       .page:last-child { page-break-after: auto; }
+      /* Page-inner padding is provided by @page margins in print so content stays inside the safe area. */
+      .page-inner { padding: 0; }
+      .cover .page-inner {
+        padding: 0;
+        min-height: 297mm;
+      }
+      .certificate-page .page-inner {
+        min-height: 297mm;
+      }
+      .report-table { font-size: 10.5px; }
+      /* Hide the in-content page-number stamp when printing — @page footer takes over. */
+      .page-number { display: none; }
     }
   `;
 }
@@ -1177,11 +1665,633 @@ function signatureImageHtml(dataUrl: string, className = "signature-image") {
   return `<img class="${className}" src="${escapeHtml(dataUrl)}" alt="Saved signature" />`;
 }
 
-function renderBodyHtml(doc: GeneratedDocument, project: Project | null, progressReport?: ProgressReport | null, certificate?: PaymentCertificate | null) {
+function progressItemTableHtml(progressReport: ProgressReport, currencyCode: string) {
+  const sections = progressReport.sheets;
+  if (!sections.length) return "";
+  let runningIndex = 0;
+  const rowsHtml = sections
+    .map((sheet) => {
+      const sheetItemsHtml = sheet.items
+        .map((item) => {
+          runningIndex += 1;
+          const planned = toNumber(item.plannedPercent);
+          const actual = toNumber(item.actualPercent);
+          const variance = actual - planned;
+          return `
+            <tr>
+              <td class="num">${runningIndex}</td>
+              <td>${escapeHtml(item.description || "")}</td>
+              <td>${escapeHtml(item.unit || "")}</td>
+              <td class="num">${escapeHtml(item.weightPercent || "")}%</td>
+              <td class="num">${planned.toFixed(1)}%</td>
+              <td class="num">${actual.toFixed(1)}%</td>
+              <td class="num" style="color:${variance >= 0 ? "#065f46" : "#991b1b"}">${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%</td>
+              <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(currency(toNumber(item.earnedAmount)))}</td>
+            </tr>
+          `;
+        })
+        .join("");
+      if (!sheetItemsHtml) return "";
+      const sheetHeader =
+        sections.length > 1
+          ? `<tr class="section-row"><td colspan="8">${escapeHtml(sheet.name || "Section")}</td></tr>`
+          : "";
+      return sheetHeader + sheetItemsHtml;
+    })
+    .join("");
+  if (!rowsHtml) return "";
+
+  const totals = progressReport.sheets.flatMap((sheet) => sheet.items).reduce(
+    (acc, item) => {
+      acc.earned += toNumber(item.earnedAmount);
+      return acc;
+    },
+    { earned: 0 },
+  );
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:5%">#</th>
+          <th>Activity</th>
+          <th style="width:6%">Unit</th>
+          <th style="width:9%" class="num">Weight</th>
+          <th style="width:9%" class="num">Planned</th>
+          <th style="width:9%" class="num">Actual</th>
+          <th style="width:10%" class="num">Variance</th>
+          <th style="width:16%" class="num">Earned</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="7" class="num">Total earned</td>
+          <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(currency(totals.earned))}</td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+function progressSheetBreakdownHtml(progressReport: ProgressReport, currencyCode: string) {
+  const sheets = progressReport.sheets;
+  if (!sheets.length) return "";
+  const rows = sheets
+    .map((sheet) => {
+      const planned = sheet.items.reduce(
+        (sum, item) => sum + (toNumber(item.weightPercent) * toNumber(item.plannedPercent)) / 100,
+        0,
+      );
+      const actual = sheet.items.reduce(
+        (sum, item) => sum + (toNumber(item.weightPercent) * toNumber(item.actualPercent)) / 100,
+        0,
+      );
+      const earned = sheet.items.reduce((sum, item) => sum + toNumber(item.earnedAmount), 0);
+      const variance = actual - planned;
+      return `
+        <tr>
+          <td>${escapeHtml(sheet.name || "Section")}</td>
+          <td class="num">${planned.toFixed(1)}%</td>
+          <td class="num">${actual.toFixed(1)}%</td>
+          <td class="num" style="color:${variance >= 0 ? "#065f46" : "#991b1b"}">${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%</td>
+          <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(currency(earned))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th>Section</th>
+          <th style="width:14%" class="num">Planned</th>
+          <th style="width:14%" class="num">Actual</th>
+          <th style="width:14%" class="num">Variance</th>
+          <th style="width:22%" class="num">Earned</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function richNarrativeToHtml(text?: string) {
+  if (!text || !text.trim()) return "";
+  // Treat each blank-line-separated block as a paragraph; preserve single line breaks as <br>.
+  return text
+    .split(/\n{2,}/)
+    .map((para) =>
+      `<p>${escapeHtmlMultiline(para.trim())}</p>`
+    )
+    .join("");
+}
+
+function inPeriod(dateIso: string | undefined, start?: string, end?: string) {
+  if (!dateIso) return true; // include items missing dates rather than hide them
+  if (start && dateIso < start) return false;
+  if (end && dateIso > end) return false;
+  return true;
+}
+
+function progressWorkPlanHtml(workPlans: SavedWorkPlan[], projectId: string) {
+  const activities = workPlans
+    .filter((plan) => plan.project_id === projectId)
+    .flatMap((plan) => plan.sheets.flatMap((sheet) => sheet.activities))
+    .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description);
+
+  if (activities.length === 0) return "";
+
+  const statusLabel: Record<string, string> = {
+    pending: "Pending",
+    "in-progress": "In progress",
+    completed: "Completed",
+    delayed: "Delayed",
+  };
+
+  const rows = activities
+    .map((activity, index) => {
+      const status = activity.status || "pending";
+      const color =
+        status === "completed"
+          ? "#047857"
+          : status === "delayed"
+            ? "#991b1b"
+            : status === "in-progress"
+              ? "#1d4ed8"
+              : "#475569";
+      return `
+        <tr>
+          <td class="num">${index + 1}</td>
+          <td>${escapeHtml(activity.description)}</td>
+          <td class="num">${escapeHtml(activity.duration || "—")}</td>
+          <td>${escapeHtml(activity.startDate || "—")}</td>
+          <td>${escapeHtml(activity.endDate || "—")}</td>
+          <td style="color:${color}; font-weight:500">${escapeHtml(statusLabel[status] || status)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:5%">#</th>
+          <th>Activity</th>
+          <th style="width:12%" class="num">Duration</th>
+          <th style="width:14%">Start</th>
+          <th style="width:14%">End</th>
+          <th style="width:13%">Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function progressPaymentCertificatesHtml(
+  certificates: PaymentCertificate[],
+  projectId: string,
+  currencyCode: string,
+  periodStart?: string,
+  periodEnd?: string,
+) {
+  const projectCerts = certificates
+    .filter((cert) => cert.project_id === projectId)
+    .filter((cert) => inPeriod(cert.date, periodStart, periodEnd))
+    .sort((a, b) =>
+      a.type.localeCompare(b.type) ||
+      a.number - b.number ||
+      (a.revision || 0) - (b.revision || 0),
+    );
+
+  if (projectCerts.length === 0) return "";
+
+  const statusLabel = (status: PaymentCertificate["status"]) =>
+    status === "paid" ? "Paid" : status === "approved" ? "Approved" : status === "submitted" ? "Submitted" : "Draft";
+  const statusColor = (status: PaymentCertificate["status"]) =>
+    status === "paid" ? "#047857" : status === "approved" ? "#1d4ed8" : status === "submitted" ? "#b45309" : "#64748b";
+  const fmtCert = (cert: PaymentCertificate) => {
+    const base = cert.type === "final" ? "FPC" : "IPC";
+    const rev = cert.revision ? ` Rev ${cert.revision}` : "";
+    return `${base} ${cert.number.toString().padStart(2, "0")}${rev}`;
+  };
+
+  let cumulative = 0;
+  const rows = projectCerts
+    .map((cert, index) => {
+      const net = certificateNet(cert);
+      cumulative += net;
+      return `
+        <tr>
+          <td class="num">${index + 1}</td>
+          <td>${escapeHtml(fmtCert(cert))}</td>
+          <td>${escapeHtml(cert.date || "—")}</td>
+          <td style="color:${statusColor(cert.status)}; font-weight:500">${escapeHtml(statusLabel(cert.status))}</td>
+          <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(currency(net))}</td>
+          <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(currency(cumulative))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:5%">#</th>
+          <th style="width:18%">Certificate</th>
+          <th style="width:14%">Date</th>
+          <th style="width:13%">Status</th>
+          <th style="width:25%" class="num">Net certified</th>
+          <th style="width:25%" class="num">Cumulative</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5" class="num">Total certified to date</td>
+          <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(currency(cumulative))}</td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+function progressItemBarsHtml(progressReport: ProgressReport) {
+  const sections = progressReport.sheets;
+  if (!sections.length) return "";
+  let runningIndex = 0;
+  const blocks = sections
+    .map((sheet) => {
+      const headerHtml =
+        sections.length > 1
+          ? `<div class="bar-section-header">${escapeHtml(sheet.name || "Section")}</div>`
+          : "";
+      const itemsHtml = sheet.items
+        .map((item) => {
+          runningIndex += 1;
+          const planned = Math.min(toNumber(item.plannedPercent), 100);
+          const actual = Math.min(toNumber(item.actualPercent), 100);
+          const ahead = actual >= planned;
+          const complete = actual >= 95;
+          const actualColor = complete ? "#047857" : ahead ? "#0f172a" : "#b45309";
+          return `
+            <div class="item-bar-row">
+              <div class="item-bar-num">${runningIndex}</div>
+              <div class="item-bar-name">${escapeHtml(item.description || "")}</div>
+              <div class="item-bar-track">
+                <div class="item-bar-planned" style="width:${planned.toFixed(1)}%"></div>
+                <div class="item-bar-actual" style="width:${actual.toFixed(1)}%; background:${actualColor}"></div>
+              </div>
+              <div class="item-bar-value">${actual.toFixed(0)}%</div>
+            </div>
+          `;
+        })
+        .join("");
+      return headerHtml + itemsHtml;
+    })
+    .join("");
+  return `
+    <div class="item-bars">
+      <div class="item-bar-legend">
+        <span><span class="item-bar-legend-swatch" style="background:#cbd5e1"></span> Planned</span>
+        <span><span class="item-bar-legend-swatch" style="background:#0f172a"></span> Actual on/ahead</span>
+        <span><span class="item-bar-legend-swatch" style="background:#b45309"></span> Behind plan</span>
+        <span><span class="item-bar-legend-swatch" style="background:#047857"></span> ≥ 95% complete</span>
+      </div>
+      ${blocks}
+    </div>
+  `;
+}
+
+function parseDateSafe(iso?: string): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function progressWorkPlanGanttHtml(workPlans: SavedWorkPlan[], projectId: string) {
+  const activities = workPlans
+    .filter((plan) => plan.project_id === projectId)
+    .flatMap((plan) => plan.sheets.flatMap((sheet) => sheet.activities))
+    .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description);
+
+  if (activities.length === 0) return "";
+
+  const dated = activities
+    .map((a) => ({
+      activity: a,
+      start: parseDateSafe(a.startDate),
+      end: parseDateSafe(a.endDate),
+    }))
+    .filter((row): row is { activity: typeof activities[number]; start: Date; end: Date } =>
+      Boolean(row.start && row.end && row.end.getTime() >= row.start.getTime()),
+    );
+
+  if (dated.length === 0) {
+    // No dated activities — fall back to the table format.
+    return progressWorkPlanHtml(workPlans, projectId);
+  }
+
+  const unscheduled = activities.filter(
+    (a) => !parseDateSafe(a.startDate) || !parseDateSafe(a.endDate),
+  );
+
+  const minTime = Math.min(...dated.map((r) => r.start.getTime()));
+  const maxTime = Math.max(...dated.map((r) => r.end.getTime()));
+  const spanMs = Math.max(1, maxTime - minTime);
+  const spanDays = spanMs / (1000 * 60 * 60 * 24);
+
+  // Build axis ticks. Monthly if span > 90 days, otherwise weekly.
+  const useMonthly = spanDays > 90;
+  const ticks: Array<{ pos: number; label: string }> = [];
+  if (useMonthly) {
+    const d = new Date(minTime);
+    d.setUTCDate(1);
+    while (d.getTime() <= maxTime) {
+      const pos = ((d.getTime() - minTime) / spanMs) * 100;
+      if (pos >= 0 && pos <= 100) {
+        ticks.push({
+          pos,
+          label: d.toLocaleDateString("en", { month: "short", year: "2-digit" }),
+        });
+      }
+      d.setUTCMonth(d.getUTCMonth() + 1);
+    }
+  } else {
+    const d = new Date(minTime);
+    let safety = 0;
+    while (d.getTime() <= maxTime && safety++ < 60) {
+      const pos = ((d.getTime() - minTime) / spanMs) * 100;
+      if (pos >= 0 && pos <= 100) {
+        ticks.push({
+          pos,
+          label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
+        });
+      }
+      d.setUTCDate(d.getUTCDate() + 7);
+    }
+  }
+
+  const statusClass: Record<string, string> = {
+    completed: "gantt-bar-completed",
+    "in-progress": "gantt-bar-in-progress",
+    delayed: "gantt-bar-delayed",
+    pending: "gantt-bar-pending",
+  };
+
+  const rowsHtml = dated
+    .map((row) => {
+      const leftPct = ((row.start.getTime() - minTime) / spanMs) * 100;
+      const widthPct = Math.max(0.6, ((row.end.getTime() - row.start.getTime()) / spanMs) * 100);
+      const status = row.activity.status || "pending";
+      return `
+        <div class="gantt-row">
+          <div class="gantt-task">${escapeHtml(row.activity.description)}</div>
+          <div class="gantt-track">
+            <div class="gantt-bar ${statusClass[status] || "gantt-bar-pending"}"
+                 style="left:${leftPct.toFixed(2)}%; width:${widthPct.toFixed(2)}%"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const axisHtml = `
+    <div class="gantt-axis">
+      <div class="gantt-task">ACTIVITY</div>
+      <div class="gantt-axis-track">
+        ${ticks
+          .map(
+            (t) =>
+              `<div class="gantt-axis-tick" style="left:${t.pos.toFixed(2)}%">${escapeHtml(t.label)}</div>`,
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+
+  const unscheduledHtml =
+    unscheduled.length > 0
+      ? `
+        <div class="gantt-unscheduled">
+          <div class="gantt-unscheduled-label">Unscheduled (${unscheduled.length})</div>
+          ${unscheduled
+            .map((a) => `<div class="gantt-unscheduled-item">${escapeHtml(a.description)}</div>`)
+            .join("")}
+        </div>
+      `
+      : "";
+
+  return `<div class="gantt-chart">${axisHtml}${rowsHtml}</div>${unscheduledHtml}`;
+}
+
+function progressActionPointsHtml(meetingMinutes: MeetingMinute[], projectId: string) {
+  const liveActions = getLiveMeetingActionItems(meetingMinutes)
+    .filter((action) => action.project_id === projectId)
+    .filter((action) => action.status !== "closed");
+
+  if (liveActions.length === 0) return "";
+
+  const today = new Date().toISOString().slice(0, 10);
+  const isOverdue = (deadline: string) => Boolean(deadline) && deadline < today;
+
+  liveActions.sort((a, b) => {
+    const aOver = isOverdue(a.deadline);
+    const bOver = isOverdue(b.deadline);
+    if (aOver !== bOver) return aOver ? -1 : 1;
+    return (a.deadline || "9999-12-31").localeCompare(b.deadline || "9999-12-31");
+  });
+
+  const statusLabel: Record<string, string> = {
+    open: "Open",
+    "in-progress": "In progress",
+    closed: "Closed",
+  };
+
+  const rows = liveActions
+    .map((action, idx) => {
+      const overdue = isOverdue(action.deadline);
+      const meetingRef = [action.meetingTitle, action.meetingDate].filter(Boolean).join(" · ");
+      return `
+        <tr>
+          <td class="num">${idx + 1}</td>
+          <td>${escapeHtml(action.description)}</td>
+          <td>${escapeHtml(action.responsiblePerson || "—")}</td>
+          <td style="color:${overdue ? "#b91c1c" : "#1f2937"}; font-weight:${overdue ? "600" : "400"}">
+            ${escapeHtml(action.deadline || "—")}${overdue ? " (overdue)" : ""}
+          </td>
+          <td>${escapeHtml(statusLabel[action.status] || action.status)}</td>
+          <td style="font-size:10px; color:#64748b">${escapeHtml(meetingRef)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:5%">#</th>
+          <th>Action item</th>
+          <th style="width:16%">Responsible</th>
+          <th style="width:14%">Deadline</th>
+          <th style="width:11%">Status</th>
+          <th style="width:20%">From meeting</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderProgressReportBody(
+  doc: GeneratedDocument,
+  project: Project | null,
+  progressReport?: ProgressReport | null,
+  workPlans: SavedWorkPlan[] = [],
+  certificates: PaymentCertificate[] = [],
+  meetingMinutes: MeetingMinute[] = [],
+) {
+  const toggles = resolveReportSections(doc);
+  const metrics = progressReport ? progressMetrics(progressReport) : null;
+  const currencyCode = project?.currency || "USD";
+  const blocks: string[] = [];
+
+  if (toggles.executiveSummary) {
+    const summary = doc.executiveSummary?.trim()
+      ? richNarrativeToHtml(doc.executiveSummary)
+      : blocksToHtml(doc.content);
+    if (summary) {
+      blocks.push(`
+        <section class="report-section">
+          <div class="report-section-title">Executive summary</div>
+          <div class="report-section-prose">${summary}</div>
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.keyMetrics && metrics) {
+    blocks.push(`
+      <section class="report-section">
+        <div class="report-section-title">Key metrics</div>
+        <div class="report-summary">
+          <div class="report-card"><div class="report-card-label">Planned</div><div class="report-card-value">${metrics.planned.toFixed(1)}%</div></div>
+          <div class="report-card"><div class="report-card-label">Actual</div><div class="report-card-value">${metrics.actual.toFixed(1)}%</div></div>
+          <div class="report-card"><div class="report-card-label">Variance</div><div class="report-card-value">${metrics.variance >= 0 ? "+" : ""}${metrics.variance.toFixed(1)}%</div></div>
+          <div class="report-card"><div class="report-card-label">Earned</div><div class="report-card-value">${escapeHtml(currencyCode)} ${escapeHtml(currency(metrics.earned))}</div></div>
+        </div>
+      </section>
+    `);
+  }
+
+  if (toggles.itemTable && progressReport) {
+    const useBars = (doc.reportItemFormat || "table") === "bars";
+    const bodyHtml = useBars
+      ? progressItemBarsHtml(progressReport)
+      : progressItemTableHtml(progressReport, currencyCode);
+    if (bodyHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Item-level progress</div>
+          ${bodyHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.sheetBreakdown && progressReport) {
+    const breakdownHtml = progressSheetBreakdownHtml(progressReport, currencyCode);
+    if (breakdownHtml) {
+      blocks.push(`
+        <section class="report-section">
+          <div class="report-section-title">Section breakdown</div>
+          ${breakdownHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.workPlan && project?.id) {
+    const useGantt = (doc.reportWorkPlanFormat || "table") === "gantt";
+    const wpHtml = useGantt
+      ? progressWorkPlanGanttHtml(workPlans, project.id)
+      : progressWorkPlanHtml(workPlans, project.id);
+    if (wpHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Work plan</div>
+          ${wpHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.paymentCertificates && project?.id) {
+    const certsHtml = progressPaymentCertificatesHtml(
+      certificates,
+      project.id,
+      currencyCode,
+      doc.reportPeriodStart,
+      doc.reportPeriodEnd,
+    );
+    if (certsHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Financial progress (IPCs)</div>
+          ${certsHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.actionPoints && project?.id) {
+    const actionsHtml = progressActionPointsHtml(meetingMinutes, project.id);
+    if (actionsHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Open action points</div>
+          ${actionsHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.forecast) {
+    const forecast = doc.forecastNarrative?.trim();
+    if (forecast) {
+      blocks.push(`
+        <section class="report-section">
+          <div class="report-section-title">Forecast &amp; recovery</div>
+          <div class="report-section-prose">${richNarrativeToHtml(forecast)}</div>
+        </section>
+      `);
+    }
+  }
+
+  return `<div class="report-body">${blocks.join("")}</div>`;
+}
+
+function renderBodyHtml(
+  doc: GeneratedDocument,
+  project: Project | null,
+  progressReport?: ProgressReport | null,
+  certificate?: PaymentCertificate | null,
+  workPlans: SavedWorkPlan[] = [],
+  allCertificates: PaymentCertificate[] = [],
+  meetingMinutes: MeetingMinute[] = [],
+) {
   const linkedMetrics = progressReport ? progressMetrics(progressReport) : null;
   const certValue = certificate ? certificateNet(certificate) : null;
 
   if (doc.layoutStyle === "report") {
+    // Progress report uses the new section-driven composer.
+    if (doc.templateType === "progress-report") {
+      return renderProgressReportBody(doc, project, progressReport, workPlans, allCertificates, meetingMinutes);
+    }
     return `
       <div class="report-summary">
         ${
@@ -1222,26 +2332,988 @@ function renderBodyHtml(doc: GeneratedDocument, project: Project | null, progres
   return blocksToHtml(doc.content);
 }
 
+function formatCommencementDate(input?: string | null) {
+  if (!input) return "";
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return input;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function formatCommencementDateWithWeekday(input?: string | null) {
+  if (!input) return "";
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return input;
+  const datePart = d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  const dayPart = d.toLocaleDateString("en-GB", { weekday: "long" });
+  return `${datePart} (${dayPart})`;
+}
+
+function commencementDaysBetween(a?: string | null, b?: string | null) {
+  if (!a || !b) return "";
+  const da = new Date(a);
+  const db = new Date(b);
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return "";
+  const ms = db.getTime() - da.getTime();
+  if (ms <= 0) return "";
+  return Math.round(ms / 86400000).toString();
+}
+
+function buildCommencementLetterPrintHtml(
+  mergedDoc: GeneratedDocument,
+  project: Project | null,
+  signatureProfile?: UserSignatureProfile | null,
+) {
+  const branding = resolveProjectBranding(project);
+  const firmName = mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.consultantName || "Engineer's Consultancy";
+  const firmTagline = mergedDoc.letterheadSubtitle || branding.headerTagline || "Civil Engineering · Contract Administration · Project Supervision";
+  const firmAddress = mergedDoc.letterheadAddress || branding.issuerAddress || project?.location || "Project office";
+  const sealLetters = documentInitials(mergedDoc).slice(0, 3);
+
+  const refNo = mergedDoc.referenceNo || "—";
+  const letterDate = formatCommencementDate(mergedDoc.date) || mergedDoc.date || "—";
+
+  const contractor = mergedDoc.recipientName || project?.contractorName || "The Contractor";
+  const contractorRole = mergedDoc.recipientRole || "Project Director";
+  const contractorAddress = project?.location || "";
+
+  const projectName = project?.contractTitle || project?.name || "the Project";
+  const contractNumber = project?.contractNumber || mergedDoc.referenceNo || "—";
+
+  const employer = project?.clientName || branding.clientDisplayName || "the Employer";
+  const contractDateField = project?.start_date || mergedDoc.date || "—";
+
+  const commencementDate = formatCommencementDateWithWeekday(project?.start_date) || project?.start_date || "Not set";
+  const scheduledCompletion = formatCommencementDate(project?.end_date) || project?.end_date || "Not set";
+  const days = commencementDaysBetween(project?.start_date, project?.end_date);
+  const timeForCompletion = days ? `${days} calendar days from the Commencement Date` : "As stipulated in the Contract";
+
+  const engineerName = mergedDoc.signatoryName || branding.issuerDisplayName || "The Engineer";
+  const engineerRole = mergedDoc.signatoryRole || `The Engineer · ${firmName}`;
+  const engineerSignature = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
+
+  const ccList = [
+    employer,
+    "Employer's Representative",
+    "Resident Engineer",
+    "Quantity Surveyor",
+    `Project File (${refNo})`,
+  ]
+    .filter(Boolean)
+    .map((item) => escapeHtml(item as string))
+    .join(" &middot; ");
+
+  const cornerSvg = `
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+      <rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45 0 0)" fill="#1a1c20" />
+      <rect x="18.4" y="18.4" width="3.2" height="3.2" transform="rotate(45 20 20)" fill="#1a1c20" />
+    </svg>
+  `;
+
+  const styles = `
+    :root {
+      --ink: #1a1c20;
+      --ink-soft: #2c2f35;
+      --muted: #5e636d;
+      --rule: #1a1c20;
+      --paper: #fbf9f4;
+      --accent: #6b2a1f;
+      --head-band: #eaf0f3;
+      --head-band-2: #dde6ec;
+      --head-rule: #b9c6cf;
+    }
+    @page { size: A4; margin: 0; }
+    html, body { margin: 0; padding: 0; background: #d9d4c8; font-family: 'Source Serif 4', Georgia, serif; color: var(--ink); }
+    * { box-sizing: border-box; }
+    .stage { min-height: 100vh; display: flex; justify-content: center; padding: 24px 16px 40px; }
+    .sheet {
+      width: 210mm;
+      min-height: 297mm;
+      background: var(--paper);
+      background-image:
+        radial-gradient(circle at 20% 10%, rgba(0,0,0,0.015) 0, transparent 40%),
+        radial-gradient(circle at 80% 90%, rgba(0,0,0,0.02) 0, transparent 40%);
+      box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 20px 60px -20px rgba(20,18,12,0.35);
+      position: relative;
+      padding: 16mm;
+      color: var(--ink);
+    }
+    .sheet::before { content: ""; position: absolute; inset: 10mm; border: 1.6px solid var(--rule); pointer-events: none; }
+    .sheet::after  { content: ""; position: absolute; inset: 15mm; border: 0.4px solid var(--rule); pointer-events: none; }
+    .fleur { position: absolute; color: var(--ink); font-family: 'Cormorant Garamond', serif; font-size: 14px; line-height: 1; pointer-events: none; background: var(--paper); padding: 0 4px; }
+    .fleur.top    { top: 9.2mm;    left: 50%; transform: translateX(-50%); }
+    .fleur.bottom { bottom: 9.2mm; left: 50%; transform: translateX(-50%); }
+    .fleur.left   { left: 9.2mm;   top: 50%;  transform: translate(-50%, -50%) rotate(-90deg); }
+    .fleur.right  { right: 9.2mm;  top: 50%;  transform: translate(50%, -50%) rotate(90deg); }
+    .corner { position: absolute; width: 5mm; height: 5mm; pointer-events: none; }
+    .corner svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .corner.tl { top: 10mm; left: 10mm; }
+    .corner.tr { top: 10mm; right: 10mm; transform: scaleX(-1); }
+    .corner.bl { bottom: 10mm; left: 10mm; transform: scaleY(-1); }
+    .corner.br { bottom: 10mm; right: 10mm; transform: scale(-1, -1); }
+    .inner { position: relative; padding: 12mm 14mm 14mm; }
+    .letterhead {
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      column-gap: 18px;
+      align-items: center;
+      margin: -12mm -14mm 0;
+      padding: 14mm 14mm 14px;
+      background: linear-gradient(180deg, var(--head-band) 0%, var(--head-band-2) 100%);
+      border-bottom: 0.6px solid var(--head-rule);
+      position: relative;
+    }
+    .letterhead::after { content: ""; position: absolute; left: 14mm; right: 14mm; bottom: -4px; height: 1.2px; background: var(--rule); }
+    .seal { width: 56px; height: 56px; border: 1.2px solid var(--ink); border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
+    .seal-diamond { width: 34px; height: 34px; border: 0.6px solid var(--ink); transform: rotate(45deg); display: flex; align-items: center; justify-content: center; }
+    .seal-letters { transform: rotate(-45deg); font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 15px; letter-spacing: 1px; color: var(--ink); }
+    .firm { display: flex; flex-direction: column; line-height: 1.15; }
+    .firm-name { font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 26px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink); }
+    .firm-tag { font-family: 'Source Sans 3', sans-serif; font-size: 9px; letter-spacing: 3.2px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+    .firm-contact { font-family: 'Source Sans 3', sans-serif; font-size: 9px; line-height: 1.55; text-align: right; color: var(--ink-soft); letter-spacing: 0.2px; max-width: 56mm; }
+    .firm-contact .label { color: var(--muted); letter-spacing: 2px; text-transform: uppercase; font-size: 7.5px; display: block; margin-bottom: 2px; }
+    .meta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 26px; font-family: 'Source Sans 3', sans-serif; font-size: 10px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); }
+    .meta .ref strong, .meta .date strong { color: var(--ink); font-weight: 500; margin-left: 4px; letter-spacing: 1.2px; }
+    .title-block { text-align: center; margin: 26px 0 22px; }
+    .title-eyebrow { font-family: 'Source Sans 3', sans-serif; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .title { font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 30px; letter-spacing: 4px; text-transform: uppercase; color: var(--ink); line-height: 1; margin: 0; }
+    .title-flourish { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+    .title-flourish .line { width: 56px; height: 1px; background: var(--ink); }
+    .title-flourish .dot { width: 5px; height: 5px; background: var(--ink); transform: rotate(45deg); }
+    .addr { font-size: 11.5px; line-height: 1.55; margin: 4px 0 18px; }
+    .addr .role { font-family: 'Source Sans 3', sans-serif; font-size: 8.5px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .addr .name { font-weight: 600; }
+    .salute { font-size: 12px; margin: 16px 0 6px; }
+    .subject { font-size: 12px; text-decoration: underline; text-underline-offset: 4px; font-weight: 600; margin: 14px 0 14px; text-align: center; line-height: 1.45; }
+    .body p { font-size: 11.5px; line-height: 1.7; margin: 0 0 11px; text-align: justify; text-justify: inter-word; hyphens: auto; color: var(--ink-soft); }
+    .body p .field { border-bottom: 0.5px dotted var(--muted); padding: 0 4px; color: var(--ink); font-weight: 500; }
+    .clause { font-style: italic; color: var(--accent); }
+    .particulars { margin: 12px 0 14px; padding: 10px 14px; border-top: 0.5px solid var(--rule); border-bottom: 0.5px solid var(--rule); display: grid; grid-template-columns: 170px 1fr; row-gap: 6px; column-gap: 12px; font-size: 11px; }
+    .particulars dt { font-family: 'Source Sans 3', sans-serif; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); align-self: center; margin: 0; }
+    .particulars dd { margin: 0; color: var(--ink); font-weight: 500; letter-spacing: 0.2px; }
+    .closing { font-size: 11.5px; margin: 18px 0 4px; color: var(--ink-soft); }
+    .sign-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 36px; margin-top: 30px; }
+    .sign-col .role { font-family: 'Source Sans 3', sans-serif; font-size: 8.5px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); margin-bottom: 28px; }
+    .sign-col .sign-image { display: block; max-height: 38px; max-width: 70%; margin: -22px 0 4px; }
+    .sign-line { border-bottom: 0.6px solid var(--ink); height: 0; margin-bottom: 6px; }
+    .sign-meta { font-size: 10px; line-height: 1.55; }
+    .sign-meta .nm { font-weight: 600; }
+    .sign-meta .ti { color: var(--muted); }
+    .stamp { position: absolute; right: 28mm; bottom: 60mm; width: 78px; height: 78px; border: 1.4px solid var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); opacity: 0.62; color: var(--accent); text-align: center; pointer-events: none; }
+    .stamp .inner-ring { position: absolute; inset: 5px; border: 0.5px solid var(--accent); border-radius: 50%; }
+    .stamp .stamp-text { font-family: 'Source Sans 3', sans-serif; font-size: 7px; letter-spacing: 1.8px; text-transform: uppercase; line-height: 1.25; font-weight: 600; }
+    .stamp .stamp-mark { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 15px; display: block; margin: 3px 0 2px; letter-spacing: 0.5px; }
+    .cc { margin-top: 22px; padding-top: 10px; border-top: 0.5px solid var(--rule); font-size: 9.5px; color: var(--muted); font-family: 'Source Sans 3', sans-serif; letter-spacing: 0.4px; line-height: 1.6; }
+    .cc .label { text-transform: uppercase; letter-spacing: 2.6px; color: var(--ink); font-weight: 500; margin-right: 8px; }
+    .foot { margin-top: 14px; padding-top: 8px; border-top: 0.5px solid var(--rule); display: flex; justify-content: space-between; align-items: center; font-family: 'Source Sans 3', sans-serif; font-size: 8px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); }
+    .foot .center { letter-spacing: 3.5px; }
+    @media print {
+      html, body { background: #fff; }
+      .stage { padding: 0; }
+      .sheet { box-shadow: none; width: 210mm; height: 297mm; min-height: 297mm; }
+    }
+  `;
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(mergedDoc.title || "Commencement Order")}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Source+Sans+3:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+        <style>${styles}</style>
+      </head>
+      <body>
+        <div class="stage">
+          <article class="sheet" role="document" aria-label="Commencement Order Letter">
+            <div class="corner tl">${cornerSvg}</div>
+            <div class="corner tr">${cornerSvg}</div>
+            <div class="corner bl">${cornerSvg}</div>
+            <div class="corner br">${cornerSvg}</div>
+            <div class="fleur top" aria-hidden="true">&#10070;</div>
+            <div class="fleur bottom" aria-hidden="true">&#10070;</div>
+            <div class="fleur left" aria-hidden="true">&#10070;</div>
+            <div class="fleur right" aria-hidden="true">&#10070;</div>
+
+            <div class="inner">
+              <header class="letterhead">
+                <div class="seal" aria-hidden="true">
+                  <div class="seal-diamond">
+                    <span class="seal-letters">${escapeHtml(sealLetters)}</span>
+                  </div>
+                </div>
+                <div class="firm">
+                  <div class="firm-name">${escapeHtml(firmName)}</div>
+                  <div class="firm-tag">${escapeHtml(firmTagline)}</div>
+                </div>
+                <div class="firm-contact">
+                  <span class="label">Office</span>
+                  ${escapeHtmlMultiline(firmAddress)}
+                </div>
+              </header>
+
+              <div class="meta">
+                <div class="ref">Our Ref. <strong>${escapeHtml(refNo)}</strong></div>
+                <div class="date">Date <strong>${escapeHtml(letterDate)}</strong></div>
+              </div>
+
+              <div class="title-block">
+                <h1 class="title">Commencement Order</h1>
+                <div class="title-flourish" aria-hidden="true">
+                  <span class="line"></span>
+                  <span class="dot"></span>
+                  <span class="line"></span>
+                </div>
+              </div>
+
+              <div class="addr">
+                <div class="role">To &mdash; The Contractor</div>
+                <div class="name">${escapeHtml(contractor)}</div>
+                ${contractorRole ? `<div>Attn: ${escapeHtml(contractorRole)}</div>` : ""}
+                ${contractorAddress ? `<div>${escapeHtml(contractorAddress)}</div>` : ""}
+              </div>
+
+              <p class="salute">Dear Sir,</p>
+              <p class="subject">
+                Project: ${escapeHtml(projectName)}<br />
+                Contract No.: <span style="font-weight:500">${escapeHtml(contractNumber)}</span>
+                &nbsp;&middot;&nbsp; Notice to Commence the Works
+              </p>
+
+              <div class="body">
+                <p>
+                  With reference to the Contract Agreement executed between the Employer,
+                  <span class="field">${escapeHtml(employer)}</span>, and the Contractor,
+                  <span class="field">${escapeHtml(contractor)}</span>, dated
+                  <span class="field">${escapeHtml(formatCommencementDate(contractDateField) || contractDateField)}</span>, and pursuant to the
+                  provisions of <span class="clause">Sub-Clause&nbsp;8.1 [Commencement of Works]</span>
+                  of the FIDIC Conditions of Contract for Construction (Red Book, 2017 Edition)
+                  forming part of the said Contract, you are hereby formally instructed to
+                  commence the Works on the date particularised hereunder.
+                </p>
+
+                <dl class="particulars">
+                  <dt>Commencement Date</dt>
+                  <dd>${escapeHtml(commencementDate)}</dd>
+
+                  <dt>Time for Completion</dt>
+                  <dd>${escapeHtml(timeForCompletion)}</dd>
+
+                  <dt>Scheduled Completion</dt>
+                  <dd>${escapeHtml(scheduledCompletion)}</dd>
+
+                  <dt>Site Possession</dt>
+                  <dd>Granted in accordance with Sub-Clause&nbsp;2.1</dd>
+
+                  <dt>Performance Security</dt>
+                  <dd>Required prior to commencement &mdash; as per the Contract</dd>
+
+                  <dt>Advance Payment</dt>
+                  <dd>To be released upon submission of Advance Payment Guarantee</dd>
+                </dl>
+
+                <p>
+                  You are required, in accordance with <span class="clause">Sub-Clause&nbsp;8.3</span>,
+                  to submit a detailed Programme of Works to the Engineer within twenty-eight (28)
+                  days of the Commencement Date, together with a supporting report describing the
+                  general methods, arrangements, order, and timing of all activities. The
+                  Contractor&rsquo;s attention is further drawn to <span class="clause">Sub-Clauses&nbsp;4.1, 4.8 and 6.7</span>
+                  concerning the Contractor&rsquo;s general obligations, safety procedures, and the
+                  health and welfare of personnel on Site.
+                </p>
+
+                <p>
+                  All correspondence, notices, and submissions arising under the Contract shall
+                  be addressed to the Engineer at the address shown in the letterhead above, with
+                  copies to the Employer&rsquo;s Representative. Any delay in commencement, or any
+                  matter likely to affect the Time for Completion, shall be notified to the
+                  Engineer in writing without delay in accordance with
+                  <span class="clause">Sub-Clause&nbsp;8.4</span>.
+                </p>
+
+                <p>
+                  We take this opportunity to wish the Contractor every success in the execution
+                  of the Works and look forward to a safe, timely, and quality delivery of the
+                  Project.
+                </p>
+
+                <p class="closing">Yours faithfully,</p>
+              </div>
+
+              <div class="sign-grid">
+                <div class="sign-col">
+                  <div class="role">For and on behalf of the Engineer</div>
+                  ${engineerSignature ? `<img class="sign-image" src="${escapeHtml(engineerSignature)}" alt="" />` : ""}
+                  <div class="sign-line"></div>
+                  <div class="sign-meta">
+                    <div class="nm">${escapeHtml(engineerName)}</div>
+                    <div class="ti">${escapeHtml(engineerRole)}</div>
+                  </div>
+                </div>
+                <div class="sign-col">
+                  <div class="role">Acknowledged &amp; Received by the Contractor</div>
+                  <div class="sign-line"></div>
+                  <div class="sign-meta">
+                    <div class="nm">${escapeHtml(contractor)}</div>
+                    <div class="ti">Name, Designation, Date &amp; Company Stamp</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stamp" aria-hidden="true">
+                <div class="inner-ring"></div>
+                <div>
+                  <div class="stamp-text">The Engineer</div>
+                  <span class="stamp-mark">&#10070;</span>
+                  <div class="stamp-text">Official Seal</div>
+                </div>
+              </div>
+
+              <div class="cc">
+                <span class="label">Copies to</span>
+                ${ccList}
+              </div>
+
+              <footer class="foot">
+                <div>${escapeHtml(firmName)}</div>
+                <div class="center">Commencement Order &middot; FIDIC Red Book 2017</div>
+                <div>Page 1 of 1</div>
+              </footer>
+            </div>
+          </article>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
+ * Lightweight Tax / Milestone Invoice print template.
+ *
+ * Distinct from the FIDIC Payment Certificate Summary — no retention, no advance recovery,
+ * no withholding, no contingencies. Just an invoice with line items, a tax row and a total.
+ * This is the non-construction parallel to the Payment Certificate, but any project type
+ * can use it for simple invoicing.
+ */
+function buildMilestoneInvoicePrintHtml(
+  mergedDoc: GeneratedDocument,
+  project: Project | null,
+  signatureProfile?: UserSignatureProfile | null,
+) {
+  const branding = resolveProjectBranding(project);
+  const currencyCode = project?.currency || "USD";
+
+  const issuerName = mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.consultantName || "Your Company";
+  const issuerTagline = mergedDoc.letterheadSubtitle || branding.headerTagline || "";
+  const issuerAddress = mergedDoc.letterheadAddress || branding.issuerAddress || project?.location || "";
+
+  const billToName = mergedDoc.recipientName || project?.clientName || branding.clientDisplayName || "Client";
+  const billToRole = mergedDoc.recipientRole || "";
+  // The recipient address is not a first-class field on GeneratedDocument, so we surface
+  // the project location / client address from branding as the best-available billing address.
+  const billToAddress = branding.clientAddress || project?.location || "";
+
+  const lines = mergedDoc.invoiceLines || [];
+  const numericRow = (line: { qty: string; rate: string }) => {
+    const q = parseFloat(line.qty || "0") || 0;
+    const r = parseFloat(line.rate || "0") || 0;
+    return q * r;
+  };
+  const subtotal = lines.reduce((sum, line) => sum + numericRow(line), 0);
+  const discountPct = parseFloat(mergedDoc.invoiceDiscountPercent || "0") || 0;
+  const taxPct = parseFloat(mergedDoc.invoiceTaxPercent || "0") || 0;
+  const discountAmount = (subtotal * discountPct) / 100;
+  const taxedBase = subtotal - discountAmount;
+  const taxAmount = (taxedBase * taxPct) / 100;
+  const grandTotal = taxedBase + taxAmount;
+
+  const fmt = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const invoiceTitle = templateLabelFor("milestone-invoice", project).toUpperCase();
+  const signatureUrl = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
+
+  const linesHtml = lines.length
+    ? lines
+        .map((line, idx) => {
+          const amount = numericRow(line);
+          return `
+            <tr>
+              <td class="num">${idx + 1}</td>
+              <td>${escapeHtml(line.description || "")}</td>
+              <td>${escapeHtml(line.unit || "")}</td>
+              <td class="num">${escapeHtml(line.qty || "0")}</td>
+              <td class="num">${escapeHtml(currencyCode)} ${fmt(parseFloat(line.rate || "0") || 0)}</td>
+              <td class="num">${escapeHtml(currencyCode)} ${fmt(amount)}</td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:18px">No line items.</td></tr>`;
+
+  const styles = `
+    @page { size: A4 portrait; margin: 16mm 14mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #0f172a;
+      font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .invoice-root { width: 100%; }
+    .invoice-head {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+      align-items: flex-start;
+      padding-bottom: 14px;
+      border-bottom: 2px solid #0f172a;
+    }
+    .invoice-head .issuer-name {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: #0f172a;
+      line-height: 1.2;
+    }
+    .invoice-head .issuer-tagline {
+      margin-top: 2px;
+      font-size: 9.5px;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .invoice-head .issuer-address {
+      margin-top: 8px;
+      font-size: 10px;
+      color: #475569;
+      line-height: 1.55;
+    }
+    .invoice-head .invoice-label {
+      text-align: right;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #0f172a;
+    }
+    .invoice-head .invoice-status {
+      text-align: right;
+      margin-top: 4px;
+      font-size: 9px;
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .invoice-meta-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+      margin-top: 18px;
+      align-items: flex-start;
+    }
+    .meta-block .meta-label {
+      font-size: 8.5px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 3px;
+    }
+    .meta-block .meta-value { font-size: 11px; color: #0f172a; line-height: 1.55; }
+    .meta-block .meta-value strong { font-weight: 600; }
+    .invoice-numbers {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .invoice-numbers .number-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 10.5px;
+      padding: 5px 0;
+      border-bottom: 0.6px dashed #cbd5e1;
+    }
+    .invoice-numbers .number-row span:first-child { color: #64748b; text-transform: uppercase; letter-spacing: 1.2px; font-size: 9px; }
+    .invoice-numbers .number-row span:last-child { color: #0f172a; font-weight: 600; }
+    .invoice-project-band {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-left: 3px solid #0f172a;
+      font-size: 10.5px;
+      color: #0f172a;
+    }
+    .invoice-project-band .label {
+      font-size: 8.5px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
+    table.invoice-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      font-size: 10.5px;
+    }
+    table.invoice-table thead th {
+      background: #0f172a;
+      color: #ffffff;
+      text-align: left;
+      padding: 8px 10px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      font-size: 9.5px;
+      text-transform: uppercase;
+    }
+    table.invoice-table thead th.num { text-align: right; }
+    table.invoice-table tbody td {
+      padding: 7px 10px;
+      border-bottom: 0.5px solid #e2e8f0;
+      vertical-align: top;
+      color: #0f172a;
+    }
+    table.invoice-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .totals-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+      margin-top: 14px;
+    }
+    .totals-grid .terms { font-size: 10.5px; color: #334155; line-height: 1.6; }
+    .totals-grid .terms .label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 8.5px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .totals-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .totals-table td {
+      padding: 6px 10px;
+      border-bottom: 0.5px solid #e2e8f0;
+    }
+    .totals-table td:first-child {
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-size: 9.5px;
+    }
+    .totals-table td:last-child {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+    .totals-table tr.grand-total td {
+      border-top: 2px solid #0f172a;
+      border-bottom: none;
+      padding-top: 9px;
+      padding-bottom: 9px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: 0.4px;
+      text-transform: none;
+    }
+    .bank-details {
+      margin-top: 22px;
+      padding: 12px 14px;
+      background: #f8fafc;
+      border: 0.6px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 10.5px;
+      color: #334155;
+      line-height: 1.6;
+    }
+    .bank-details .label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 8.5px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .invoice-signoff {
+      margin-top: 28px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .signoff-block {
+      width: 280px;
+      text-align: center;
+    }
+    .signoff-block .sig-image {
+      display: block;
+      max-height: 50px;
+      max-width: 240px;
+      margin: 0 auto 4px;
+    }
+    .signoff-block .sig-line {
+      border-bottom: 0.8px solid #0f172a;
+      margin: 0 auto 6px;
+      width: 240px;
+    }
+    .signoff-block .sig-name { font-size: 11px; font-weight: 600; color: #0f172a; }
+    .signoff-block .sig-role { font-size: 9.5px; color: #64748b; margin-top: 2px; }
+    .invoice-foot {
+      margin-top: 32px;
+      padding-top: 10px;
+      border-top: 0.5px solid #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9px;
+      color: #64748b;
+      letter-spacing: 0.8px;
+    }
+    @media print {
+      table.invoice-table thead { display: table-header-group; }
+      table.invoice-table tr { page-break-inside: avoid; }
+    }
+  `;
+
+  const escapeHtml = (value: unknown) => {
+    if (value === undefined || value === null) return "";
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  };
+  const escapeHtmlMultiline = (value: unknown) =>
+    escapeHtml(value).replace(/\n/g, "<br />");
+
+  const issuedDate = mergedDoc.date || new Date().toISOString().split("T")[0];
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(mergedDoc.title || invoiceTitle)}</title>
+    <style>${styles}</style>
+  </head>
+  <body>
+    <div class="invoice-root">
+      <div class="invoice-head">
+        <div>
+          ${mergedDoc.brandLogoDataUrl
+            ? `<img src="${escapeHtml(mergedDoc.brandLogoDataUrl)}" alt="" style="max-height:48px; max-width:200px; margin-bottom:6px; object-fit:contain;" />`
+            : ""}
+          <div class="issuer-name">${escapeHtml(issuerName)}</div>
+          ${issuerTagline ? `<div class="issuer-tagline">${escapeHtml(issuerTagline)}</div>` : ""}
+          ${issuerAddress ? `<div class="issuer-address">${escapeHtmlMultiline(issuerAddress)}</div>` : ""}
+        </div>
+        <div>
+          <div class="invoice-label">${escapeHtml(invoiceTitle)}</div>
+          <div class="invoice-status">${escapeHtml((mergedDoc.status || "draft").toUpperCase())}</div>
+        </div>
+      </div>
+
+      <div class="invoice-meta-grid">
+        <div class="meta-block">
+          <div class="meta-label">Bill to</div>
+          <div class="meta-value"><strong>${escapeHtml(billToName)}</strong></div>
+          ${billToRole ? `<div class="meta-value">${escapeHtml(billToRole)}</div>` : ""}
+          ${billToAddress ? `<div class="meta-value" style="color:#475569; margin-top:2px">${escapeHtmlMultiline(billToAddress)}</div>` : ""}
+        </div>
+        <div class="invoice-numbers">
+          <div class="number-row"><span>Invoice no.</span><span>${escapeHtml(mergedDoc.referenceNo || "—")}</span></div>
+          <div class="number-row"><span>Issue date</span><span>${escapeHtml(issuedDate)}</span></div>
+          ${mergedDoc.invoiceDueDate
+            ? `<div class="number-row"><span>Due date</span><span>${escapeHtml(mergedDoc.invoiceDueDate)}</span></div>`
+            : ""}
+          <div class="number-row"><span>Currency</span><span>${escapeHtml(currencyCode)}</span></div>
+        </div>
+      </div>
+
+      ${project?.name
+        ? `<div class="invoice-project-band">
+            <div class="label">Project reference</div>
+            <div><strong>${escapeHtml(project.contractTitle || project.name)}</strong>${project.contractNumber ? ` · Contract ${escapeHtml(project.contractNumber)}` : ""}${project.location ? ` · ${escapeHtml(project.location)}` : ""}</div>
+          </div>`
+        : ""}
+
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th style="width:32px">#</th>
+            <th>Description</th>
+            <th style="width:56px">Unit</th>
+            <th class="num" style="width:72px">Qty</th>
+            <th class="num" style="width:96px">Rate</th>
+            <th class="num" style="width:110px">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${linesHtml}</tbody>
+      </table>
+
+      <div class="totals-grid">
+        <div class="terms">
+          ${mergedDoc.invoicePaymentTerms
+            ? `<span class="label">Payment terms</span>${escapeHtmlMultiline(mergedDoc.invoicePaymentTerms)}`
+            : ""}
+        </div>
+        <table class="totals-table">
+          <tr>
+            <td>Subtotal</td>
+            <td>${escapeHtml(currencyCode)} ${fmt(subtotal)}</td>
+          </tr>
+          ${discountPct
+            ? `<tr><td>Discount (${discountPct.toFixed(2)}%)</td><td>− ${escapeHtml(currencyCode)} ${fmt(discountAmount)}</td></tr>`
+            : ""}
+          ${taxPct
+            ? `<tr><td>Tax (${taxPct.toFixed(2)}%)</td><td>${escapeHtml(currencyCode)} ${fmt(taxAmount)}</td></tr>`
+            : ""}
+          <tr class="grand-total">
+            <td>Total due</td>
+            <td>${escapeHtml(currencyCode)} ${fmt(grandTotal)}</td>
+          </tr>
+        </table>
+      </div>
+
+      ${mergedDoc.invoiceBankDetails
+        ? `<div class="bank-details">
+            <span class="label">Payment into</span>
+            ${escapeHtmlMultiline(mergedDoc.invoiceBankDetails)}
+          </div>`
+        : ""}
+
+      <div class="invoice-signoff">
+        <div class="signoff-block">
+          ${signatureUrl ? `<img class="sig-image" src="${escapeHtml(signatureUrl)}" alt="" />` : ""}
+          <div class="sig-line"></div>
+          <div class="sig-name">${escapeHtml(mergedDoc.signatoryName || issuerName)}</div>
+          <div class="sig-role">${escapeHtml(mergedDoc.signatoryRole || "Authorized signatory")}</div>
+        </div>
+      </div>
+
+      <div class="invoice-foot">
+        <span>${escapeHtml(issuerName)}</span>
+        <span>${escapeHtml(invoiceTitle)} · ${escapeHtml(mergedDoc.referenceNo || "")}</span>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+/**
+ * One-page Status Report print template — universal, lighter than the Progress Report.
+ *
+ * Designed for weekly / monthly status updates: traffic-light overall status, then four
+ * bullet sections (Highlights / Issues / Upcoming / Risks). Optional resource asks block.
+ */
+function buildStatusReportPrintHtml(
+  mergedDoc: GeneratedDocument,
+  project: Project | null,
+  signatureProfile?: UserSignatureProfile | null,
+) {
+  const branding = resolveProjectBranding(project);
+  const overall = mergedDoc.statusOverall || "green";
+  const overallToneMap = {
+    green: { bg: "#dcfce7", border: "#16a34a", text: "#166534", label: "On track" },
+    amber: { bg: "#fef3c7", border: "#d97706", text: "#92400e", label: "At risk" },
+    red: { bg: "#fee2e2", border: "#dc2626", text: "#991b1b", label: "Off track" },
+  } as const;
+  const tone = overallToneMap[overall];
+
+  const signatureUrl = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
+
+  const bulletList = (raw: string | undefined): string => {
+    const text = (raw || "").trim();
+    if (!text) return "<li style=\"color:#94a3b8\">No items recorded.</li>";
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*[-*•]\s*/, "").trim())
+      .filter((line) => line.length > 0)
+      .map((line) => `<li>${escapeHtml(line)}</li>`)
+      .join("");
+  };
+
+  const sections: Array<{ label: string; raw: string | undefined; color: string }> = [
+    { label: "Highlights / Accomplishments", raw: mergedDoc.statusHighlights, color: "#16a34a" },
+    { label: "Issues / Blockers", raw: mergedDoc.statusIssues, color: "#dc2626" },
+    { label: "Upcoming Milestones", raw: mergedDoc.statusUpcoming, color: "#0ea5e9" },
+    { label: "Top Risks", raw: mergedDoc.statusTopRisks, color: "#d97706" },
+  ];
+
+  const sectionsHtml = sections
+    .map(
+      (section) => `
+        <div class="status-section">
+          <div class="section-label" style="border-left-color:${section.color}">${escapeHtml(section.label)}</div>
+          <ul class="section-list">${bulletList(section.raw)}</ul>
+        </div>
+      `,
+    )
+    .join("");
+
+  const issuerName = mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.consultantName || "Project Office";
+  const issuerTagline = mergedDoc.letterheadSubtitle || branding.headerTagline || "";
+
+  const styles = `
+    @page { size: A4 portrait; margin: 14mm 14mm 12mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #ffffff; color: #0f172a; font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, sans-serif; font-size: 11px; line-height: 1.55; }
+    .status-root { width: 100%; }
+    .status-head { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: flex-end; padding-bottom: 12px; border-bottom: 2px solid #0f172a; }
+    .status-head .issuer-name { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .status-head .issuer-tag { margin-top: 2px; font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: #64748b; }
+    .status-head .title { font-size: 22px; font-weight: 800; letter-spacing: 1.2px; color: #0f172a; line-height: 1; }
+    .status-head .subtitle { margin-top: 2px; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: #64748b; text-align: right; }
+    .meta-band { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px; padding: 12px 14px; background: #f8fafc; border-left: 3px solid #0f172a; }
+    .meta-band .meta-cell .label { font-size: 8.5px; letter-spacing: 1.8px; text-transform: uppercase; color: #64748b; margin-bottom: 3px; }
+    .meta-band .meta-cell .value { font-size: 11px; font-weight: 600; color: #0f172a; }
+    .overall-band { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 14px 16px; border-radius: 10px; background: ${tone.bg}; border: 1.5px solid ${tone.border}; }
+    .overall-band .overall-label { font-size: 9px; letter-spacing: 2.4px; text-transform: uppercase; color: ${tone.text}; }
+    .overall-band .overall-status { font-size: 16px; font-weight: 800; letter-spacing: 0.6px; color: ${tone.text}; margin-top: 2px; }
+    .overall-band .status-light { width: 24px; height: 24px; border-radius: 50%; background: ${tone.border}; box-shadow: 0 0 0 4px ${tone.bg}; }
+    .sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+    .status-section { background: #ffffff; border: 0.6px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+    .status-section .section-label { font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: #0f172a; font-weight: 700; padding-left: 8px; border-left: 3px solid #0f172a; margin-bottom: 8px; }
+    .status-section .section-list { margin: 0; padding-left: 18px; font-size: 11px; line-height: 1.6; }
+    .status-section .section-list li { margin-bottom: 4px; color: #1e293b; }
+    .resource-block { margin-top: 14px; background: #fffbeb; border: 0.6px solid #fcd34d; border-radius: 8px; padding: 12px 14px; }
+    .resource-block .section-label { font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: #92400e; font-weight: 700; margin-bottom: 6px; }
+    .resource-block .body { font-size: 11px; line-height: 1.6; color: #92400e; white-space: pre-wrap; }
+    .signoff { margin-top: 22px; display: flex; justify-content: flex-end; }
+    .signoff-block { width: 260px; text-align: center; }
+    .signoff-block .sig-image { display: block; max-height: 44px; max-width: 220px; margin: 0 auto 4px; }
+    .signoff-block .sig-line { border-bottom: 0.8px solid #0f172a; margin: 0 auto 6px; width: 220px; }
+    .signoff-block .sig-name { font-size: 11px; font-weight: 600; color: #0f172a; }
+    .signoff-block .sig-role { font-size: 9.5px; color: #64748b; margin-top: 2px; }
+    .foot { margin-top: 22px; padding-top: 8px; border-top: 0.5px solid #cbd5e1; display: flex; justify-content: space-between; font-size: 9px; color: #64748b; letter-spacing: 0.8px; }
+    @media print { .sections-grid, .status-section { break-inside: avoid; page-break-inside: avoid; } }
+  `;
+
+  const projectName = project?.contractTitle || project?.name || "Project";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(mergedDoc.title || "Status Report")}</title>
+    <style>${styles}</style>
+  </head>
+  <body>
+    <div class="status-root">
+      <div class="status-head">
+        <div>
+          <div class="issuer-name">${escapeHtml(issuerName)}</div>
+          ${issuerTagline ? `<div class="issuer-tag">${escapeHtml(issuerTagline)}</div>` : ""}
+        </div>
+        <div>
+          <div class="title">STATUS REPORT</div>
+          <div class="subtitle">${escapeHtml((mergedDoc.status || "draft").toUpperCase())} · ${escapeHtml(mergedDoc.referenceNo || "")}</div>
+        </div>
+      </div>
+
+      <div class="meta-band">
+        <div class="meta-cell">
+          <div class="label">Project</div>
+          <div class="value">${escapeHtml(projectName)}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="label">Reporting period</div>
+          <div class="value">${escapeHtml(
+            mergedDoc.reportPeriodStart && mergedDoc.reportPeriodEnd
+              ? `${mergedDoc.reportPeriodStart} → ${mergedDoc.reportPeriodEnd}`
+              : mergedDoc.date || "—",
+          )}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="label">Prepared by</div>
+          <div class="value">${escapeHtml(mergedDoc.signatoryName || branding.issuerDisplayName || "Project lead")}</div>
+        </div>
+      </div>
+
+      <div class="overall-band">
+        <div>
+          <div class="overall-label">Overall status</div>
+          <div class="overall-status">${escapeHtml(tone.label)}</div>
+        </div>
+        <div class="status-light"></div>
+      </div>
+
+      <div class="sections-grid">${sectionsHtml}</div>
+
+      ${mergedDoc.statusResourceAsks?.trim()
+        ? `<div class="resource-block">
+            <div class="section-label">Resource / Support asks</div>
+            <div class="body">${escapeHtml(mergedDoc.statusResourceAsks)}</div>
+          </div>`
+        : ""}
+
+      <div class="signoff">
+        <div class="signoff-block">
+          ${signatureUrl ? `<img class="sig-image" src="${escapeHtml(signatureUrl)}" alt="" />` : ""}
+          <div class="sig-line"></div>
+          <div class="sig-name">${escapeHtml(mergedDoc.signatoryName || branding.issuerDisplayName || "Project lead")}</div>
+          <div class="sig-role">${escapeHtml(mergedDoc.signatoryRole || "Authorized signatory")}</div>
+        </div>
+      </div>
+
+      <div class="foot">
+        <span>${escapeHtml(issuerName)}</span>
+        <span>Status Report · ${escapeHtml(mergedDoc.date || "")}</span>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
 function buildDocumentPrintHtml(
   doc: GeneratedDocument,
   project: Project | null,
   progressReport?: ProgressReport | null,
   certificate?: PaymentCertificate | null,
-  signatureProfile?: UserSignatureProfile | null
+  signatureProfile?: UserSignatureProfile | null,
+  workPlans: SavedWorkPlan[] = [],
+  allCertificates: PaymentCertificate[] = [],
+  meetingMinutes: MeetingMinute[] = [],
 ) {
   const mergedDoc = hydrateGeneratedDocument(doc, project, progressReport, certificate);
-  const coverNeeded = mergedDoc.layoutStyle === "report";
+  if (mergedDoc.templateType === "commencement-letter") {
+    return buildCommencementLetterPrintHtml(mergedDoc, project, signatureProfile);
+  }
+  if (mergedDoc.templateType === "milestone-invoice") {
+    return buildMilestoneInvoicePrintHtml(mergedDoc, project, signatureProfile);
+  }
+  if (mergedDoc.templateType === "status-report") {
+    return buildStatusReportPrintHtml(mergedDoc, project, signatureProfile);
+  }
+  const isProgressReport = mergedDoc.templateType === "progress-report";
+  const reportToggles = isProgressReport ? resolveReportSections(mergedDoc) : null;
+  const coverNeeded =
+    mergedDoc.layoutStyle === "report" && (!isProgressReport || (reportToggles?.cover ?? true));
+  const signoffNeeded =
+    mergedDoc.layoutStyle !== "certificate" && (!isProgressReport || (reportToggles?.signoff ?? true));
   const coverTitle = mergedDoc.coverTitle || mergedDoc.title;
+  const reportNumberLabel =
+    mergedDoc.reportNumber || mergedDoc.reportRevision
+      ? `${mergedDoc.reportNumber ? `#${mergedDoc.reportNumber}` : ""}${
+          mergedDoc.reportNumber && mergedDoc.reportRevision ? " " : ""
+        }${mergedDoc.reportRevision ? `Rev ${mergedDoc.reportRevision}` : ""}`.trim()
+      : "";
+  const reportPeriodLabel =
+    mergedDoc.reportPeriodStart && mergedDoc.reportPeriodEnd
+      ? `${mergedDoc.reportPeriodStart} → ${mergedDoc.reportPeriodEnd}`
+      : mergedDoc.reportPeriodStart || mergedDoc.reportPeriodEnd || "";
   const branding = resolveProjectBranding(project);
   const consultant = mergedDoc.signatoryName || branding.issuerDisplayName || "Authorized Representative";
   const recipient = mergedDoc.recipientName || project?.contractorName || "Recipient";
   const signatorySignature = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
   const recipientSignature = resolveSavedSignature(mergedDoc.recipientSignatureSource, signatureProfile);
-  const coverBackground = mergedDoc.coverImageDataUrl
-    ? `background:
-        linear-gradient(180deg, rgba(15,39,66,0.88) 0%, rgba(18,57,93,0.84) 48%, rgba(255,255,255,0.98) 48%, rgba(255,255,255,0.98) 100%),
-        url('${escapeHtml(mergedDoc.coverImageDataUrl)}') center/cover no-repeat;`
-    : "";
+  const hasCoverImage = Boolean(mergedDoc.coverImageDataUrl);
   const certificateTitle = mergedDoc.title.toLowerCase().includes("completion")
     ? "Substantial Completion"
     : mergedDoc.title;
@@ -1262,36 +3334,56 @@ function buildDocumentPrintHtml(
           ${
             coverNeeded
               ? `
-                <section class="page cover" ${coverBackground ? `style="${coverBackground}"` : ""}>
+                <section class="page cover">
                   <div class="page-inner">
-                    <div class="letterhead">
-                      <div>
-                        ${documentMarkHtml(mergedDoc)}
+                    <div class="cover-hero">
+                      <div class="letterhead">
+                        <div>
+                          ${documentMarkHtml(mergedDoc)}
+                        </div>
+                        <div style="margin-left:auto; text-align:right;">
+                          <div class="letterhead-subtitle">${escapeHtml(
+                            branding.headerTagline || "Project controls"
+                          )}</div>
+                          <div class="letterhead-address">${escapeHtmlMultiline(
+                            branding.issuerAddress || mergedDoc.letterheadAddress || project?.location || "Project Location"
+                          )}</div>
+                        </div>
                       </div>
-                      <div style="margin-left:auto; text-align:right;">
-                        <div class="letterhead-subtitle" style="color:rgba(255,255,255,0.8)">${escapeHtml(
-                          branding.headerTagline || "Professional project controls"
-                        )}</div>
-                        <div class="letterhead-address" style="color:rgba(255,255,255,0.88)">${escapeHtmlMultiline(
-                          branding.issuerAddress || mergedDoc.letterheadAddress || project?.location || "Project Location"
-                        )}</div>
-                      </div>
+                      ${
+                        hasCoverImage
+                          ? `<div class="cover-image-frame"><img src="${escapeHtml(mergedDoc.coverImageDataUrl || "")}" alt="" /></div>`
+                          : `<div class="cover-hero-spacer"></div>`
+                      }
+                      <h1 class="cover-title">${escapeHtml(coverTitle)}</h1>
+                      ${
+                        mergedDoc.coverSubtitle
+                          ? `<div class="cover-subtitle">${escapeHtml(mergedDoc.coverSubtitle)}</div>`
+                          : ""
+                      }
                     </div>
-                    <h1 class="cover-title">${escapeHtml(coverTitle)}</h1>
-                    ${
-                      mergedDoc.coverSubtitle
-                        ? `<div class="cover-subtitle">${escapeHtml(mergedDoc.coverSubtitle)}</div>`
-                        : ""
-                    }
-                    <div class="cover-meta">
-                      <div class="meta-grid" style="margin-bottom:0">
+                    <div class="cover-meta-band">
+                      <div class="meta-grid">
                         <div class="meta-item"><div class="meta-label">Project</div><div class="meta-value">${escapeHtml(project?.name || "Project")}</div></div>
                         <div class="meta-item"><div class="meta-label">Reference</div><div class="meta-value">${escapeHtml(mergedDoc.referenceNo)}</div></div>
-                        <div class="meta-item"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(mergedDoc.date)}</div></div>
-                        <div class="meta-item"><div class="meta-label">Prepared By</div><div class="meta-value">${escapeHtml(consultant)}</div></div>
+                        ${
+                          reportPeriodLabel
+                            ? `<div class="meta-item"><div class="meta-label">Reporting period</div><div class="meta-value">${escapeHtml(reportPeriodLabel)}</div></div>`
+                            : `<div class="meta-item"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(mergedDoc.date)}</div></div>`
+                        }
+                        ${
+                          reportNumberLabel
+                            ? `<div class="meta-item"><div class="meta-label">Report</div><div class="meta-value">${escapeHtml(reportNumberLabel)}</div></div>`
+                            : `<div class="meta-item"><div class="meta-label">Prepared by</div><div class="meta-value">${escapeHtml(consultant)}</div></div>`
+                        }
+                        ${
+                          reportNumberLabel && reportPeriodLabel
+                            ? `<div class="meta-item"><div class="meta-label">Prepared by</div><div class="meta-value">${escapeHtml(consultant)}</div></div>
+                               <div class="meta-item"><div class="meta-label">For</div><div class="meta-value">${escapeHtml(project?.clientName || branding.clientDisplayName || "Client")}</div></div>`
+                            : ""
+                        }
                       </div>
                     </div>
-                    <div class="page-number">Cover</div>
                   </div>
                 </section>
               `
@@ -1325,12 +3417,16 @@ function buildDocumentPrintHtml(
                       <div class="certificate-table">
                         <div class="certificate-cell"><div class="certificate-cell-label">Date of substantial completion</div><div class="certificate-cell-value">${escapeHtml(mergedDoc.date)}</div></div>
                         <div class="certificate-cell"><div class="certificate-cell-label">Defects liability period</div><div class="certificate-cell-value">Six (6) months</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Commencement date</div><div class="certificate-cell-value">${escapeHtml(project?.start_date || "Not set")}</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Contract period</div><div class="certificate-cell-value">${escapeHtml(project?.start_date || "Start")} → ${escapeHtml(project?.end_date || "Completion")}</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Contract reference</div><div class="certificate-cell-value">${escapeHtml(project?.contractNumber || mergedDoc.referenceNo || "—")}</div></div>
                         <div class="certificate-cell"><div class="certificate-cell-label">Contract value</div><div class="certificate-cell-value">${escapeHtml(project?.currency || "USD")} ${escapeHtml(project?.contractAmount || "Not set")}</div></div>
-                        <div class="certificate-cell"><div class="certificate-cell-label">Retention held</div><div class="certificate-cell-value">As per contract</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Contractor</div><div class="certificate-cell-value">${escapeHtml(project?.contractorName || recipient || "Contractor")}</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Engineer</div><div class="certificate-cell-value">${escapeHtml(branding.issuerDisplayName || project?.consultantName || consultant)}</div></div>
                         <div class="certificate-cell"><div class="certificate-cell-label">Beneficiary</div><div class="certificate-cell-value">${escapeHtml(project?.clientName || branding.clientDisplayName || "Client / Employer")}</div></div>
                         <div class="certificate-cell"><div class="certificate-cell-label">Donor / Employer</div><div class="certificate-cell-value">${escapeHtml(branding.clientDisplayName || project?.clientName || "Employer")}</div></div>
-                        <div class="certificate-cell"><div class="certificate-cell-label">Engineer</div><div class="certificate-cell-value">${escapeHtml(branding.issuerDisplayName || project?.consultantName || consultant)}</div></div>
-                        <div class="certificate-cell"><div class="certificate-cell-label">Implementation period</div><div class="certificate-cell-value">${escapeHtml(project?.start_date || "Start")} - ${escapeHtml(project?.end_date || "Completion")}</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Retention held</div><div class="certificate-cell-value">As per contract</div></div>
+                        <div class="certificate-cell"><div class="certificate-cell-label">Project location</div><div class="certificate-cell-value">${escapeHtml(project?.location || "—")}</div></div>
                       </div>
                     </div>
                     ${renderBodyHtml(mergedDoc, project, progressReport, certificate)}
@@ -1357,6 +3453,10 @@ function buildDocumentPrintHtml(
                       </div>
                     </div>
                     <div class="certificate-conditions">${escapeHtmlMultiline(certificateConditions)}</div>
+                  `
+                  : isProgressReport
+                  ? `
+                    ${renderBodyHtml(mergedDoc, project, progressReport, certificate, workPlans, allCertificates, meetingMinutes)}
                   `
                   : `
                     <div class="brand-shell">
@@ -1396,7 +3496,7 @@ function buildDocumentPrintHtml(
               }
 
               ${
-                mergedDoc.layoutStyle !== "certificate"
+                signoffNeeded
                   ? `
                     <div class="signature-grid">
                       <div class="signature-box">
@@ -1428,11 +3528,25 @@ function openDocumentPdf(
   project: Project | null,
   progressReport?: ProgressReport | null,
   certificate?: PaymentCertificate | null,
-  signatureProfile?: UserSignatureProfile | null
+  signatureProfile?: UserSignatureProfile | null,
+  workPlans: SavedWorkPlan[] = [],
+  allCertificates: PaymentCertificate[] = [],
+  meetingMinutes: MeetingMinute[] = [],
 ) {
   const printWindow = window.open("", "_blank");
   if (!printWindow) return;
-  printWindow.document.write(buildDocumentPrintHtml(doc, project, progressReport, certificate, signatureProfile));
+  printWindow.document.write(
+    buildDocumentPrintHtml(
+      doc,
+      project,
+      progressReport,
+      certificate,
+      signatureProfile,
+      workPlans,
+      allCertificates,
+      meetingMinutes,
+    ),
+  );
   printWindow.document.close();
   setTimeout(() => {
     printWindow.focus();
@@ -1763,6 +3877,8 @@ export default function DocumentsModule() {
     generatedDocuments,
     progressReports,
     certificates,
+    savedWorkPlans,
+    meetingMinutes,
     userSignatureProfile,
     setUserSignatureProfile,
     clearUserSignatureProfile,
@@ -1785,8 +3901,25 @@ export default function DocumentsModule() {
   const activeDocumentRaw = projectDocuments.find((doc) => doc.id === activeDocumentId) || null;
 
   useEffect(() => {
-    setTitle(templateLabels[templateType]);
-  }, [templateType]);
+    setTitle(templateLabelFor(templateType, project));
+  }, [templateType, project]);
+
+  // List of template types the user is allowed to pick for the current project. FIDIC
+  // payment-certificate-summary is hidden for non-construction projects; everything
+  // else stays available with project-type-aware labels.
+  const availableTemplates = useMemo<DocumentTemplateType[]>(() => {
+    return (Object.keys(templateLabels) as DocumentTemplateType[]).filter((type) =>
+      isTemplateVisibleForProject(type, project),
+    );
+  }, [project]);
+
+  // If the modal happens to be open with a template that's hidden for this project
+  // (e.g. user switched projects mid-flight), nudge them to a safe default.
+  useEffect(() => {
+    if (!availableTemplates.includes(templateType)) {
+      setTemplateType(availableTemplates[0] || "progress-report");
+    }
+  }, [availableTemplates, templateType]);
 
   const latestProgress = useMemo(
     () => [...projectProgressReports].sort((a, b) => b.date.localeCompare(a.date))[0] || null,
@@ -1918,12 +4051,7 @@ export default function DocumentsModule() {
     return (
       <div className="animate-fade-in">
         <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight">Documents</h2>
-            <p className="text-xs text-txt-muted mt-0.5">
-              Generate polished PDF-ready letters, certificates, and reports from live project data.
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold tracking-tight">Documents</h2>
           <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
             <Plus size={14} /> New Document
           </Button>
@@ -1931,92 +4059,100 @@ export default function DocumentsModule() {
 
         {projectDocuments.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-20 h-20 rounded-2xl bg-accent/10 flex items-center justify-center mb-5">
-              <FileText size={32} className="text-accent opacity-60" />
+            <div className="w-16 h-16 rounded-xl bg-accent/10 flex items-center justify-center mb-4">
+              <FileText size={28} className="text-accent opacity-60" />
             </div>
-            <p className="text-txt-muted text-sm font-medium">No generated documents yet</p>
-            <p className="text-xs text-txt-dim mt-1.5 max-w-[340px] text-center">
-              Start with professional commencement letters, instruction letters, progress reports with cover pages, payment summaries, and completion certificates.
-            </p>
-            <Button variant="primary" size="md" className="mt-5" onClick={() => setShowCreate(true)}>
-              <Plus size={14} /> Create First Document
+            <p className="text-txt-muted text-sm font-medium">No documents yet</p>
+            <Button variant="primary" size="md" className="mt-4" onClick={() => setShowCreate(true)}>
+              <Plus size={14} /> New Document
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {projectDocuments.map((doc, idx) => {
-              const linkedListProgress =
-                projectProgressReports.find((report) => report.id === doc.linkedProgressReportId) || latestProgress;
-              const linkedListCertificate =
-                projectCertificates.find((certificate) => certificate.id === doc.linkedCertificateId) || latestCertificate;
-              const hydratedDoc = hydrateGeneratedDocument(doc, project, linkedListProgress, linkedListCertificate);
+          <div className="data-table-shell overflow-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Type</th>
+                  <th>Reference</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th style={{ width: 110 }} aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {projectDocuments.map((doc) => {
+                  const linkedListProgress =
+                    projectProgressReports.find((report) => report.id === doc.linkedProgressReportId) || latestProgress;
+                  const linkedListCertificate =
+                    projectCertificates.find((certificate) => certificate.id === doc.linkedCertificateId) || latestCertificate;
+                  const hydratedDoc = hydrateGeneratedDocument(doc, project, linkedListProgress, linkedListCertificate);
 
-              return (
-                <div
-                  key={doc.id}
-                  onClick={() => {
-                    setActiveDocumentId(doc.id);
-                    setIsEditMode(false);
-                  }}
-                  className="group flex items-center justify-between p-4 bg-bg-surface border border-border rounded-xl cursor-pointer transition-all duration-200 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5"
-                  style={{ animationDelay: `${idx * 60}ms`, animationFillMode: "both" }}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {hydratedDoc.brandLogoDataUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={hydratedDoc.brandLogoDataUrl} alt="Document logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <FileText size={18} className="text-accent" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">{hydratedDoc.title}</span>
+                  return (
+                    <tr
+                      key={doc.id}
+                      onClick={() => {
+                        setActiveDocumentId(doc.id);
+                        setIsEditMode(false);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <td>
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            {hydratedDoc.brandLogoDataUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={hydratedDoc.brandLogoDataUrl} alt="Document logo" className="w-full h-full object-cover" />
+                            ) : (
+                              <FileText size={13} className="text-accent" />
+                            )}
+                          </div>
+                          <span className="font-semibold text-sm">{hydratedDoc.title}</span>
+                        </div>
+                      </td>
+                      <td className="text-xs text-txt-muted">{templateLabelFor(hydratedDoc.templateType, project)}</td>
+                      <td className="text-xs text-txt-muted font-mono">{hydratedDoc.referenceNo}</td>
+                      <td className="text-xs text-txt-muted">{hydratedDoc.date}</td>
+                      <td>
                         <Badge color={hydratedDoc.status === "approved" ? "ok" : hydratedDoc.status === "issued" ? "accent" : "warn"}>
                           {hydratedDoc.status.toUpperCase()}
                         </Badge>
-                      </div>
-                      <div className="flex gap-3 mt-1.5 text-[11px] text-txt-dim">
-                        <span>{templateLabels[hydratedDoc.templateType]}</span>
-                        <span>•</span>
-                        <span>{hydratedDoc.referenceNo}</span>
-                        <span>•</span>
-                        <span>{hydratedDoc.date}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                            openDocumentPdf(hydratedDoc, project, linkedListProgress, linkedListCertificate, userSignatureProfile);
-                      }}
-                      className="p-1.5 rounded-md bg-transparent border-none text-txt-dim hover:text-accent hover:bg-accent/10 cursor-pointer transition-colors"
-                      title="Print or save as PDF"
-                    >
-                      <Printer size={14} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteGeneratedDocument(doc.id);
-                        if (activeDocumentId === doc.id) setActiveDocumentId(null);
-                      }}
-                      className="p-1.5 rounded-md bg-transparent border-none text-txt-dim hover:text-err hover:bg-err/10 cursor-pointer transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                    <ChevronRight size={16} className="text-txt-dim group-hover:text-accent transition-colors" />
-                  </div>
-                </div>
-              );
-            })}
+                      </td>
+                      <td className="data-cell-action">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDocumentPdf(hydratedDoc, project, linkedListProgress, linkedListCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes);
+                            }}
+                            className="data-row-action"
+                            aria-label="Print or save as PDF"
+                          >
+                            <Printer size={13} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteGeneratedDocument(doc.id);
+                              if (activeDocumentId === doc.id) setActiveDocumentId(null);
+                            }}
+                            className="data-row-action danger"
+                            aria-label="Delete document"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                          <ChevronRight size={14} className="text-txt-dim ml-0.5" />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
-        <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Generate Professional Document" width={560}>
+        <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Document" width={560}>
           <div className="space-y-4">
             <div>
               <label className="block text-[11px] uppercase tracking-wider text-txt-dim mb-1.5 font-medium">
@@ -2027,9 +4163,9 @@ export default function DocumentsModule() {
                 onChange={(e) => setTemplateType(e.target.value as DocumentTemplateType)}
                 className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-sm text-txt outline-none focus:border-accent transition-colors"
               >
-                {Object.entries(templateLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
+                {availableTemplates.map((type) => (
+                  <option key={type} value={type}>
+                    {templateLabelFor(type, project)}
                   </option>
                 ))}
               </select>
@@ -2107,7 +4243,7 @@ export default function DocumentsModule() {
                 const doc: GeneratedDocument = {
                   id: uuid(),
                   project_id: project?.id || "",
-                  title: title || templateLabels[templateType],
+                  title: title || templateLabelFor(templateType, project),
                   templateType,
                   referenceNo: `${referenceBase}/${date.replace(/-/g, "/")}/${projectDocuments.length + 1}`,
                   date,
@@ -2144,9 +4280,9 @@ export default function DocumentsModule() {
           </Button>
           <div className="h-5 w-px bg-border" />
           <div>
-            <h2 className="text-lg font-bold">{activeDocument.title}</h2>
+            <h2 className="text-lg font-semibold">{activeDocument.title}</h2>
             <p className="text-xs text-txt-muted mt-0.5">
-              {templateLabels[activeDocument.templateType]} • {activeDocument.referenceNo}
+              {templateLabelFor(activeDocument.templateType, project)} • {activeDocument.referenceNo}
             </p>
           </div>
           <Badge color={activeDocument.status === "approved" ? "ok" : activeDocument.status === "issued" ? "accent" : "warn"}>
@@ -2157,7 +4293,7 @@ export default function DocumentsModule() {
           <Button
             size="sm"
             variant="default"
-              onClick={() => openDocumentPdf(activeDocument, project, linkedProgress, linkedCertificate, userSignatureProfile)}
+              onClick={() => openDocumentPdf(activeDocument, project, linkedProgress, linkedCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes)}
           >
             <Printer size={14} /> Print / Save PDF
           </Button>
@@ -2196,13 +4332,10 @@ export default function DocumentsModule() {
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim">Branding Source</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Branding Source</div>
               <div className="mt-2 text-sm font-semibold text-txt">
-                {brandingSource === "project" ? "Using project branding profile" : "Using document-specific branding"}
+                {brandingSource === "project" ? "Project branding" : "Document override"}
               </div>
-              <p className="mt-1 max-w-[720px] text-xs leading-6 text-txt-muted">
-                Project defaults come from the project information form. Switch to an override only when this single letter or certificate needs a different header.
-              </p>
             </div>
             {isEditMode ? (
               brandingSource === "project" ? (
@@ -2217,28 +4350,28 @@ export default function DocumentsModule() {
             ) : null}
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-[88px_1fr_1fr]">
-            <div className="flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-[24px] border border-border bg-bg-input">
+            <div className="flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-xl border border-border bg-bg-input">
               {activeDocument.brandLogoDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={activeDocument.brandLogoDataUrl} alt="Brand logo" className="h-full w-full object-cover" />
               ) : (
-                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-txt-dim">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                   {documentInitials(activeDocument)}
                 </span>
               )}
             </div>
-            <div className="rounded-[20px] border border-border bg-bg-input/40 p-4">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim">Resolved Header</div>
+            <div className="rounded-xl border border-border bg-bg-input/40 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Resolved Header</div>
               <div className="mt-2 text-base font-semibold text-txt">{activeDocument.letterheadTitle}</div>
-              <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+              <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
                 {activeDocument.letterheadSubtitle}
               </div>
               <div className="mt-3 whitespace-pre-line text-sm leading-6 text-txt-muted">
                 {activeDocument.letterheadAddress}
               </div>
             </div>
-            <div className="rounded-[20px] border border-border bg-bg-input/40 p-4">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim">Project Branding Profile</div>
+            <div className="rounded-xl border border-border bg-bg-input/40 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Project Branding</div>
               <div className="mt-2 text-sm font-semibold text-txt">{branding.issuerDisplayName}</div>
               <div className="mt-1 text-sm text-txt-muted">{branding.clientDisplayName}</div>
               <div className="mt-3 whitespace-pre-line text-xs leading-6 text-txt-dim">
@@ -2249,8 +4382,8 @@ export default function DocumentsModule() {
         </div>
 
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim">
-            Header and Recipient Metadata
+          <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+            Header and Recipient
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
@@ -2359,15 +4492,12 @@ export default function DocumentsModule() {
 
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
           <div className="rounded-2xl border border-border bg-bg-surface p-4">
-            <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim">Print Assets</div>
+            <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Print Assets</div>
             <div className={`grid gap-3 ${activeDocument.layoutStyle === "report" ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
               <div className="rounded-xl border border-border bg-bg-input/40 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-medium uppercase tracking-wider text-txt-dim">Letterhead Logo</div>
-                    <p className="mt-1 text-xs text-txt-muted">
-                      Inherited from the project branding profile unless this document uses an override.
-                    </p>
                   </div>
                   {activeDocument.brandLogoDataUrl && isEditMode && brandingSource === "custom" ? (
                     <button
@@ -2412,9 +4542,6 @@ export default function DocumentsModule() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-medium uppercase tracking-wider text-txt-dim">My Saved Signature</div>
-                    <p className="mt-1 text-xs text-txt-muted">
-                      Upload once, then apply it to signatory or recipient blocks when issuing documents.
-                    </p>
                   </div>
                   {userSignatureProfile?.imageDataUrl && isEditMode ? (
                     <button
@@ -2511,9 +4638,6 @@ export default function DocumentsModule() {
                         {activeDocument.recipientSignatureSource === "saved" ? "Recipient linked" : "Use for recipient"}
                       </Button>
                     </div>
-                    <p className="text-[11px] leading-5 text-txt-muted">
-                      Linked documents pull the latest saved signature image at preview/export time.
-                    </p>
                   </div>
                 ) : null}
               </div>
@@ -2523,9 +4647,6 @@ export default function DocumentsModule() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[11px] font-medium uppercase tracking-wider text-txt-dim">Cover Artwork</div>
-                      <p className="mt-1 text-xs text-txt-muted">
-                        Optional hero image for report covers. Letters and certificates stay formal and text-led.
-                      </p>
                     </div>
                     {activeDocument.coverImageDataUrl && isEditMode ? (
                       <button
@@ -2592,15 +4713,507 @@ export default function DocumentsModule() {
             ) : null}
           </div>
 
+          {activeDocument.templateType === "progress-report" ? (
+            <div className="rounded-2xl border border-border bg-bg-surface p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Progress report sections
+                </div>
+                <div className="text-[11px] text-txt-muted">Toggle what gets exported</div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {PROGRESS_REPORT_SECTION_META.map((section) => {
+                  const enabled =
+                    resolveReportSections(activeDocument)[section.id] ?? false;
+                  return (
+                    <label
+                      key={section.id}
+                      className={`flex cursor-pointer items-start gap-2.5 rounded-lg border bg-bg-input px-3 py-2 transition ${
+                        enabled ? "border-accent/40" : "border-border"
+                      } ${!isEditMode ? "cursor-default opacity-70" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        disabled={!isEditMode}
+                        onChange={(e) =>
+                          updateGeneratedDocument(activeDocument.id, {
+                            reportSections: {
+                              ...resolveReportSections(activeDocument),
+                              [section.id]: e.target.checked,
+                            },
+                          })
+                        }
+                        className="mt-0.5 h-4 w-4 cursor-pointer accent-accent"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-txt">{section.label}</div>
+                        <div className="mt-0.5 text-[11px] leading-snug text-txt-muted">
+                          {section.description}
+                        </div>
+                        {section.id === "itemTable" && enabled ? (
+                          <div className="mt-2 flex items-center gap-2 text-[11px] text-txt-muted">
+                            <span>Format:</span>
+                            {(["table", "bars"] as const).map((fmt) => {
+                              const current = activeDocument.reportItemFormat || "table";
+                              return (
+                                <button
+                                  key={fmt}
+                                  type="button"
+                                  disabled={!isEditMode}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    updateGeneratedDocument(activeDocument.id, {
+                                      reportItemFormat: fmt,
+                                    });
+                                  }}
+                                  className={`rounded border px-2 py-0.5 text-[11px] font-medium transition ${
+                                    current === fmt
+                                      ? "border-accent bg-accent/15 text-accent"
+                                      : "border-border bg-bg-surface text-txt-muted hover:border-accent/30"
+                                  } ${!isEditMode ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                                >
+                                  {fmt === "table" ? "Table" : "Bars"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        {section.id === "workPlan" && enabled ? (
+                          <div className="mt-2 flex items-center gap-2 text-[11px] text-txt-muted">
+                            <span>Format:</span>
+                            {(["table", "gantt"] as const).map((fmt) => {
+                              const current = activeDocument.reportWorkPlanFormat || "table";
+                              return (
+                                <button
+                                  key={fmt}
+                                  type="button"
+                                  disabled={!isEditMode}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    updateGeneratedDocument(activeDocument.id, {
+                                      reportWorkPlanFormat: fmt,
+                                    });
+                                  }}
+                                  className={`rounded border px-2 py-0.5 text-[11px] font-medium transition ${
+                                    current === fmt
+                                      ? "border-accent bg-accent/15 text-accent"
+                                      : "border-border bg-bg-surface text-txt-muted hover:border-accent/30"
+                                  } ${!isEditMode ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                                >
+                                  {fmt === "table" ? "Table" : "Gantt"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Report #</label>
+                  <input
+                    value={activeDocument.reportNumber || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { reportNumber: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="e.g. 04"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Revision</label>
+                  <input
+                    value={activeDocument.reportRevision || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { reportRevision: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="e.g. A"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Period from</label>
+                  <input
+                    type="date"
+                    value={activeDocument.reportPeriodStart || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { reportPeriodStart: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark] disabled:opacity-70"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Period to</label>
+                  <input
+                    type="date"
+                    value={activeDocument.reportPeriodEnd || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { reportPeriodEnd: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark] disabled:opacity-70"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">
+                    Executive summary
+                  </label>
+                  <textarea
+                    value={activeDocument.executiveSummary || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { executiveSummary: e.target.value })
+                    }
+                    rows={4}
+                    className="w-full resize-y rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="Narrative overview of the reporting period."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">
+                    Forecast &amp; recovery
+                  </label>
+                  <textarea
+                    value={activeDocument.forecastNarrative || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { forecastNarrative: e.target.value })
+                    }
+                    rows={3}
+                    className="w-full resize-y rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="Next period focus, recovery actions, upcoming milestones."
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeDocument.templateType === "milestone-invoice" ? (
+            <div className="rounded-2xl border border-border bg-bg-surface p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Invoice line items
+                </div>
+                {isEditMode ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const next = [
+                        ...(activeDocument.invoiceLines || []),
+                        { id: uuid(), description: "", unit: "", qty: "1", rate: "0" },
+                      ];
+                      updateGeneratedDocument(activeDocument.id, { invoiceLines: next });
+                    }}
+                  >
+                    <Plus size={14} /> Add line
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="data-table-shell overflow-auto">
+                <table className="data-table" style={{ minWidth: 600 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 36 }}>#</th>
+                      <th>Description</th>
+                      <th style={{ width: 80 }}>Unit</th>
+                      <th className="text-right" style={{ width: 80 }}>Qty</th>
+                      <th className="text-right" style={{ width: 110 }}>Rate</th>
+                      <th className="text-right" style={{ width: 130 }}>Amount</th>
+                      {isEditMode ? <th style={{ width: 36 }}></th> : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(activeDocument.invoiceLines || []).map((line, idx) => {
+                      const q = parseFloat(line.qty || "0") || 0;
+                      const r = parseFloat(line.rate || "0") || 0;
+                      const amt = q * r;
+                      return (
+                        <tr key={line.id}>
+                          <td className="data-cell-num">{idx + 1}</td>
+                          <td>
+                            {isEditMode ? (
+                              <input
+                                className="data-cell-input"
+                                value={line.description}
+                                onChange={(e) => {
+                                  const next = (activeDocument.invoiceLines || []).map((l) =>
+                                    l.id === line.id ? { ...l, description: e.target.value } : l,
+                                  );
+                                  updateGeneratedDocument(activeDocument.id, { invoiceLines: next });
+                                }}
+                                placeholder="Milestone or deliverable"
+                              />
+                            ) : (
+                              <span>{line.description || "—"}</span>
+                            )}
+                          </td>
+                          <td>
+                            {isEditMode ? (
+                              <input
+                                className="data-cell-input"
+                                value={line.unit || ""}
+                                onChange={(e) => {
+                                  const next = (activeDocument.invoiceLines || []).map((l) =>
+                                    l.id === line.id ? { ...l, unit: e.target.value } : l,
+                                  );
+                                  updateGeneratedDocument(activeDocument.id, { invoiceLines: next });
+                                }}
+                                placeholder="ea"
+                              />
+                            ) : (
+                              <span>{line.unit || "—"}</span>
+                            )}
+                          </td>
+                          <td className="data-cell-num">
+                            {isEditMode ? (
+                              <input
+                                className="data-cell-input text-right font-mono"
+                                value={line.qty}
+                                onChange={(e) => {
+                                  const next = (activeDocument.invoiceLines || []).map((l) =>
+                                    l.id === line.id ? { ...l, qty: e.target.value } : l,
+                                  );
+                                  updateGeneratedDocument(activeDocument.id, { invoiceLines: next });
+                                }}
+                                inputMode="decimal"
+                              />
+                            ) : (
+                              <span className="font-mono">{line.qty}</span>
+                            )}
+                          </td>
+                          <td className="data-cell-num">
+                            {isEditMode ? (
+                              <input
+                                className="data-cell-input text-right font-mono"
+                                value={line.rate}
+                                onChange={(e) => {
+                                  const next = (activeDocument.invoiceLines || []).map((l) =>
+                                    l.id === line.id ? { ...l, rate: e.target.value } : l,
+                                  );
+                                  updateGeneratedDocument(activeDocument.id, { invoiceLines: next });
+                                }}
+                                inputMode="decimal"
+                              />
+                            ) : (
+                              <span className="font-mono">{line.rate}</span>
+                            )}
+                          </td>
+                          <td className="data-cell-num font-mono">
+                            {amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          {isEditMode ? (
+                            <td className="text-center">
+                              <button
+                                type="button"
+                                className="p-1 text-txt-dim transition hover:text-err"
+                                onClick={() => {
+                                  const next = (activeDocument.invoiceLines || []).filter((l) => l.id !== line.id);
+                                  updateGeneratedDocument(activeDocument.id, { invoiceLines: next });
+                                }}
+                                title="Remove line"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          ) : null}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Due date</label>
+                  <input
+                    type="date"
+                    value={activeDocument.invoiceDueDate || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { invoiceDueDate: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark] disabled:opacity-70"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Discount %</label>
+                  <input
+                    inputMode="decimal"
+                    value={activeDocument.invoiceDiscountPercent || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { invoiceDiscountPercent: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Tax %</label>
+                  <input
+                    inputMode="decimal"
+                    value={activeDocument.invoiceTaxPercent || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { invoiceTaxPercent: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="flex items-end justify-end text-right">
+                  <div>
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-txt-dim">Total due</div>
+                    <div className="mt-1 font-mono text-lg font-semibold text-ok">
+                      {(() => {
+                        const lines = activeDocument.invoiceLines || [];
+                        const sub = lines.reduce((s, l) => {
+                          const q = parseFloat(l.qty || "0") || 0;
+                          const r = parseFloat(l.rate || "0") || 0;
+                          return s + q * r;
+                        }, 0);
+                        const disc = (sub * (parseFloat(activeDocument.invoiceDiscountPercent || "0") || 0)) / 100;
+                        const tax = ((sub - disc) * (parseFloat(activeDocument.invoiceTaxPercent || "0") || 0)) / 100;
+                        const total = sub - disc + tax;
+                        return `${project?.currency || "USD"} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Payment terms</label>
+                  <textarea
+                    value={activeDocument.invoicePaymentTerms || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { invoicePaymentTerms: e.target.value })
+                    }
+                    rows={3}
+                    className="w-full resize-y rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="e.g. Payment due within 30 days of invoice date."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Payment into (bank details)</label>
+                  <textarea
+                    value={activeDocument.invoiceBankDetails || ""}
+                    disabled={!isEditMode}
+                    onChange={(e) =>
+                      updateGeneratedDocument(activeDocument.id, { invoiceBankDetails: e.target.value })
+                    }
+                    rows={3}
+                    className="w-full resize-y rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                    placeholder="Bank, branch, account name &amp; number, SWIFT/IBAN."
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeDocument.templateType === "status-report" ? (
+            <div className="rounded-2xl border border-border bg-bg-surface p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Status report
+                </div>
+                <div className="text-[11px] text-txt-muted">One-page weekly / monthly status</div>
+              </div>
+
+              <div className="mb-4">
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Overall status</label>
+                <div className="flex gap-2">
+                  {([
+                    { value: "green" as const, label: "On track", tone: "border-ok bg-ok/15 text-ok" },
+                    { value: "amber" as const, label: "At risk", tone: "border-warn bg-warn/15 text-warn" },
+                    { value: "red" as const, label: "Off track", tone: "border-err bg-err/15 text-err" },
+                  ]).map((opt) => {
+                    const selected = (activeDocument.statusOverall || "green") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        disabled={!isEditMode}
+                        onClick={() =>
+                          updateGeneratedDocument(activeDocument.id, { statusOverall: opt.value })
+                        }
+                        className={`flex-1 rounded-lg border px-3 py-2.5 text-xs font-semibold transition ${
+                          selected ? `${opt.tone} ring-2 ring-current/30` : "border-border bg-bg-input text-txt-muted hover:border-accent/30"
+                        } ${!isEditMode ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { key: "statusHighlights" as const, label: "Highlights / Accomplishments", placeholder: "- Milestone X completed\n- Team velocity above plan" },
+                  { key: "statusIssues" as const, label: "Issues / Blockers", placeholder: "- Vendor delivery delayed\n- Awaiting client approval on Y" },
+                  { key: "statusUpcoming" as const, label: "Upcoming milestones", placeholder: "- Phase 2 kickoff next week\n- Final review on Dec 15" },
+                  { key: "statusTopRisks" as const, label: "Top risks", placeholder: "- Resource availability through Q4\n- Scope creep on module A" },
+                ].map((section) => (
+                  <div key={section.key}>
+                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">{section.label}</label>
+                    <textarea
+                      value={(activeDocument[section.key] as string | undefined) || ""}
+                      disabled={!isEditMode}
+                      onChange={(e) =>
+                        updateGeneratedDocument(activeDocument.id, { [section.key]: e.target.value })
+                      }
+                      rows={4}
+                      className="w-full resize-y rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                      placeholder={section.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">
+                  Resource / support asks <span className="text-txt-dim normal-case">(optional)</span>
+                </label>
+                <textarea
+                  value={activeDocument.statusResourceAsks || ""}
+                  disabled={!isEditMode}
+                  onChange={(e) =>
+                    updateGeneratedDocument(activeDocument.id, { statusResourceAsks: e.target.value })
+                  }
+                  rows={2}
+                  className="w-full resize-y rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent disabled:opacity-70"
+                  placeholder="e.g. Need 1 additional QA engineer for Q4; sign-off needed on revised scope by Dec 1."
+                />
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-2xl border border-border bg-bg-surface p-4">
-            <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-txt-dim">Content</div>
+            <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Content</div>
             <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Footer Note</label>
             <input
               value={activeDocument.footerNote || ""}
               disabled={!isEditMode}
               onChange={(e) => updateGeneratedDocument(activeDocument.id, { footerNote: e.target.value })}
               className="mb-4 w-full rounded-lg border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition-colors focus:border-accent disabled:opacity-70"
-              placeholder="Optional footer text for official issue notes, disclaimers, or record status"
+              placeholder="Optional footer text"
             />
             <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Document Content</label>
             {isEditMode ? (
@@ -2611,7 +5224,7 @@ export default function DocumentsModule() {
               />
             ) : (
               <div className="rounded-xl border border-border bg-bg-input/40 p-4 text-sm text-txt-muted">
-                The preview below shows the final print-ready layout.
+                Preview below shows the print-ready layout.
               </div>
             )}
           </div>

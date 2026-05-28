@@ -61,18 +61,12 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
             <ArrowLeft size={18} />
           </a>
           <div>
-            <h1 className="text-xl font-bold">BOQ Library Administration</h1>
-            <p className="text-xs text-txt-muted mt-0.5">
-              Manage reusable BOQ templates for all users
-            </p>
+            <h1 className="text-xl font-semibold">BOQ library</h1>
           </div>
         </div>
       ) : (
         <div className="mb-6">
-          <h2 className="text-xl font-bold">BOQ Library Administration</h2>
-          <p className="text-xs text-txt-muted mt-0.5">
-            Manage reusable BOQ templates for all users
-          </p>
+          <h2 className="text-xl font-semibold">BOQ library</h2>
         </div>
       )}
 
@@ -91,74 +85,57 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {boqLibrary.map((item) => {
-          const itemCount = item.sheets.reduce(
-            (s, sh) => s + sh.rows.filter((r) => r.type === "item").length,
-            0
-          );
-          return (
-            <div
-              key={item.id}
-              className="bg-bg-surface border border-border rounded-xl p-5 animate-fade-in"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-                    <FileSpreadsheet size={20} className="text-accent" />
-                  </div>
-                  <div>
-                    <div className="font-semibold">{item.name}</div>
-                    <div className="text-xs text-txt-muted mt-0.5">
-                      {item.description}
-                    </div>
-                    <div className="flex gap-2 mt-2">
+      {boqLibrary.length === 0 ? null : (
+        <div className="data-table-shell">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 36 }} aria-label="" />
+                <th>Name</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Sheets</th>
+                <th>Items</th>
+                <th style={{ width: 36 }} aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {boqLibrary.map((item) => {
+                const itemCount = item.sheets.reduce(
+                  (s, sh) => s + sh.rows.filter((r) => r.type === "item").length,
+                  0
+                );
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <FileSpreadsheet size={16} className="text-accent" />
+                    </td>
+                    <td className="data-cell-wrap font-semibold">{item.name}</td>
+                    <td>
                       <Badge color="accent">{item.category}</Badge>
-                      <Badge color="ok">
-                        {item.sheets.length} sheet{item.sheets.length !== 1 ? "s" : ""}
-                      </Badge>
-                      <Badge color="warn">{itemCount} items</Badge>
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => setConfirmDelete(item.id)}
-                >
-                  <Trash2 size={13} />
-                </Button>
-              </div>
-
-              {/* Preview */}
-              <div className="mt-3 ml-13 p-3 bg-bg-raised rounded-lg text-xs">
-                {item.sheets[0]?.rows.slice(0, 6).map((r, i) => (
-                  <div key={i} className="flex gap-2 py-0.5 text-txt-muted">
-                    {r.type === "header" ? (
-                      <span className="font-bold text-txt">{r.description}</span>
-                    ) : r.type === "notes" ? (
-                      <span className="italic text-txt-dim">Note: {r.description}</span>
-                    ) : r.type === "subtotal" || r.type === "grandtotal" ? (
-                      <span className="font-semibold italic">{r.description}</span>
-                    ) : (
-                      <>
-                        <span className="w-10 text-txt-dim">{r.itemNo}</span>
-                        <span className="flex-1 truncate">{r.description}</span>
-                        <span className="w-10 text-center">{r.unit}</span>
-                      </>
-                    )}
-                  </div>
-                ))}
-                {(item.sheets[0]?.rows.length || 0) > 6 && (
-                  <div className="text-txt-dim mt-1">
-                    ... +{(item.sheets[0]?.rows.length || 0) - 6} more rows
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                    </td>
+                    <td className="data-cell-wrap text-txt-muted">
+                      {item.description}
+                    </td>
+                    <td className="data-cell-num">{item.sheets.length}</td>
+                    <td className="data-cell-num">{itemCount}</td>
+                    <td className="data-cell-action">
+                      <button
+                        type="button"
+                        className="data-row-action danger"
+                        onClick={() => setConfirmDelete(item.id)}
+                        aria-label="Delete template"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <Modal
         open={!!confirmDelete}

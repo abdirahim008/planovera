@@ -258,10 +258,7 @@ export default function BillingAdminPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold">Manual Billing Operations</h2>
-        <p className="mt-1 text-xs text-txt-muted">
-          Activate, suspend, or adjust organizations manually while Stripe stays disconnected.
-        </p>
+        <h2 className="text-xl font-semibold">Manual billing operations</h2>
       </div>
 
       {notice ? (
@@ -278,21 +275,21 @@ export default function BillingAdminPanel() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <Building2 size={14} className="text-accent" />
             Organizations
           </div>
           <div className="mt-3 text-2xl font-semibold text-white">{organizations.length}</div>
         </div>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <CreditCard size={14} className="text-accent" />
             Active
           </div>
           <div className="mt-3 text-2xl font-semibold text-white">{totalActive}</div>
         </div>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <CalendarClock size={14} className="text-accent" />
             Trials / expired
           </div>
@@ -300,7 +297,7 @@ export default function BillingAdminPanel() {
           <div className="mt-1 text-xs text-txt-muted">{totalExpired} expired</div>
         </div>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <Users size={14} className="text-accent" />
             Seats sold
           </div>
@@ -312,7 +309,7 @@ export default function BillingAdminPanel() {
 
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-bg-surface p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-txt-dim">
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             Filter
           </label>
           <select
@@ -351,171 +348,166 @@ export default function BillingAdminPanel() {
           </div>
         ) : null}
 
-        {organizationCards.map(({ organization, subscription, activeMembers, pendingInvites, occupiedSeats }) => {
-          const plan = plans.find((item) => item.code === subscription?.plan_code);
-          const accessState = getSubscriptionAccessState(subscription);
-          const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
-          const effectivePlanCode =
-            subscription?.plan_code ||
-            (organization.personal ? "individual-monthly" : "organization-monthly");
-          const effectiveSeatCount = subscription?.seat_count || (organization.personal ? 1 : 5);
-          return (
-            <div
-              key={organization.id}
-              className="rounded-3xl border border-border bg-bg-surface p-5"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-white">{organization.name}</h3>
-                    <Badge color={organization.personal ? "ok" : "accent"}>
-                      {organization.personal ? "PERSONAL" : "ORG"}
-                    </Badge>
-                    {subscription ? (
-                      <Badge color={subscriptionBadgeColor(accessState)}>
-                        {subscriptionStateLabel(accessState).toUpperCase()}
-                      </Badge>
-                    ) : (
-                      <Badge color="warn">NO SUBSCRIPTION</Badge>
-                    )}
-                    {subscription ? (
-                      <Badge color={statusBadge(subscription.status)}>
-                        {subscription.status.toUpperCase()}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="mt-2 text-sm text-txt-muted">
-                    {subscription
-                      ? `${planLabel(subscription.plan_code)} · ${formatMoney(
-                          subscription.base_price_cents,
-                        )} base · expires ${formatSubscriptionExpiry(subscription)}`
-                      : "Create or repair the subscription record from the manual billing editor."}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    variant="success"
-                    size="sm"
-                    disabled={busy?.startsWith(`${organization.id}:`)}
-                    onClick={() =>
-                      handleQuickUpdate({
-                        organizationId: organization.id,
-                        planCode: effectivePlanCode,
-                        status: "active",
-                        seatCount: effectiveSeatCount,
-                        days: 30,
-                      })
-                    }
-                  >
-                    <Play size={13} /> Activate 30d
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy?.startsWith(`${organization.id}:`)}
-                    onClick={() =>
-                      handleQuickUpdate({
-                        organizationId: organization.id,
-                        planCode: effectivePlanCode,
-                        status: subscription?.status === "trialing" ? "trialing" : "active",
-                        seatCount: effectiveSeatCount,
-                        days: 90,
-                      })
-                    }
-                  >
-                    Extend 90d
-                  </Button>
-                  <Button
-                    variant="warning"
-                    size="sm"
-                    disabled={busy?.startsWith(`${organization.id}:`)}
-                    onClick={() =>
-                      handleQuickUpdate({
-                        organizationId: organization.id,
-                        planCode: effectivePlanCode,
-                        status: "past_due",
-                        seatCount: effectiveSeatCount,
-                        days: -1,
-                      })
-                    }
-                  >
-                    <Ban size={13} /> Suspend
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    disabled={busy?.startsWith(`${organization.id}:`)}
-                    onClick={() =>
-                      handleQuickUpdate({
-                        organizationId: organization.id,
-                        planCode: effectivePlanCode,
-                        status: "canceled",
-                        seatCount: effectiveSeatCount,
-                        days: -1,
-                      })
-                    }
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() =>
-                      setEditor({
-                        organizationId: organization.id,
-                        organizationName: organization.name,
-                        planCode: effectivePlanCode,
-                        status: subscription?.status || "trialing",
-                        seatCount: String(effectiveSeatCount),
-                        durationPreset: "custom",
-                        expiryDate: subscriptionExpiryInput(subscription),
-                      })
-                    }
-                  >
-                    Edit manual status
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-3 md:grid-cols-5">
-                <div className="rounded-2xl border border-border bg-bg-raised px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-txt-dim">Plan</div>
-                  <div className="mt-2 text-sm font-semibold text-white">
-                    {plan?.name || subscription?.plan_code || "Not set"}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-border bg-bg-raised px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-txt-dim">Seats</div>
-                  <div className="mt-2 text-sm font-semibold text-white">
-                    {occupiedSeats}/{subscription?.seat_count || 0}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-border bg-bg-raised px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-txt-dim">Members</div>
-                  <div className="mt-2 text-sm font-semibold text-white">{activeMembers}</div>
-                </div>
-                <div className="rounded-2xl border border-border bg-bg-raised px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-txt-dim">Pending invites</div>
-                  <div className="mt-2 text-sm font-semibold text-white">{pendingInvites}</div>
-                </div>
-                <div className="rounded-2xl border border-border bg-bg-raised px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-txt-dim">Access until</div>
-                  <div className="mt-2 text-sm font-semibold text-white">
-                    {formatSubscriptionExpiry(subscription)}
-                  </div>
-                  <div className="mt-1 text-xs text-txt-dim">
-                    {daysRemaining === null
-                      ? "No duration"
-                      : daysRemaining < 0
-                        ? `${Math.abs(daysRemaining)} days overdue`
-                        : `${daysRemaining} days left`}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {!loading && organizationCards.length > 0 ? (
+          <div className="data-table-shell">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Organization</th>
+                  <th>Plan</th>
+                  <th>Status</th>
+                  <th>Seats</th>
+                  <th>Members</th>
+                  <th>Pending</th>
+                  <th>Access until</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {organizationCards.map(({ organization, subscription, activeMembers, pendingInvites, occupiedSeats }) => {
+                  const plan = plans.find((item) => item.code === subscription?.plan_code);
+                  const accessState = getSubscriptionAccessState(subscription);
+                  const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
+                  const effectivePlanCode =
+                    subscription?.plan_code ||
+                    (organization.personal ? "individual-monthly" : "organization-monthly");
+                  const effectiveSeatCount = subscription?.seat_count || (organization.personal ? 1 : 5);
+                  return (
+                    <tr key={organization.id}>
+                      <td className="data-cell-wrap">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-white">{organization.name}</span>
+                          <Badge color={organization.personal ? "ok" : "accent"}>
+                            {organization.personal ? "PERSONAL" : "ORG"}
+                          </Badge>
+                        </div>
+                      </td>
+                      <td className="data-cell-wrap">
+                        {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {subscription ? (
+                            <Badge color={subscriptionBadgeColor(accessState)}>
+                              {subscriptionStateLabel(accessState).toUpperCase()}
+                            </Badge>
+                          ) : (
+                            <Badge color="warn">NO SUBSCRIPTION</Badge>
+                          )}
+                          {subscription ? (
+                            <Badge color={statusBadge(subscription.status)}>
+                              {subscription.status.toUpperCase()}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="data-cell-num">
+                        {occupiedSeats}/{subscription?.seat_count || 0}
+                      </td>
+                      <td className="data-cell-num">{activeMembers}</td>
+                      <td className="data-cell-num">{pendingInvites}</td>
+                      <td className="data-cell-wrap">
+                        <div>{formatSubscriptionExpiry(subscription)}</div>
+                        <div className="text-xs text-txt-dim">
+                          {daysRemaining === null
+                            ? "No duration"
+                            : daysRemaining < 0
+                              ? `${Math.abs(daysRemaining)} days overdue`
+                              : `${daysRemaining} days left`}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button
+                            variant="success"
+                            size="sm"
+                            disabled={busy?.startsWith(`${organization.id}:`)}
+                            onClick={() =>
+                              handleQuickUpdate({
+                                organizationId: organization.id,
+                                planCode: effectivePlanCode,
+                                status: "active",
+                                seatCount: effectiveSeatCount,
+                                days: 30,
+                              })
+                            }
+                          >
+                            <Play size={13} /> Activate 30d
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy?.startsWith(`${organization.id}:`)}
+                            onClick={() =>
+                              handleQuickUpdate({
+                                organizationId: organization.id,
+                                planCode: effectivePlanCode,
+                                status: subscription?.status === "trialing" ? "trialing" : "active",
+                                seatCount: effectiveSeatCount,
+                                days: 90,
+                              })
+                            }
+                          >
+                            Extend 90d
+                          </Button>
+                          <Button
+                            variant="warning"
+                            size="sm"
+                            disabled={busy?.startsWith(`${organization.id}:`)}
+                            onClick={() =>
+                              handleQuickUpdate({
+                                organizationId: organization.id,
+                                planCode: effectivePlanCode,
+                                status: "past_due",
+                                seatCount: effectiveSeatCount,
+                                days: -1,
+                              })
+                            }
+                          >
+                            <Ban size={13} /> Suspend
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            disabled={busy?.startsWith(`${organization.id}:`)}
+                            onClick={() =>
+                              handleQuickUpdate({
+                                organizationId: organization.id,
+                                planCode: effectivePlanCode,
+                                status: "canceled",
+                                seatCount: effectiveSeatCount,
+                                days: -1,
+                              })
+                            }
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() =>
+                              setEditor({
+                                organizationId: organization.id,
+                                organizationName: organization.name,
+                                planCode: effectivePlanCode,
+                                status: subscription?.status || "trialing",
+                                seatCount: String(effectiveSeatCount),
+                                durationPreset: "custom",
+                                expiryDate: subscriptionExpiryInput(subscription),
+                              })
+                            }
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </div>
 
       <Modal
@@ -526,9 +518,8 @@ export default function BillingAdminPanel() {
       >
         {editor ? (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-border bg-bg-raised px-4 py-3 text-sm text-txt">
-              Updating <strong>{editor.organizationName}</strong>. Use this after manual invoice
-              payment, bank transfer confirmation, or a trial extension.
+            <div className="rounded-lg border border-border bg-bg-raised px-4 py-2.5 text-sm text-txt">
+              Updating <strong>{editor.organizationName}</strong>.
             </div>
 
             <div>
@@ -636,11 +627,6 @@ export default function BillingAdminPanel() {
                   }
                 />
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-warn/25 bg-warn/10 px-4 py-3 text-sm leading-6 text-warn">
-              When the access date passes, the subscription becomes past due and normal users are
-              blocked from project work until an admin extends or activates the organization again.
             </div>
 
             <div className="flex justify-end gap-3">

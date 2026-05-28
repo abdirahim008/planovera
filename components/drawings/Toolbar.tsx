@@ -111,6 +111,8 @@ interface ToolbarProps {
   onExportPDF: () => void;
   onLogout: () => void;
   onBackToDashboard?: () => void;
+  /** Label for the back button. Defaults to "Dashboard"; pass the linked project name to orient users. */
+  backLabel?: string;
 }
 
 const menuButton =
@@ -123,6 +125,19 @@ const activeToolClass = "bg-sky-500/15 text-sky-300 hover:bg-sky-500/15 hover:te
 
 const svgDoc = (viewBox: string, body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" fill="none">${body}</svg>`;
+
+function formatSavedAgo(iso: string) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "Saved";
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) return "Saved just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `Saved ${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `Saved ${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `Saved ${diffDay}d ago`;
+}
 
 const REINFORCEMENT_BLOCKS = [
   {
@@ -182,6 +197,110 @@ const REINFORCEMENT_BLOCKS = [
        <path d="M148 42 H178 V72" stroke="#0f172a" stroke-width="9" stroke-linecap="round"/>
        <path d="M172 56 L190 38" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
        <text x="110" y="208" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">CLOSED STIRRUP</text>`,
+    ),
+  },
+  {
+    name: "Hooked bar (one end)",
+    type: "svg" as const,
+    icon: <CornerDownRight className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 360 140",
+      `<path d="M40 70 H300 V36" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+       <circle cx="40" cy="70" r="8" fill="#0f172a"/>
+       <text x="170" y="118" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">HOOKED BAR — ONE END</text>`,
+    ),
+  },
+  {
+    name: "Hooked bar (both ends)",
+    type: "svg" as const,
+    icon: <Columns3 className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 360 140",
+      `<path d="M60 36 V70 H300 V36" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+       <text x="180" y="118" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">HOOKED BAR — BOTH ENDS</text>`,
+    ),
+  },
+  {
+    name: "L-shaped corner bar",
+    type: "svg" as const,
+    icon: <CornerDownRight className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 260 260",
+      `<path d="M40 220 H220 V40" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+       <circle cx="40" cy="220" r="8" fill="#0f172a"/>
+       <circle cx="220" cy="40" r="8" fill="#0f172a"/>
+       <text x="130" y="248" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">L-SHAPED BAR</text>`,
+    ),
+  },
+  {
+    name: "Crank bar (Z-shape)",
+    type: "svg" as const,
+    icon: <CornerDownRight className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 360 200",
+      `<path d="M40 150 H140 L220 60 H320" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+       <circle cx="40" cy="150" r="8" fill="#0f172a"/>
+       <circle cx="320" cy="60" r="8" fill="#0f172a"/>
+       <text x="180" y="186" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">CRANK BAR</text>`,
+    ),
+  },
+  {
+    name: "Lap splice",
+    type: "svg" as const,
+    icon: <Minus className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 420 120",
+      `<path d="M30 52 H260" stroke="#0f172a" stroke-width="10" stroke-linecap="round"/>
+       <path d="M160 70 H390" stroke="#0f172a" stroke-width="10" stroke-linecap="round"/>
+       <circle cx="30" cy="52" r="8" fill="#0f172a"/>
+       <circle cx="390" cy="70" r="8" fill="#0f172a"/>
+       <path d="M160 36 V86 M260 36 V86" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 4"/>
+       <text x="210" y="22" text-anchor="middle" font-family="Arial" font-size="13" fill="#334155">LAP LENGTH</text>
+       <text x="210" y="108" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">LAP SPLICE</text>`,
+    ),
+  },
+  {
+    name: "Spiral / helix tie",
+    type: "svg" as const,
+    icon: <Circle className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 220 260",
+      `<path d="M40 40 C110 36, 110 76, 180 72 M40 80 C110 76, 110 116, 180 112 M40 120 C110 116, 110 156, 180 152 M40 160 C110 156, 110 196, 180 192 M40 200 C110 196, 110 236, 180 232" stroke="#0f172a" stroke-width="6" fill="none" stroke-linecap="round"/>
+       <text x="110" y="252" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">SPIRAL TIE</text>`,
+    ),
+  },
+  {
+    name: "Open stirrup (single leg)",
+    type: "svg" as const,
+    icon: <Square className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 220 220",
+      `<path d="M52 56 V178 H168 V56" stroke="#0f172a" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+       <path d="M52 56 L36 40 M168 56 L184 40" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+       <text x="110" y="208" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">OPEN STIRRUP</text>`,
+    ),
+  },
+  {
+    name: "Diamond / rhombus tie",
+    type: "svg" as const,
+    icon: <Square className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 220 220",
+      `<path d="M110 36 L188 110 L110 184 L32 110 Z" stroke="#0f172a" stroke-width="9" fill="none" stroke-linejoin="round"/>
+       <path d="M188 110 L208 90" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+       <text x="110" y="208" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">DIAMOND TIE</text>`,
+    ),
+  },
+  {
+    name: "Trapezoidal bend",
+    type: "svg" as const,
+    icon: <CornerDownRight className="h-4 w-4" />,
+    svg: svgDoc(
+      "0 0 360 200",
+      `<path d="M40 150 L120 60 H240 L320 150" stroke="#0f172a" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+       <circle cx="40" cy="150" r="8" fill="#0f172a"/>
+       <circle cx="320" cy="150" r="8" fill="#0f172a"/>
+       <text x="180" y="186" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">TRAPEZOIDAL BEND</text>`,
     ),
   },
   {
@@ -267,6 +386,7 @@ export default function Toolbar({
   onExportPDF,
   onLogout,
   onBackToDashboard,
+  backLabel = "Dashboard",
 }: ToolbarProps) {
   const currentPage = pages[currentPageIndex];
   const hasSelection = selectedCount > 0;
@@ -389,7 +509,18 @@ export default function Toolbar({
           />
           <div className="hidden min-w-0 lg:block">
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Planovera Studio</div>
-            <div className="max-w-[220px] truncate text-xs font-semibold text-slate-200">{projectName}</div>
+            <div className="flex items-center gap-2">
+              <div className="max-w-[220px] truncate text-xs font-semibold text-slate-200">{projectName}</div>
+              <span
+                className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                  lastSavedAt ? "bg-emerald-500/10 text-emerald-300" : "bg-slate-700/60 text-slate-400"
+                }`}
+                title={lastSavedAt ? `Last saved ${new Date(lastSavedAt).toLocaleString()}` : "Not saved yet"}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${lastSavedAt ? "bg-emerald-400" : "bg-slate-500"}`} />
+                {lastSavedAt ? formatSavedAgo(lastSavedAt) : "Not saved"}
+              </span>
+            </div>
           </div>
         </div>
         {onBackToDashboard ? (
@@ -398,10 +529,10 @@ export default function Toolbar({
               type="button"
               className={menuButton}
               onClick={() => run(onBackToDashboard)}
-              title="Back to dashboard"
+              title={`Back to ${backLabel}`}
             >
               <Home className="h-4 w-4" />
-              <span>Dashboard</span>
+              <span className="max-w-[180px] truncate">{backLabel}</span>
             </button>
           </div>
         ) : null}

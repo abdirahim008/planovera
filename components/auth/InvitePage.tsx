@@ -74,37 +74,32 @@ export default function InvitePage({
   }, [configured, email, router, token]);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(30,64,175,0.12),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.14),_transparent_36%),linear-gradient(180deg,_#f8fafc,_#eef2ff)] px-6 py-10">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-3xl items-center justify-center">
-        <div className="w-full rounded-[32px] border border-white/70 bg-white/88 p-8 shadow-[0_30px_90px_rgba(15,23,42,0.12)] backdrop-blur-xl">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.34em] text-slate-500">
-            Organization Invite
+    <div className="min-h-screen bg-[#0b0e14] px-6 py-10 text-[#e2e8f4]">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-lg items-center justify-center">
+        <div className="w-full rounded-2xl border border-white/10 bg-[#12161f] p-6">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Organization invite
           </div>
-          <h1 className="mt-3 text-3xl font-semibold text-slate-950">
-            Joining your team workspace
+          <h1 className="mt-2 text-xl font-semibold text-white">
+            {email ? `Accept invite for ${email}` : "Accept invite"}
           </h1>
-          <p className="mt-4 text-sm leading-7 text-slate-600">
-            {email
-              ? `We’re validating this invite for ${email}.`
-              : "We’re validating your team invitation and preparing the shared workspace."}
-          </p>
 
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-            {notice || "Checking your account and applying the reserved organization seat..."}
+          <div className="mt-5 rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-3 text-sm text-slate-300">
+            {notice || "Validating your account..."}
           </div>
 
-          <div className="mt-6 flex gap-3">
+          <div className="mt-5 flex gap-3">
             <a
               href="/"
-              className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center justify-center rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5"
             >
-              Back to workspace
+              Decline
             </a>
             <a
               href={`/login${token ? `?invite=${encodeURIComponent(token)}${email ? `&email=${encodeURIComponent(email)}` : ""}` : ""}`}
-              className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="inline-flex items-center justify-center rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-400"
             >
-              Sign in with invited email
+              Accept
             </a>
           </div>
         </div>

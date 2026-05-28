@@ -9,6 +9,13 @@ export interface Project {
   created_at: string;
   code?: string;
   categoryName?: string;
+  /**
+   * Optional preset id chosen at creation time. Drives the small badge on project
+   * cards and the helper copy in the create flow. Stored in memory + Zustand persist
+   * (localStorage) only — there is no DB column for it yet, so projects loaded fresh
+   * from Supabase may not have a preset until they're re-saved through the app.
+   */
+  preset?: string;
   contractNumber?: string;
   clientName?: string;
   contractorName?: string;
@@ -100,15 +107,29 @@ export interface PaymentCertSheet {
   items: PaymentItem[];
 }
 
+export interface PaymentAdjustmentLine {
+  id: string;
+  label: string;
+  type: "addition" | "deduction";
+  category: "variation" | "materials" | "withholding" | "liquidated-damages" | "other";
+  amount: string;
+  note?: string;
+}
+
 export interface PaymentCertificate {
   id: string;
   project_id: string;
   boqId?: string;
   boqName?: string;
   number: number;
+  revision?: number;
   type: "interim" | "final";
   date: string;
+  periodStart?: string;
+  periodEnd?: string;
   status: "draft" | "submitted" | "approved" | "paid";
+  previousCertificateId?: string | null;
+  locked?: boolean;
   sheets: PaymentCertSheet[];
   // FIDIC deduction/addition percentages
   contingenciesPercent: number;
@@ -116,6 +137,12 @@ export interface PaymentCertificate {
   retentionPercent: number;
   advancePaymentPercent: number;
   withholdingTaxPercent: number;
+  advancePaymentAmount?: string;
+  advanceRecoveredPrevious?: string;
+  advanceRecoveryCurrent?: string;
+  retentionReleaseAmount?: string;
+  finalAccountNote?: string;
+  adjustments?: PaymentAdjustmentLine[];
   // Signatory info
   contractorName: string;
   contractorCompany: string;
@@ -138,10 +165,15 @@ export interface PaymentItem {
   boqRate: string;
   boqAmount: string;
   // Progress tracking
+  previousQty?: string;
+  currentQty?: string;
   previousAmount: string;
   currentAmount: string;
   totalQty: string;
   totalAmount: string;
+  balanceQty?: string;
+  warningStatus?: "ok" | "over-certified" | "overridden";
+  overrideNote?: string;
 }
 
 export interface WorkPlanActivity {
@@ -260,7 +292,28 @@ export type DocumentTemplateType =
   | "progress-report"
   | "payment-certificate-summary"
   | "completion-certificate"
-  | "site-visit-report";
+  | "site-visit-report"
+  // Lightweight, FIDIC-free invoice for non-construction projects (and any project
+  // that needs a simple invoice document without the IPC/Final certificate machinery).
+  | "milestone-invoice"
+  // One-page traffic-light Status Report — universal, much lighter than the full
+  // Progress Report. Highlights / Issues / Upcoming / Risks structure.
+  | "status-report";
+
+/**
+ * A single line on a Milestone Invoice. Stored on GeneratedDocument.invoiceLines so the
+ * user can edit them inline without polluting the freeform `content` field.
+ */
+export interface InvoiceLine {
+  id: string;
+  description: string;
+  /** Optional unit string ("hrs", "ea", "sprints", "deliverables"). */
+  unit?: string;
+  /** Numeric quantity. Stored as string so partially-entered values don't get coerced. */
+  qty: string;
+  /** Numeric unit rate. */
+  rate: string;
+}
 
 export type SiteNoteCategory =
   | "observation"
@@ -289,6 +342,69 @@ export interface SiteNote {
   locationNote: string;
   observationText: string;
   photos: SiteNotePhoto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Risk Register ─────────────────────────────────────────────────
+export type RiskLevel = "low" | "medium" | "high";
+export type RiskStatus = "open" | "mitigated" | "closed" | "accepted";
+export type RiskCategory =
+  | "technical"
+  | "commercial"
+  | "schedule"
+  | "safety"
+  | "quality"
+  | "resource"
+  | "external"
+  | "other";
+
+export interface Risk {
+  id: string;
+  project_id: string;
+  /** Sequential reference number scoped per-project (RSK-001, RSK-002, …). */
+  reference: string;
+  title: string;
+  description: string;
+  category: RiskCategory;
+  likelihood: RiskLevel;
+  impact: RiskLevel;
+  status: RiskStatus;
+  /** Short owner name. */
+  owner: string;
+  mitigation: string;
+  /** Optional ISO date for next review. */
+  reviewDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Stakeholder Log ───────────────────────────────────────────────
+export type StakeholderType =
+  | "internal"
+  | "client"
+  | "vendor"
+  | "regulator"
+  | "community"
+  | "partner"
+  | "other";
+
+export interface Stakeholder {
+  id: string;
+  project_id: string;
+  name: string;
+  organization: string;
+  role: string;
+  type: StakeholderType;
+  email: string;
+  phone: string;
+  /** Influence level — how much they can affect the project outcome. */
+  influence: RiskLevel;
+  /** Interest level — how much they care about the project outcome. */
+  interest: RiskLevel;
+  /** Free-text engagement strategy / cadence / notes. */
+  engagementNotes: string;
+  active: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -323,9 +439,80 @@ export interface GeneratedDocument {
   linkedSiteNoteId?: string;
   siteVisitObservationHtml?: string;
   siteVisitPhotos?: SiteNotePhoto[];
+  /** Progress report extras: section toggles + per-section narratives. */
+  reportSections?: ReportSectionToggles;
+  /** Optional reporting period bounds shown on the cover and used to scope photos. */
+  reportPeriodStart?: string;
+  reportPeriodEnd?: string;
+  /** Optional report number / revision for the cover (e.g. "04" / "A"). */
+  reportNumber?: string;
+  reportRevision?: string;
+  /** Optional narrative sections for the progress report layout. */
+  executiveSummary?: string;
+  forecastNarrative?: string;
+  /** Per-section presentation format. Defaults to "table" when unset. */
+  reportItemFormat?: ReportItemFormat;
+  reportWorkPlanFormat?: ReportWorkPlanFormat;
+  /** Milestone invoice extras (only used when templateType === "milestone-invoice"). */
+  invoiceLines?: InvoiceLine[];
+  /** Tax % applied to the subtotal on the invoice (numeric string for partial entry). */
+  invoiceTaxPercent?: string;
+  /** Discount % applied to the subtotal before tax. */
+  invoiceDiscountPercent?: string;
+  /** Optional payment due date string (ISO yyyy-mm-dd). */
+  invoiceDueDate?: string;
+  /** Optional payment terms / notes shown above the totals block. */
+  invoicePaymentTerms?: string;
+  /** Optional payment-into details rendered at the bottom of the invoice. */
+  invoiceBankDetails?: string;
+  // ─── Status Report extras (only used when templateType === "status-report") ──
+  /** Overall traffic-light status for the report. */
+  statusOverall?: "green" | "amber" | "red";
+  /** Markdown / plain-text bullets for the Highlights section. */
+  statusHighlights?: string;
+  /** Markdown / plain-text bullets for the Issues / blockers section. */
+  statusIssues?: string;
+  /** Markdown / plain-text bullets for the Upcoming milestones section. */
+  statusUpcoming?: string;
+  /** Markdown / plain-text bullets for the Top Risks section. */
+  statusTopRisks?: string;
+  /** Optional resource / support asks. */
+  statusResourceAsks?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export type ReportSectionId =
+  | "cover"
+  | "executiveSummary"
+  | "keyMetrics"
+  | "itemTable"
+  | "sheetBreakdown"
+  | "workPlan"
+  | "paymentCertificates"
+  | "actionPoints"
+  | "photos"
+  | "forecast"
+  | "signoff";
+
+export type ReportSectionToggles = Partial<Record<ReportSectionId, boolean>>;
+
+export type ReportItemFormat = "table" | "bars";
+export type ReportWorkPlanFormat = "table" | "gantt";
+
+export const DEFAULT_PROGRESS_REPORT_SECTIONS: ReportSectionToggles = {
+  cover: true,
+  executiveSummary: true,
+  keyMetrics: true,
+  itemTable: true,
+  sheetBreakdown: false,
+  workPlan: true,
+  paymentCertificates: true,
+  actionPoints: true,
+  photos: false,
+  forecast: true,
+  signoff: true,
+};
 
 export interface ApprovalStep {
   id: string;
@@ -419,6 +606,8 @@ export interface MeetingActionItem {
   priority: "low" | "medium" | "high" | "critical";
   notes?: string;
   carriedForwardFromMinuteId?: string;
+  /** ISO timestamp of when this action was last set to "closed". Cleared when reopened. */
+  closedAt?: string;
 }
 
 export interface MeetingActionProjectGroup {
@@ -457,8 +646,11 @@ export interface ConstructionWorkspacePayload {
   correspondenceRecords: CorrespondenceRecord[];
   checklistItems: ChecklistItem[];
   siteNotes: SiteNote[];
+  risks: Risk[];
+  stakeholders: Stakeholder[];
   attendeeGroups: MeetingAttendeeGroup[];
   meetingMinutes: MeetingMinute[];
+  meetingSeries: MeetingSeries[];
   userSignatureProfile?: UserSignatureProfile | null;
 }
 
@@ -801,7 +993,10 @@ export const emptyConstructionWorkspacePayload =
     correspondenceRecords: [],
     checklistItems: [],
     siteNotes: [],
+    risks: [],
+    stakeholders: [],
     attendeeGroups: [],
+    meetingSeries: [],
     meetingMinutes: [],
     userSignatureProfile: null,
   });
@@ -823,8 +1018,11 @@ export const normalizeConstructionWorkspacePayload = (
   correspondenceRecords: payload?.correspondenceRecords ?? [],
   checklistItems: payload?.checklistItems ?? [],
   siteNotes: payload?.siteNotes ?? [],
+  risks: payload?.risks ?? [],
+  stakeholders: payload?.stakeholders ?? [],
   attendeeGroups: payload?.attendeeGroups ?? [],
   meetingMinutes: payload?.meetingMinutes ?? [],
+  meetingSeries: payload?.meetingSeries ?? [],
   userSignatureProfile: payload?.userSignatureProfile ?? null,
   activeSheetIndex: payload?.activeSheetIndex ?? 0,
   activeWorkPlanSheetIndex: payload?.activeWorkPlanSheetIndex ?? 0,
@@ -839,6 +1037,25 @@ export interface MeetingMinute {
   attendees: MeetingAttendee[];
   agendas: MeetingAgendaItem[];
   actionGroups: MeetingActionProjectGroup[];
+  /** Optional back-pointer to the series this minute belongs to. */
+  meetingSeriesId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MeetingSeriesCadence = "weekly" | "biweekly" | "monthly" | "adhoc";
+
+export interface MeetingSeries {
+  id: string;
+  name: string;
+  description?: string;
+  cadence?: MeetingSeriesCadence;
+  /** Projects in scope for this series. Carry-forward action points are filtered to these. */
+  projectIds: string[];
+  /** Default attendees pre-filled into each new meeting from this series. */
+  defaultAttendees: MeetingAttendee[];
+  /** Default agenda templates pre-filled into each new meeting from this series. */
+  defaultAgendas: MeetingAgendaItem[];
   createdAt: string;
   updatedAt: string;
 }
