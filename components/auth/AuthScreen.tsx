@@ -9,6 +9,7 @@ export default function AuthScreen({
   notice,
   inviteEmail,
   emailLocked,
+  initialMode = "signin",
   onSignIn,
   onSignUp,
 }: {
@@ -17,6 +18,7 @@ export default function AuthScreen({
   notice: string | null;
   inviteEmail?: string | null;
   emailLocked?: boolean;
+  initialMode?: "signin" | "signup";
   onSignIn: (payload: { email: string; password: string }) => Promise<void>;
   onSignUp: (payload: {
     name: string;
@@ -25,7 +27,7 @@ export default function AuthScreen({
     password: string;
   }) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState(inviteEmail || "");
@@ -35,6 +37,10 @@ export default function AuthScreen({
     if (!inviteEmail) return;
     setEmail(inviteEmail);
   }, [inviteEmail]);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

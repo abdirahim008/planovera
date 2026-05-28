@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-
+import LandingPage from "@/components/auth/LandingPage";
 import WorkspaceShell from "@/components/layout/WorkspaceShell";
 import { getSupabaseServerClient, isServerSupabaseConfigured } from "@/lib/supabase-server";
 
@@ -11,7 +10,7 @@ export default async function Page() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      redirect("/login");
+      return <LandingPage />;
     }
   }
 

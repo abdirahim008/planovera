@@ -21,6 +21,7 @@ export default function AuthPage() {
   const configured = isSupabaseConfigured();
   const inviteToken = searchParams.get("invite") || searchParams.get("token");
   const inviteEmail = searchParams.get("email");
+  const initialMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
 
   const finalizeAccess = async () => {
     const supabase = getSupabaseBrowserClient();
@@ -144,6 +145,7 @@ export default function AuthPage() {
       notice={notice}
       inviteEmail={inviteEmail}
       emailLocked={Boolean(inviteEmail)}
+      initialMode={initialMode}
       onSignIn={handleSignIn}
       onSignUp={handleSignUp}
     />
