@@ -24,6 +24,7 @@ import {
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
+import CompactKpiList from "@/components/ui/CompactKpiList";
 import CertificateSettings from "./CertificateSettings";
 import CertificatePrint from "./CertificatePrint";
 import type { PaymentAdjustmentLine, PaymentCertificate, PaymentCertSheet } from "@/lib/supabase";
@@ -284,20 +285,33 @@ export default function PaymentModule() {
       {!activeCert && (
         <>
           {projectCerts.length > 0 && (
-            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {[
-                { label: "Current Net Certified", value: summary.currentNet, color: "accent" },
-                { label: "Submitted", value: summary.submitted, color: "warn" },
-                { label: "Approved", value: summary.approved, color: "accent" },
-                { label: "Retention Held", value: summary.retentionHeld, color: "err" },
-                { label: "Advance Balance", value: summary.advanceBalance, color: "purple" },
-              ].map((card) => (
-                <div key={card.label} className="rounded-xl border border-border bg-bg-surface p-4">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{card.label}</div>
-                  <div className="font-mono text-lg font-semibold">$ {currency(card.value)}</div>
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="mb-5 sm:hidden">
+                <CompactKpiList
+                  rows={[
+                    { label: "Current Net Certified", value: `$ ${currency(summary.currentNet)}`, tone: "accent" },
+                    { label: "Submitted", value: `$ ${currency(summary.submitted)}`, tone: "warn" },
+                    { label: "Approved", value: `$ ${currency(summary.approved)}`, tone: "accent" },
+                    { label: "Retention Held", value: `$ ${currency(summary.retentionHeld)}`, tone: "err" },
+                    { label: "Advance Balance", value: `$ ${currency(summary.advanceBalance)}`, tone: "neutral" },
+                  ]}
+                />
+              </div>
+              <div className="mb-5 hidden grid-cols-1 gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5">
+                {[
+                  { label: "Current Net Certified", value: summary.currentNet, color: "accent" },
+                  { label: "Submitted", value: summary.submitted, color: "warn" },
+                  { label: "Approved", value: summary.approved, color: "accent" },
+                  { label: "Retention Held", value: summary.retentionHeld, color: "err" },
+                  { label: "Advance Balance", value: summary.advanceBalance, color: "purple" },
+                ].map((card) => (
+                  <div key={card.label} className="rounded-xl border border-border bg-bg-surface p-4">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{card.label}</div>
+                    <div className="font-mono text-lg font-semibold">$ {currency(card.value)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           {projectCerts.length === 0 ? (

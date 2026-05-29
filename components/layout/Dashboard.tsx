@@ -28,6 +28,7 @@ import { currency, getLiveMeetingActionItems, type MeetingActionSnapshot, useApp
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
+import CompactKpiList from "@/components/ui/CompactKpiList";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { SOMALIA_REGIONS, findSomaliaTown } from "@/lib/somaliaLocations";
 import {
@@ -283,6 +284,14 @@ const clamp = (value: number, min = 0, max = 100) =>
 const parseAmount = (value: string | number | undefined | null) => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   return parseFloat(String(value || "0").replace(/,/g, "")) || 0;
+};
+
+// Compact USD label for tight mobile rows, e.g. 1,264,440 -> "USD 1.26M".
+const compactUsd = (value: number) => {
+  const amount = Number.isFinite(value) ? value : 0;
+  if (Math.abs(amount) >= 1_000_000) return `USD ${(amount / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(amount) >= 1_000) return `USD ${(amount / 1_000).toFixed(1)}K`;
+  return `USD ${currency(amount)}`;
 };
 
 const normalizeFilterValue = (value?: string | null) => (value || "").trim().toLowerCase();
@@ -1652,7 +1661,30 @@ function PortfolioDashboard({
             Planned {averagePlanned.toFixed(1)}% · Actual {averageActual.toFixed(1)}%
           </span>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <CompactKpiList
+          className="sm:hidden"
+          rows={[
+            {
+              label: "Contract value",
+              value: `USD ${currency(filteredProjectValue)}`,
+              icon: FileText,
+              tone: "accent",
+            },
+            {
+              label: "Balance",
+              value: `USD ${currency(balance)}`,
+              icon: Wallet,
+              tone: "warn",
+            },
+            {
+              label: "Pending approvals",
+              value: totalPendingApprovals,
+              icon: ClipboardList,
+              tone: "neutral",
+            },
+          ]}
+        />
+        <div className="hidden gap-2 sm:grid sm:grid-cols-3">
           <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Contract value</div>
             <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
@@ -1682,7 +1714,19 @@ function PortfolioDashboard({
 
       <ProjectLocationsCard summaries={summaries} />
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-5 sm:hidden">
+        <CompactKpiList
+          header={{ label: "Portfolio KPIs", value: "Value" }}
+          rows={metricCards.map((card) => ({
+            label: card.title,
+            value:
+              card.title === "Approved Commercial" ? compactUsd(totalApprovedCommercial) : card.value,
+            icon: card.icon,
+            tone: card.tone,
+          }))}
+        />
+      </div>
+      <div className="mt-5 hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5">
         {metricCards.map((card) => (
           <ReferenceMetricTile key={card.title} {...card} />
         ))}
@@ -2285,7 +2329,17 @@ function ProjectOverviewDashboard({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="sm:hidden">
+        <CompactKpiList
+          rows={metricCards.map((card) => ({
+            label: card.title,
+            value: card.value,
+            icon: card.icon,
+            tone: card.tone,
+          }))}
+        />
+      </div>
+      <div className="hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-4">
         {metricCards.map((card) => (
           <ReferenceMetricTile key={card.title} {...card} />
         ))}

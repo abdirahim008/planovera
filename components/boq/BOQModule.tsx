@@ -42,6 +42,7 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
+import CompactKpiList, { type CompactKpiTone } from "@/components/ui/CompactKpiList";
 
 const BOQ_COLS = [
   { key: "itemNo" as const, label: "Item No.", width: "w-[80px]", align: "text-center" },
@@ -2000,6 +2001,13 @@ export default function BOQModule() {
     { label: "Sections", value: String(activeRows.filter((row) => row.type === "header").length), tone: "neutral" },
     { label: "Line Items", value: String(activeRows.filter((row) => row.type === "item").length), tone: "neutral" },
   ];
+  const boqToneToCompact: Record<string, CompactKpiTone> = {
+    blue: "accent",
+    green: "ok",
+    red: "err",
+    amber: "warn",
+    neutral: "neutral",
+  };
 
   return (
     <div className="boq-reference-page animate-fade-in">
@@ -2064,7 +2072,16 @@ export default function BOQModule() {
         </div>
       </div>
 
-      <div className="boq-summary-strip mb-5 grid overflow-hidden rounded-2xl border border-border bg-bg-surface md:grid-cols-5">
+      <div className="mb-5 sm:hidden">
+        <CompactKpiList
+          rows={summaryCards.map((card) => ({
+            label: card.label,
+            value: card.value,
+            tone: boqToneToCompact[card.tone] ?? "neutral",
+          }))}
+        />
+      </div>
+      <div className="boq-summary-strip mb-5 hidden overflow-hidden rounded-2xl border border-border bg-bg-surface sm:grid md:grid-cols-5">
         {summaryCards.map((card) => (
           <div key={card.label} className="boq-summary-card border-b border-border px-5 py-4 md:border-b-0 md:border-r last:border-r-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{card.label}</div>

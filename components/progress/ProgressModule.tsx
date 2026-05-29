@@ -21,6 +21,7 @@ import type { ProgressItem, ProgressReport } from "@/lib/supabase";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
+import CompactKpiList from "@/components/ui/CompactKpiList";
 import { exportProgressAsExcel, exportProgressAsPdf } from "@/lib/progress-export";
 
 type ProgressViewMode = "table" | "visual";
@@ -541,19 +542,31 @@ export default function ProgressModule() {
         </div>
 
         {summaryMetrics && (
-          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
-              { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
-              { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
-              { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "ok" },
-            ].map((card) => (
-              <div key={card.label} className="bg-bg-surface border border-border rounded-xl p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-2">{card.label}</div>
-                <div className="text-lg font-semibold">{card.value}</div>
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="mb-5 sm:hidden">
+              <CompactKpiList
+                rows={[
+                  { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
+                  { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
+                  { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
+                  { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "ok" },
+                ]}
+              />
+            </div>
+            <div className="mb-5 hidden grid-cols-1 gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
+                { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
+                { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
+                { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "ok" },
+              ].map((card) => (
+                <div key={card.label} className="bg-bg-surface border border-border rounded-xl p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-2">{card.label}</div>
+                  <div className="text-lg font-semibold">{card.value}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {projectReports.length === 0 ? (

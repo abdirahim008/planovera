@@ -27,6 +27,7 @@ import type {
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
+import CompactKpiList from "@/components/ui/CompactKpiList";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import { sanitizeRichTextHtml, stripRichTextToPlain } from "@/lib/richText";
 
@@ -1384,6 +1385,7 @@ export default function MeetingMinutesModule() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [draftMinute, setDraftMinute] = useState<MeetingMinute | null>(null);
+  const [showNoProjectHint, setShowNoProjectHint] = useState(false);
 
   const seriesById = useMemo(
     () => Object.fromEntries(meetingSeries.map((series) => [series.id, series])),
@@ -1522,7 +1524,12 @@ export default function MeetingMinutesModule() {
   };
 
   const addProjectActionGroup = () => {
-    if (projects.length === 0 || !draftMinute) return;
+    if (!draftMinute) return;
+    if (projects.length === 0) {
+      setShowNoProjectHint(true);
+      return;
+    }
+    setShowNoProjectHint(false);
     setDraftMinute((current) =>
       current
         ? {
@@ -1558,7 +1565,22 @@ export default function MeetingMinutesModule() {
           </div>
         </div>
 
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-6 sm:hidden">
+          <CompactKpiList
+            rows={[
+              { label: "Meeting Minutes", value: String(sortedMinutes.length), icon: CalendarDays, tone: "accent" },
+              { label: "Open Actions", value: String(openActions.length), icon: ClipboardList, tone: "warn" },
+              {
+                label: "Overdue Actions",
+                value: String(overdueActions.length),
+                icon: CheckCircle2,
+                tone: overdueActions.length > 0 ? "err" : "ok",
+              },
+              { label: "Attendee Groups", value: String(attendeeGroups.length), icon: Users, tone: "accent" },
+            ]}
+          />
+        </div>
+        <div className="mb-6 hidden gap-4 sm:grid sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             title="Meeting Minutes"
             value={String(sortedMinutes.length)}
@@ -2031,10 +2053,21 @@ export default function MeetingMinutesModule() {
         <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h3 className="text-base font-semibold text-white">Project Action Registry</h3>
-            <Button variant="primary" onClick={addProjectActionGroup} disabled={projects.length === 0}>
+            <Button
+              variant="primary"
+              onClick={addProjectActionGroup}
+              aria-disabled={projects.length === 0}
+              className={projects.length === 0 ? "opacity-40" : undefined}
+              title={projects.length === 0 ? "Add a project to your workspace first" : undefined}
+            >
               <Plus size={14} /> Assign Action Points to Project
             </Button>
           </div>
+          {projects.length === 0 && showNoProjectHint ? (
+            <p className="mb-4 rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-[13px] text-warn">
+              Add a project to your workspace before assigning action points to it.
+            </p>
+          ) : null}
 
           <div className="space-y-4">
             {draftMinute.actionGroups.map((group) => (
