@@ -153,44 +153,6 @@ const meetingPrintStyles = () => `
     box-shadow: 0 18px 60px rgba(15, 23, 42, 0.18);
   }
   .page-inner { padding: 18mm 16mm 16mm; }
-  .letterhead {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 12px;
-    align-items: center;
-    border-bottom: 2px solid #111827;
-    padding-bottom: 12px;
-    margin-bottom: 18px;
-  }
-  .logo-mark {
-    width: 48px;
-    height: 48px;
-    border: 1.5px solid #0f172a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    color: #0f172a;
-  }
-  .logo-mark img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-  .logo-mark-empty { display: none; }
-  .brand-name {
-    font-size: 18px;
-    font-weight: 800;
-    color: #0f172a;
-    overflow-wrap: anywhere;
-  }
-  .brand-subtitle {
-    margin-top: 3px;
-    font-size: 10px;
-    color: #334155;
-    overflow-wrap: anywhere;
-  }
   h1 {
     margin: 0;
     font-size: 25px;
@@ -201,36 +163,12 @@ const meetingPrintStyles = () => `
   .title-row {
     margin-bottom: 14px;
   }
-  .meta-label,
   th {
     font-size: 8px;
     text-transform: uppercase;
     letter-spacing: 0.18em;
     color: #64748b;
     font-weight: 800;
-  }
-  .meta-value {
-    font-size: 10px;
-    color: #111827;
-    font-weight: 700;
-    overflow-wrap: anywhere;
-  }
-  .meta-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 16px;
-    border-top: 1px solid #dbe3ef;
-    border-bottom: 1px solid #dbe3ef;
-    padding: 8px 0;
-    margin: 12px 0 16px;
-  }
-  .meta-item {
-    border: 0;
-    padding: 0;
-    min-width: 0;
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
   }
   .section {
     margin-top: 15px;
@@ -380,27 +318,6 @@ const meetingPrintStyles = () => `
 
 function buildMeetingMinutePrintHtml(minute: MeetingMinute, projects: Project[]) {
   const projectById = new Map(projects.map((project) => [project.id, project]));
-  const involvedProjects = minute.actionGroups
-    .map((group) => projectById.get(group.project_id))
-    .filter(Boolean) as Project[];
-  const brandingProject = involvedProjects[0] || projects[0] || null;
-  const branding = brandingProject?.documentBranding;
-  const brandName =
-    branding?.issuerDisplayName ||
-    brandingProject?.consultantName ||
-    brandingProject?.clientName ||
-    "Planovera Project Controls";
-  const brandSubtitle =
-    branding?.headerTagline ||
-    brandingProject?.contractTitle ||
-    brandingProject?.name ||
-    "Professional meeting minutes and action register";
-  const logo = branding?.clientLogoDataUrl;
-  const projectNames =
-    involvedProjects.length > 0
-      ? Array.from(new Set(involvedProjects.map((project) => project.name))).join(", ")
-      : "Portfolio meeting";
-  const preparedDate = meetingPrintDate(minute.updatedAt || minute.createdAt);
 
   const attendeeRows = minute.attendees
     .map(
@@ -494,28 +411,8 @@ function buildMeetingMinutePrintHtml(minute: MeetingMinute, projects: Project[])
         <div class="print-root">
           <section class="page">
             <div class="page-inner">
-              <div class="letterhead">
-                <div class="${logo ? "logo-mark" : "logo-mark-empty"}">${
-                  logo
-                    ? `<img src="${escapeMeetingPrintHtml(logo)}" alt="Logo" />`
-                    : ""
-                }</div>
-                <div>
-                  <div class="brand-name">${escapeMeetingPrintHtml(brandName)}</div>
-                  <div class="brand-subtitle">${escapeMeetingPrintHtml(brandSubtitle)}</div>
-                </div>
-              </div>
-
               <div class="title-row">
                 <h1>${escapeMeetingPrintHtml(minute.title || "Meeting Minutes")}</h1>
-              </div>
-
-              <div class="meta-grid">
-                <div class="meta-item"><div class="meta-label">Meeting Date</div><div class="meta-value">${escapeMeetingPrintHtml(meetingPrintDate(minute.meetingDate))}</div></div>
-                <div class="meta-item"><div class="meta-label">Reference</div><div class="meta-value">${escapeMeetingPrintHtml(minute.referenceNo || "Not set")}</div></div>
-                <div class="meta-item"><div class="meta-label">Project(s)</div><div class="meta-value">${escapeMeetingPrintHtml(projectNames)}</div></div>
-                <div class="meta-item"><div class="meta-label">Attendees</div><div class="meta-value">${minute.attendees.length}</div></div>
-                <div class="meta-item"><div class="meta-label">Prepared / Updated</div><div class="meta-value">${escapeMeetingPrintHtml(preparedDate)}</div></div>
               </div>
 
               <section class="section">
