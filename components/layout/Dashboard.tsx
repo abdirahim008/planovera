@@ -56,11 +56,8 @@ import type {
   SavedBOQ,
   SavedWorkPlan,
 } from "@/lib/supabase";
-import { SURP2_PROGRAM_ID, type Surp2ImportPreview } from "@/lib/surp2ImportTypes";
-import {
-  FINAL_CERTIFICATE_PROGRAM_ID,
-  type FinalCertificateImportPreview,
-} from "@/lib/finalCertificateImportTypes";
+import { SURP2_PROGRAM_ID } from "@/lib/surp2ImportTypes";
+import { FINAL_CERTIFICATE_PROGRAM_ID } from "@/lib/finalCertificateImportTypes";
 import { buildFinalCertificateDemoPayload, buildRoadPackagesDemoPayload } from "@/lib/sampleData";
 import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "@/lib/projectCategories";
 import { PROJECT_PRESETS, getProjectPreset } from "@/lib/project-presets";
@@ -885,10 +882,8 @@ export default function Dashboard() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [surp2Importing, setSurp2Importing] = useState(false);
   const [surp2ImportError, setSurp2ImportError] = useState<string | null>(null);
-  const [surp2Preview, setSurp2Preview] = useState<Surp2ImportPreview | null>(null);
   const [finalCertImporting, setFinalCertImporting] = useState(false);
   const [finalCertImportError, setFinalCertImportError] = useState<string | null>(null);
-  const [finalCertPreview, setFinalCertPreview] = useState<FinalCertificateImportPreview | null>(null);
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     programId: "",
     categoryId: "",
@@ -1198,7 +1193,6 @@ export default function Dashboard() {
     try {
       const payload = buildRoadPackagesDemoPayload();
       importLocalTestData(payload);
-      setSurp2Preview(payload.preview);
       setPortfolioFilters({ programId: SURP2_PROGRAM_ID, categoryId: "", location: "", client: "" });
       setActiveModule("dashboard");
     } catch (error) {
@@ -1214,7 +1208,6 @@ export default function Dashboard() {
     try {
       const payload = buildFinalCertificateDemoPayload();
       importLocalTestData(payload);
-      setFinalCertPreview(payload.preview);
       setPortfolioFilters({
         programId: FINAL_CERTIFICATE_PROGRAM_ID,
         categoryId: "",
@@ -1257,10 +1250,8 @@ export default function Dashboard() {
           onImportSurp2={handleImportSurp2}
           onImportFinalCertificateTest={handleImportFinalCertificateTest}
           importingSurp2={surp2Importing}
-          surp2Preview={surp2Preview}
           surp2ImportError={surp2ImportError}
           importingFinalCertificateTest={finalCertImporting}
-          finalCertificatePreview={finalCertPreview}
           finalCertificateImportError={finalCertImportError}
         />
       )}
@@ -1299,10 +1290,8 @@ function PortfolioDashboard({
   onImportSurp2,
   onImportFinalCertificateTest,
   importingSurp2,
-  surp2Preview,
   surp2ImportError,
   importingFinalCertificateTest,
-  finalCertificatePreview,
   finalCertificateImportError,
 }: {
   summaries: ProjectSummary[];
@@ -1317,10 +1306,8 @@ function PortfolioDashboard({
   onImportSurp2: () => void;
   onImportFinalCertificateTest: () => void;
   importingSurp2: boolean;
-  surp2Preview: Surp2ImportPreview | null;
   surp2ImportError: string | null;
   importingFinalCertificateTest: boolean;
-  finalCertificatePreview: FinalCertificateImportPreview | null;
   finalCertificateImportError: string | null;
 }) {
   const locations = uniqueFilterValues(allSummaries.map((summary) => projectLocationFilterValue(summary.project)));
@@ -1449,87 +1436,6 @@ function PortfolioDashboard({
         </div>
       ) : null}
 
-      {surp2Preview ? (
-        <div className="mb-5 rounded-[24px] border border-accent/30 bg-accent/10 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">
-                Road package demo loaded
-              </div>
-              <div className="mt-1 text-lg font-black text-white">{surp2Preview.programName}</div>
-              <p className="mt-1 text-sm text-txt-muted">
-                {surp2Preview.packageCount} packages imported with USD {currency(surp2Preview.totalBoqValue)} BOQ value.
-                This sample is stored in your workspace so you can explore the app.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-border bg-black/15 px-4 py-3 text-right">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">Parser warnings</div>
-              <div className="mt-1 text-2xl font-black text-warn">{surp2Preview.warningCount}</div>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-2 xl:grid-cols-4">
-            {surp2Preview.packages.map((item) => (
-              <div key={item.packageNumber} className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">
-                  Package {item.packageNumber}
-                </div>
-                <div className="mt-1 line-clamp-2 text-sm font-bold text-white">{item.projectName}</div>
-                <div className="mt-2 text-xs text-txt-muted">
-                  BOQ USD {currency(item.boqTotal)} · Actual {item.actualProgress.toFixed(1)}%
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {finalCertificatePreview ? (
-        <div className="mb-5 rounded-[24px] border border-ok/30 bg-ok/10 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-ok">
-                Final certificate demo loaded
-              </div>
-              <div className="mt-1 text-lg font-black text-white">
-                {finalCertificatePreview.projectName}
-              </div>
-              <p className="mt-1 text-sm text-txt-muted">
-                Contract {finalCertificatePreview.contractNumber} · {finalCertificatePreview.contractorName}.
-                This sample lets you test IPC carry-forward and retention release.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-border bg-black/15 px-4 py-3 text-right">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">
-                Final retention release
-              </div>
-              <div className="mt-1 text-2xl font-black text-ok">
-                USD {currency(finalCertificatePreview.finalNetPayable)}
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-            {[
-              ["Revised contract", finalCertificatePreview.revisedContractSum],
-              ["BOQ grand total", finalCertificatePreview.boqGrandTotal],
-              ["IPC 005 current", finalCertificatePreview.lastIpcThisCertificate],
-              ["IPC 005 net due", finalCertificatePreview.lastIpcNetDue],
-              ["Retention release", finalCertificatePreview.retentionReleaseAmount],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">
-                  {label}
-                </div>
-                <div className="mt-1 text-sm font-black text-white">USD {currency(Number(value))}</div>
-              </div>
-            ))}
-          </div>
-          {finalCertificatePreview.warnings.length > 0 ? (
-            <div className="mt-3 rounded-2xl border border-warn/30 bg-warn/10 p-3 text-xs text-warn">
-              {finalCertificatePreview.warnings.join(" · ")}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
       <div className="mb-5 rounded-[24px] border border-border bg-bg-surface p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
@@ -1999,20 +1905,6 @@ function ProjectLocationsCard({ summaries }: { summaries: ProjectSummary[] }) {
               <span className="rounded-xl border border-border bg-black/15 p-2 text-txt-muted">
                 <Maximize2 size={16} />
               </span>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Dots</div>
-                <div className="mt-1 text-2xl font-black text-white">{points.length}</div>
-              </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Projects</div>
-                <div className="mt-1 text-2xl font-black text-ok">{plottedCount}</div>
-              </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Missing</div>
-                <div className="mt-1 text-2xl font-black text-warn">{missingCount}</div>
-              </div>
             </div>
           </div>
           <ProjectLocationMap points={points} missingCount={missingCount} />
