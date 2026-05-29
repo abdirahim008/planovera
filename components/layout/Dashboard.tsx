@@ -1662,11 +1662,6 @@ function PortfolioDashboard({
                     >
                       {summary.project.name}
                     </button>
-                    <div className="mt-2 text-[11px] leading-5 text-txt-dim">
-                      {[programLabel(programs, summary.project.programId), categoryLabel(categories, summary.project), summary.project.contractNumber, summary.project.code, projectLocationLabel(summary.project)]
-                        .filter(Boolean)
-                        .join(" - ") || "Project controls workspace"}
-                    </div>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => onEditProject(summary.project)}>
                     <PenTool size={14} /> Edit
