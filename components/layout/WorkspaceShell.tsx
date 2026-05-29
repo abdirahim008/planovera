@@ -433,10 +433,12 @@ export default function WorkspaceShell() {
 
       setActiveUserId(user.id);
       setSubscriptionBlock(null);
-      await supabase.rpc("accept_organization_invites", {
-        invite_token_param: null,
-      });
-      await supabase.rpc("expire_overdue_organization_subscriptions");
+      await Promise.all([
+        supabase.rpc("accept_organization_invites", {
+          invite_token_param: null,
+        }),
+        supabase.rpc("expire_overdue_organization_subscriptions"),
+      ]);
 
       const [
         { data: profileRow },
