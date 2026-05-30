@@ -13,8 +13,9 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { getLiveMeetingActionItems, useAppStore } from "@/lib/store";
+import { type MeetingActionSnapshot, useAppStore } from "@/lib/store";
 import type {
+  ActionPoint,
   MeetingActionItem,
   MeetingActionProjectGroup,
   MeetingAgendaItem,
@@ -510,6 +511,7 @@ function openMeetingMinutePdf(minute: MeetingMinute, projects: Project[]) {
 function createMinuteDraft(
   projects: Project[],
   meetingMinutes: MeetingMinute[],
+  actionPoints: ActionPoint[],
   series?: MeetingSeries | null,
 ) {
   const now = new Date().toISOString();
@@ -521,16 +523,19 @@ function createMinuteDraft(
     ? projects.filter((project) => scopedProjectIds.has(project.id))
     : projects;
 
-  const liveActions = getLiveMeetingActionItems(meetingMinutes)
+  // Carry-forward is sourced from the action-points register (source of truth),
+  // not by re-scanning past meetings: open/in-progress items still needing work.
+  const openActions = actionPoints
     .filter((action) => action.status !== "closed")
     .filter((action) => (scopedProjectIds ? scopedProjectIds.has(action.project_id) : true));
 
   const groupsByProject = new Map<string, MeetingActionItem[]>();
-  liveActions.forEach((action) => {
+  openActions.forEach((action) => {
     const current = groupsByProject.get(action.project_id) || [];
     current.push({
       id: uuid(),
-      actionKey: action.actionKey,
+      // Preserve the register identity so this snapshot reconciles back on save.
+      actionKey: action.id,
       project_id: action.project_id,
       description: action.description,
       responsiblePerson: action.responsiblePerson,
@@ -538,7 +543,7 @@ function createMinuteDraft(
       status: action.status,
       priority: action.priority,
       notes: action.notes,
-      carriedForwardFromMinuteId: action.meetingMinuteId,
+      carriedForwardFromMinuteId: action.lastMeetingId,
     });
     groupsByProject.set(action.project_id, current);
   });
@@ -1269,6 +1274,7 @@ export default function MeetingMinutesModule() {
     projects,
     attendeeGroups,
     meetingMinutes,
+    actionPoints,
     saveMeetingMinute,
     deleteMeetingMinute,
     duplicateMeetingMinute,
@@ -1298,7 +1304,32 @@ export default function MeetingMinutesModule() {
     [meetingMinutes]
   );
 
-  const liveActions = useMemo(() => getLiveMeetingActionItems(meetingMinutes), [meetingMinutes]);
+  const minuteById = useMemo(
+    () => new Map(meetingMinutes.map((minute) => [minute.id, minute])),
+    [meetingMinutes]
+  );
+  // The dashboard register reads the action-points store (source of truth) and
+  // enriches each item with the meeting that last touched it for display.
+  const liveActions = useMemo<MeetingActionSnapshot[]>(() => {
+    const statusRank = (value: ActionPoint["status"]) =>
+      value === "open" ? 0 : value === "in-progress" ? 1 : 2;
+    return [...actionPoints]
+      .sort((a, b) => {
+        const statusCompare = statusRank(a.status) - statusRank(b.status);
+        if (statusCompare !== 0) return statusCompare;
+        return (a.deadline || "").localeCompare(b.deadline || "");
+      })
+      .map((point) => {
+        const minute = point.lastMeetingId ? minuteById.get(point.lastMeetingId) : undefined;
+        return {
+          ...point,
+          actionKey: point.id,
+          meetingMinuteId: point.lastMeetingId ?? "",
+          meetingTitle: minute?.title ?? "",
+          meetingDate: minute?.meetingDate ?? "",
+        };
+      });
+  }, [actionPoints, minuteById]);
   const openActions = liveActions.filter((action) => action.status !== "closed");
   const overdueActions = openActions.filter(
     (action) => action.deadline && action.deadline < todayIso()
@@ -1330,7 +1361,7 @@ export default function MeetingMinutesModule() {
   };
 
   const startNewMinute = (series?: MeetingSeries | null) => {
-    setDraftMinute(createMinuteDraft(projects, meetingMinutes, series));
+    setDraftMinute(createMinuteDraft(projects, meetingMinutes, actionPoints, series));
     setSelectedGroupId("");
     setShowSeriesPicker(false);
   };

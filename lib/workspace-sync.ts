@@ -1,4 +1,5 @@
 import type {
+  ActionPoint,
   ConstructionWorkspacePayload,
   CorrespondenceRecord,
   GeneratedDocument,
@@ -41,6 +42,7 @@ export interface RelationalWorkspaceQueryData {
   correspondenceRecords?: ProjectScopedPayloadRecord<CorrespondenceRecord>[];
   attendeeGroups?: WorkspaceOwnedPayloadRecord<MeetingAttendeeGroup>[];
   meetingMinutes?: WorkspaceOwnedPayloadRecord<MeetingMinute>[];
+  actionPoints?: WorkspaceOwnedPayloadRecord<ActionPoint>[];
 }
 
 export interface ProjectScopedSyncRows {
@@ -56,6 +58,7 @@ export interface ProjectScopedSyncRows {
 export interface WorkspaceOwnedSyncRows {
   attendeeGroups: WorkspaceOwnedPayloadRecord<MeetingAttendeeGroup>[];
   meetingMinutes: WorkspaceOwnedPayloadRecord<MeetingMinute>[];
+  actionPoints: WorkspaceOwnedPayloadRecord<ActionPoint>[];
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -198,6 +201,12 @@ export const buildWorkspaceOwnedSyncRows = (
     name: item.title,
     payload: clone(item),
   })),
+  actionPoints: payload.actionPoints.map((item) => ({
+    id: item.id,
+    owner_id: ownerId,
+    name: item.description?.slice(0, 120) || "Action point",
+    payload: clone(item),
+  })),
 });
 
 export const buildRelationalWorkspacePayload = (
@@ -229,6 +238,9 @@ export const buildRelationalWorkspacePayload = (
   ),
   meetingMinutes: sortByNewest<MeetingMinute>(
     (data.meetingMinutes ?? []).map((item) => clone(item.payload)),
+  ),
+  actionPoints: sortByNewest<ActionPoint>(
+    (data.actionPoints ?? []).map((item) => clone(item.payload)),
   ),
 });
 
@@ -263,6 +275,7 @@ export const mergeWorkspacePayloadSources = (
     siteNotes: snapshot.siteNotes,
     attendeeGroups: useRelational(snapshot.attendeeGroups, relational.attendeeGroups),
     meetingMinutes: useRelational(snapshot.meetingMinutes, relational.meetingMinutes),
+    actionPoints: useRelational(snapshot.actionPoints, relational.actionPoints),
   });
 
   if (merged.activeBOQId) {
@@ -336,4 +349,5 @@ export const buildProjectSyncSignature = (
       : [],
     attendeeGroups: payload.attendeeGroups,
     meetingMinutes: payload.meetingMinutes,
+    actionPoints: payload.actionPoints,
   });

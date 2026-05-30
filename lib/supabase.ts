@@ -616,6 +616,33 @@ export interface MeetingActionProjectGroup {
   actionItems: MeetingActionItem[];
 }
 
+/**
+ * First-class action point stored in the workspace-level register (the source of
+ * truth for open/in-progress items). Its `id` is the same stable string used as
+ * `actionKey` on the meeting snapshot copies — that is how a meeting's action
+ * items reconcile back into the register on save and how new meetings know what
+ * to carry forward.
+ */
+export interface ActionPoint {
+  /** Stable identity shared with meeting snapshot items (MeetingActionItem.actionKey). */
+  id: string;
+  project_id: string;
+  description: string;
+  responsiblePerson: string;
+  deadline: string;
+  status: "open" | "in-progress" | "closed";
+  priority: "low" | "medium" | "high" | "critical";
+  notes?: string;
+  /** Meeting where this action was first raised. */
+  originMeetingId?: string;
+  /** Most recent meeting that updated this action. */
+  lastMeetingId?: string;
+  createdAt: string;
+  updatedAt: string;
+  /** ISO timestamp of when this action was last set to "closed". Cleared when reopened. */
+  closedAt?: string;
+}
+
 export interface BOQLibraryItemRecord {
   id: string;
   name: string;
@@ -651,6 +678,7 @@ export interface ConstructionWorkspacePayload {
   attendeeGroups: MeetingAttendeeGroup[];
   meetingMinutes: MeetingMinute[];
   meetingSeries: MeetingSeries[];
+  actionPoints: ActionPoint[];
   userSignatureProfile?: UserSignatureProfile | null;
 }
 
@@ -998,8 +1026,56 @@ export const emptyConstructionWorkspacePayload =
     attendeeGroups: [],
     meetingSeries: [],
     meetingMinutes: [],
+    actionPoints: [],
     userSignatureProfile: null,
   });
+
+/**
+ * Migration seam: older persisted blobs have meetings but no dedicated action
+ * register. Reconstruct the register from the latest snapshot of each action
+ * (by meeting date, then updatedAt) so nothing is lost on first load after the
+ * register ships. Mirrors getLiveMeetingActionItems in lib/store.ts but kept
+ * inline here to avoid a circular import.
+ */
+export const seedActionPointsFromMeetings = (
+  meetingMinutes: MeetingMinute[],
+): ActionPoint[] => {
+  const latestByKey = new Map<string, ActionPoint>();
+  const firstSeenMeetingByKey = new Map<string, string>();
+
+  [...meetingMinutes]
+    .sort((a, b) => {
+      const dateCompare = (a.meetingDate || "").localeCompare(b.meetingDate || "");
+      if (dateCompare !== 0) return dateCompare;
+      return (a.updatedAt || "").localeCompare(b.updatedAt || "");
+    })
+    .forEach((minute) => {
+      minute.actionGroups.forEach((group) => {
+        group.actionItems.forEach((item) => {
+          if (!firstSeenMeetingByKey.has(item.actionKey)) {
+            firstSeenMeetingByKey.set(item.actionKey, minute.id);
+          }
+          latestByKey.set(item.actionKey, {
+            id: item.actionKey,
+            project_id: item.project_id,
+            description: item.description,
+            responsiblePerson: item.responsiblePerson,
+            deadline: item.deadline,
+            status: item.status,
+            priority: item.priority,
+            notes: item.notes,
+            originMeetingId: firstSeenMeetingByKey.get(item.actionKey),
+            lastMeetingId: minute.id,
+            createdAt: minute.createdAt || minute.updatedAt || new Date().toISOString(),
+            updatedAt: minute.updatedAt || new Date().toISOString(),
+            closedAt: item.closedAt,
+          });
+        });
+      });
+    });
+
+  return Array.from(latestByKey.values());
+};
 
 export const normalizeConstructionWorkspacePayload = (
   payload?: Partial<ConstructionWorkspacePayload> | null,
@@ -1023,6 +1099,12 @@ export const normalizeConstructionWorkspacePayload = (
   attendeeGroups: payload?.attendeeGroups ?? [],
   meetingMinutes: payload?.meetingMinutes ?? [],
   meetingSeries: payload?.meetingSeries ?? [],
+  // Seed the register from existing meetings the first time a blob without an
+  // action register is loaded; otherwise honour the stored register.
+  actionPoints:
+    payload?.actionPoints && payload.actionPoints.length > 0
+      ? payload.actionPoints
+      : seedActionPointsFromMeetings(payload?.meetingMinutes ?? []),
   userSignatureProfile: payload?.userSignatureProfile ?? null,
   activeSheetIndex: payload?.activeSheetIndex ?? 0,
   activeWorkPlanSheetIndex: payload?.activeWorkPlanSheetIndex ?? 0,

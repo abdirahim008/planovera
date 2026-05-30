@@ -38,9 +38,10 @@ import type {
   MeetingAgendaItem,
   MeetingActionItem,
   MeetingMinute,
+  ActionPoint,
   UserSignatureProfile,
 } from "./supabase";
-import { normalizeConstructionWorkspacePayload } from "./supabase";
+import { normalizeConstructionWorkspacePayload, seedActionPointsFromMeetings } from "./supabase";
 import type { Surp2ImportPayload } from "./surp2ImportTypes";
 import { SURP2_IMPORT_ID } from "./surp2ImportTypes";
 import type { FinalCertificateImportPayload } from "./finalCertificateImportTypes";
@@ -391,6 +392,48 @@ export const getLiveMeetingActionItems = (meetingMinutes: MeetingMinute[]): Meet
     if (statusCompare !== 0) return statusCompare;
     return a.deadline.localeCompare(b.deadline);
   });
+};
+
+/**
+ * Reconcile a saved meeting's action items back into the register (the source of
+ * truth). Each action item upserts a register entry keyed by `actionKey` — new
+ * items create entries, existing ones update status/owner/deadline/etc. and bump
+ * `lastMeetingId`. Register entries are never deleted here: a meeting dropping an
+ * action from its snapshot doesn't remove it from the register.
+ */
+export const reconcileActionPointsFromMinute = (
+  existing: ActionPoint[],
+  minute: MeetingMinute,
+): ActionPoint[] => {
+  const byId = new Map(existing.map((point) => [point.id, point] as const));
+  const now = new Date().toISOString();
+
+  minute.actionGroups.forEach((group) => {
+    group.actionItems.forEach((item) => {
+      const prior = byId.get(item.actionKey);
+      const closedAt =
+        item.status === "closed"
+          ? item.closedAt ?? prior?.closedAt ?? now
+          : undefined;
+      byId.set(item.actionKey, {
+        id: item.actionKey,
+        project_id: item.project_id,
+        description: item.description,
+        responsiblePerson: item.responsiblePerson,
+        deadline: item.deadline,
+        status: item.status,
+        priority: item.priority,
+        notes: item.notes,
+        originMeetingId: prior?.originMeetingId ?? minute.id,
+        lastMeetingId: minute.id,
+        createdAt: prior?.createdAt ?? now,
+        updatedAt: now,
+        closedAt,
+      });
+    });
+  });
+
+  return Array.from(byId.values());
 };
 
 const normalizeProgressStatus = (
@@ -1860,6 +1903,12 @@ interface AppState {
   saveMeetingSeries: (series: MeetingSeries) => void;
   deleteMeetingSeries: (id: string) => void;
 
+  // ─── Action Points register (source of truth across meetings) ────
+  actionPoints: ActionPoint[];
+  upsertActionPoint: (actionPoint: ActionPoint) => void;
+  updateActionPoint: (id: string, patch: Partial<Omit<ActionPoint, "id">>) => void;
+  deleteActionPoint: (id: string) => void;
+
   // ─── Work Plan Working State (multi-sheet) ───────────────────────
   workPlanSheets: WorkPlanSheet[];
   activeWorkPlanSheetIndex: number;
@@ -1966,6 +2015,7 @@ export const useAppStore = create<AppState>()(
           attendeeGroups: deepClone(next.attendeeGroups),
           meetingMinutes: deepClone(next.meetingMinutes),
           meetingSeries: deepClone(next.meetingSeries),
+          actionPoints: deepClone(next.actionPoints),
           formulaLinking: null,
         });
       },
@@ -1995,6 +2045,7 @@ export const useAppStore = create<AppState>()(
           attendeeGroups: next.attendeeGroups,
           meetingMinutes: next.meetingMinutes,
           meetingSeries: next.meetingSeries,
+          actionPoints: next.actionPoints,
           formulaLinking: null,
         });
       },
@@ -3318,14 +3369,18 @@ export const useAppStore = create<AppState>()(
       saveMeetingMinute: (minute) =>
         set((s) => {
           const exists = s.meetingMinutes.some((item) => item.id === minute.id);
+          const savedMinute = exists
+            ? { ...minute, updatedAt: new Date().toISOString() }
+            : minute;
           return {
             meetingMinutes: exists
               ? s.meetingMinutes.map((item) =>
-                  item.id === minute.id
-                    ? { ...minute, updatedAt: new Date().toISOString() }
-                    : item
+                  item.id === minute.id ? savedMinute : item
                 )
-              : [...s.meetingMinutes, minute],
+              : [...s.meetingMinutes, savedMinute],
+            // Push this meeting's action items into the register (source of truth)
+            // so status changes here drive future carry-forward.
+            actionPoints: reconcileActionPointsFromMinute(s.actionPoints, savedMinute),
           };
         }),
       deleteMeetingMinute: (id) =>
@@ -3414,8 +3469,48 @@ export const useAppStore = create<AppState>()(
                 })),
               };
             }),
+            // Keep the register in step with the reopened snapshot.
+            actionPoints: s.actionPoints.map((point) =>
+              point.id === actionKey
+                ? { ...point, status: "open", closedAt: undefined, updatedAt: now }
+                : point
+            ),
           };
         }),
+
+      // ─── Action Points register (source of truth across meetings) ────
+      actionPoints: [],
+      upsertActionPoint: (actionPoint) =>
+        set((s) => {
+          const exists = s.actionPoints.some((point) => point.id === actionPoint.id);
+          const now = new Date().toISOString();
+          return {
+            actionPoints: exists
+              ? s.actionPoints.map((point) =>
+                  point.id === actionPoint.id
+                    ? { ...actionPoint, updatedAt: now }
+                    : point
+                )
+              : [...s.actionPoints, { ...actionPoint, updatedAt: now }],
+          };
+        }),
+      updateActionPoint: (id, patch) =>
+        set((s) => {
+          const now = new Date().toISOString();
+          return {
+            actionPoints: s.actionPoints.map((point) => {
+              if (point.id !== id) return point;
+              const nextStatus = patch.status ?? point.status;
+              const closedAt =
+                nextStatus === "closed"
+                  ? patch.closedAt ?? point.closedAt ?? now
+                  : undefined;
+              return { ...point, ...patch, status: nextStatus, closedAt, updatedAt: now };
+            }),
+          };
+        }),
+      deleteActionPoint: (id) =>
+        set((s) => ({ actionPoints: s.actionPoints.filter((point) => point.id !== id) })),
 
       // ═══════════════════════════════════════════════════════════════
       // ─── Work Plan Working State (multi-sheet) ─────────────────────
@@ -3757,7 +3852,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "probuild-storage",
-        version: 12,
+        version: 13,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, any>;
         if (version < 2) {
@@ -3915,6 +4010,14 @@ export const useAppStore = create<AppState>()(
                 items: (sheet.items || []).map((item: PaymentItem) => normalizePaymentItemState(item)),
               })),
             }));
+          }
+        }
+
+        if (version < 13) {
+          // Introduce the action-points register; seed it from existing meetings
+          // so historical open items survive the move to a dedicated store.
+          if (!Array.isArray(state.actionPoints) || state.actionPoints.length === 0) {
+            state.actionPoints = seedActionPointsFromMeetings(state.meetingMinutes ?? []);
           }
         }
 

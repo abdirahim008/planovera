@@ -390,6 +390,15 @@ create table if not exists public.workspace_meeting_minutes (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.workspace_action_points (
+  id uuid primary key,
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.projects
   add column if not exists owner_id uuid;
 
@@ -650,6 +659,9 @@ on public.workspace_attendee_groups (owner_id, updated_at desc);
 create index if not exists workspace_meeting_minutes_owner_idx
 on public.workspace_meeting_minutes (owner_id, updated_at desc);
 
+create index if not exists workspace_action_points_owner_idx
+on public.workspace_action_points (owner_id, updated_at desc);
+
 create index if not exists drawing_projects_linked_project_idx
 on public.drawing_projects (linked_project_id);
 
@@ -800,6 +812,12 @@ execute function public.set_updated_at();
 drop trigger if exists workspace_meeting_minutes_set_updated_at on public.workspace_meeting_minutes;
 create trigger workspace_meeting_minutes_set_updated_at
 before update on public.workspace_meeting_minutes
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists workspace_action_points_set_updated_at on public.workspace_action_points;
+create trigger workspace_action_points_set_updated_at
+before update on public.workspace_action_points
 for each row
 execute function public.set_updated_at();
 
@@ -2109,6 +2127,7 @@ alter table public.project_generated_documents enable row level security;
 alter table public.project_correspondence_records enable row level security;
 alter table public.workspace_attendee_groups enable row level security;
 alter table public.workspace_meeting_minutes enable row level security;
+alter table public.workspace_action_points enable row level security;
 alter table public.drawing_library_items enable row level security;
 
 drop policy if exists "profiles_select_self" on public.profiles;
@@ -2855,6 +2874,35 @@ for delete
 to authenticated
 using (owner_id = auth.uid() or public.is_admin());
 
+drop policy if exists "workspace_action_points_owner_select" on public.workspace_action_points;
+create policy "workspace_action_points_owner_select"
+on public.workspace_action_points
+for select
+to authenticated
+using (owner_id = auth.uid() or public.is_admin());
+
+drop policy if exists "workspace_action_points_owner_insert" on public.workspace_action_points;
+create policy "workspace_action_points_owner_insert"
+on public.workspace_action_points
+for insert
+to authenticated
+with check (owner_id = auth.uid() or public.is_admin());
+
+drop policy if exists "workspace_action_points_owner_update" on public.workspace_action_points;
+create policy "workspace_action_points_owner_update"
+on public.workspace_action_points
+for update
+to authenticated
+using (owner_id = auth.uid() or public.is_admin())
+with check (owner_id = auth.uid() or public.is_admin());
+
+drop policy if exists "workspace_action_points_owner_delete" on public.workspace_action_points;
+create policy "workspace_action_points_owner_delete"
+on public.workspace_action_points
+for delete
+to authenticated
+using (owner_id = auth.uid() or public.is_admin());
+
 drop policy if exists "library_admin_insert" on public.drawing_library_items;
 drop policy if exists "drawing_library_admin_insert" on public.drawing_library_items;
 create policy "drawing_library_admin_insert"
@@ -2922,6 +2970,7 @@ comment on table public.project_generated_documents is 'Normalized generated doc
 comment on table public.project_correspondence_records is 'Normalized correspondence and instruction records linked to projects.';
 comment on table public.workspace_attendee_groups is 'Reusable meeting attendee groups owned by a user across the wider workspace.';
 comment on table public.workspace_meeting_minutes is 'Meeting minute records owned by a user across the wider workspace.';
+comment on table public.workspace_action_points is 'Action points register (source of truth for open items) owned by a user across the wider workspace.';
 comment on table public.drawing_library_items is 'Shared drawing library entries published by admins.';
 
 -- Promote your first admin after signup:

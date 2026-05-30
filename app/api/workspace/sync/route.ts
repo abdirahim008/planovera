@@ -231,6 +231,7 @@ export async function POST(request: Request) {
       correspondenceSync,
       attendeeSync,
       minutesSync,
+      actionPointsSync,
     ] = await Promise.all([
       syncProjectId
         ? syncProjectTable("project_boq_documents", syncProjectId, projectRows.boqDocuments)
@@ -267,6 +268,7 @@ export async function POST(request: Request) {
         : Promise.resolve({ upserted: 0, deleted: 0 }),
       syncWorkspaceTable("workspace_attendee_groups", user.id, workspaceRows.attendeeGroups),
       syncWorkspaceTable("workspace_meeting_minutes", user.id, workspaceRows.meetingMinutes),
+      syncWorkspaceTable("workspace_action_points", user.id, workspaceRows.actionPoints),
     ]);
 
     if (syncProjectId) {
@@ -296,6 +298,7 @@ export async function POST(request: Request) {
         correspondenceRecords: correspondenceSync,
         attendeeGroups: attendeeSync,
         meetingMinutes: minutesSync,
+        actionPoints: actionPointsSync,
       },
     });
   } catch (error) {
