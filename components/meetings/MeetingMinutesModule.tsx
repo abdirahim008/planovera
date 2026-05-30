@@ -1283,6 +1283,7 @@ export default function MeetingMinutesModule() {
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [draftMinute, setDraftMinute] = useState<MeetingMinute | null>(null);
   const [showNoProjectHint, setShowNoProjectHint] = useState(false);
+  const [actionProjectFilter, setActionProjectFilter] = useState<string>("all");
 
   const seriesById = useMemo(
     () => Object.fromEntries(meetingSeries.map((series) => [series.id, series])),
@@ -1308,6 +1309,18 @@ export default function MeetingMinutesModule() {
       Object.fromEntries(projects.map((project) => [project.id, project.name])),
     [projects]
   );
+
+  // Distinct projects that currently have an action group in the draft, used to
+  // populate (and validate) the action-register project filter.
+  const actionFilterProjectIds = useMemo(
+    () => Array.from(new Set((draftMinute?.actionGroups ?? []).map((group) => group.project_id))),
+    [draftMinute]
+  );
+  // Fall back to "all" if the selected filter project no longer has any group
+  // (e.g. its group was deleted), so the list never silently shows nothing.
+  const effectiveActionFilter = actionFilterProjectIds.includes(actionProjectFilter)
+    ? actionProjectFilter
+    : "all";
 
   const selectedGroup = attendeeGroups.find((group) => group.id === selectedGroupId) || null;
 
@@ -1427,6 +1440,8 @@ export default function MeetingMinutesModule() {
       return;
     }
     setShowNoProjectHint(false);
+    // Make sure the newly added group is visible even if a project filter is active.
+    setActionProjectFilter("all");
     setDraftMinute((current) =>
       current
         ? {
@@ -1966,8 +1981,37 @@ export default function MeetingMinutesModule() {
             </p>
           ) : null}
 
+          {actionFilterProjectIds.length > 1 ? (
+            <div className="mb-4 flex flex-col gap-1.5 sm:max-w-xs">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                Filter by project
+              </label>
+              <select
+                value={effectiveActionFilter}
+                onChange={(event) => setActionProjectFilter(event.target.value)}
+                className="w-full rounded-xl border border-border bg-bg-input px-4 py-2.5 text-sm text-txt outline-none transition focus:border-accent"
+              >
+                <option value="all">
+                  All projects ({draftMinute.actionGroups.reduce((sum, group) => sum + group.actionItems.length, 0)})
+                </option>
+                {actionFilterProjectIds.map((projectId) => {
+                  const count = draftMinute.actionGroups
+                    .filter((group) => group.project_id === projectId)
+                    .reduce((sum, group) => sum + group.actionItems.length, 0);
+                  return (
+                    <option key={projectId} value={projectId}>
+                      {projectNameById[projectId] || "Unassigned project"} ({count})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          ) : null}
+
           <div className="space-y-4">
-            {draftMinute.actionGroups.map((group) => (
+            {draftMinute.actionGroups
+              .filter((group) => effectiveActionFilter === "all" || group.project_id === effectiveActionFilter)
+              .map((group) => (
               <div key={group.id} className="rounded-2xl border border-border bg-bg-raised p-4">
                 <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div className="flex flex-1 gap-3">
