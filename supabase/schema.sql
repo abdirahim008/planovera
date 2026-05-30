@@ -922,14 +922,18 @@ begin
     p.code,
     p.audience,
     p.billing_interval,
-    'trialing',
+    -- New signups start as 'incomplete' (awaiting manual admin approval) rather
+    -- than auto-granting a trial. A platform admin activates access via
+    -- admin_set_organization_subscription. Users invited into an already-active
+    -- organization still get access through that organization's subscription.
+    'incomplete',
     greatest(1, p.included_seats),
     p.included_seats,
     p.base_price_cents,
     p.per_seat_price_cents,
-    timezone('utc', now()),
-    timezone('utc', now()) + interval '30 days',
-    timezone('utc', now()) + make_interval(days => p.trial_days)
+    null,
+    null,
+    null
   from public.billing_plans p
   where p.code = 'individual-monthly'
     and not exists (
@@ -1415,14 +1419,17 @@ begin
       plan_record.code,
       plan_record.audience,
       plan_record.billing_interval,
-      'trialing',
+      -- New organizations start as 'incomplete' (awaiting manual admin approval).
+      -- A platform admin grants access via admin_set_organization_subscription,
+      -- which sets seats, status, and the access period.
+      'incomplete',
       greatest(plan_record.included_seats, 5),
       plan_record.included_seats,
       plan_record.base_price_cents,
       plan_record.per_seat_price_cents,
-      timezone('utc', now()),
-      timezone('utc', now()) + interval '30 days',
-      timezone('utc', now()) + make_interval(days => plan_record.trial_days)
+      null,
+      null,
+      null
     )
     on conflict (organization_id) do nothing;
   end if;

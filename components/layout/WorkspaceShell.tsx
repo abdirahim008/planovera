@@ -134,21 +134,31 @@ type SubscriptionBlockState = {
   organizationName: string;
   expiresAt: string;
   canManage: boolean;
+  awaitingApproval: boolean;
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState }) {
+  const pending = block.awaitingApproval;
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6">
       <div className="w-full max-w-md rounded-2xl border border-border bg-bg-surface p-7 text-center">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-err">
-          Subscription expired
+        <div
+          className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${
+            pending ? "text-accent" : "text-err"
+          }`}
+        >
+          {pending ? "Awaiting approval" : "Subscription expired"}
         </div>
         <h1 className="mt-2 text-xl font-semibold text-white">
           {block.organizationName}
         </h1>
-        <p className="mt-1.5 text-sm text-txt-muted">Access ended {block.expiresAt}.</p>
+        <p className="mt-1.5 text-sm text-txt-muted">
+          {pending
+            ? "Your account is registered. An administrator will activate your access once your subscription is confirmed. Your data is safe in the meantime."
+            : `Access ended ${block.expiresAt}.`}
+        </p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <a
             href="/organization"
@@ -158,7 +168,9 @@ function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState })
           </a>
           {block.canManage ? (
             <a
-              href="mailto:support@planovera.com?subject=Planovera subscription reactivation"
+              href={`mailto:support@planovera.com?subject=Planovera subscription ${
+                pending ? "activation" : "reactivation"
+              }`}
               className="inline-flex items-center justify-center rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-accent-hover"
             >
               Contact support
@@ -488,7 +500,17 @@ export default function WorkspaceShell() {
         const firstOrganization = Array.isArray(firstMembership.organizations)
           ? firstMembership.organizations[0]
           : firstMembership.organizations;
-        const firstSubscription = subscriptions[0] ?? null;
+        const firstSubscription =
+          subscriptions.find(
+            (subscription) => subscription.organization_id === firstMembership.organization_id,
+          ) ??
+          subscriptions[0] ??
+          null;
+        // An 'incomplete' (or missing) subscription means the org has never been
+        // activated by an admin — show the "awaiting approval" copy instead of the
+        // "subscription expired" copy used when a previously-active license lapses.
+        const awaitingApproval =
+          !firstSubscription || firstSubscription.status === "incomplete";
         setPrograms([]);
         setCategories([]);
         setProjects([]);
@@ -498,6 +520,7 @@ export default function WorkspaceShell() {
           organizationName: firstOrganization?.name || "Your organization",
           expiresAt: formatSubscriptionExpiry(firstSubscription),
           canManage: firstMembership.role === "owner" || firstMembership.role === "admin",
+          awaitingApproval,
         });
         setWorkspaceNotice(null);
         setProjectsReady(true);

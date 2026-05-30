@@ -6,6 +6,7 @@ import {
   Building2,
   CalendarClock,
   CreditCard,
+  Hourglass,
   Play,
   RefreshCcw,
   Users,
@@ -74,6 +75,27 @@ const durationOptions = [
   { value: "365", label: "1 year" },
   { value: "custom", label: "Custom date" },
 ] as const;
+
+// Human-friendly remaining time: months + days for longer licenses, days for
+// short ones, and a clear overdue/expiry-today state.
+const formatRemaining = (daysRemaining: number | null) => {
+  if (daysRemaining === null) return "No duration";
+  if (daysRemaining < 0) {
+    const overdue = Math.abs(daysRemaining);
+    return overdue >= 31
+      ? `${Math.floor(overdue / 30)} mo overdue`
+      : `${overdue} day${overdue === 1 ? "" : "s"} overdue`;
+  }
+  if (daysRemaining === 0) return "Expires today";
+  if (daysRemaining < 45) {
+    return `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`;
+  }
+  const months = Math.floor(daysRemaining / 30);
+  const days = daysRemaining % 30;
+  return days > 0
+    ? `${months} mo ${days} d left`
+    : `${months} month${months === 1 ? "" : "s"} left`;
+};
 
 const subscriptionExpiryInput = (subscription?: OrganizationSubscriptionRecord | null) => {
   const expiry = subscription?.current_period_end || subscription?.trial_ends_at;
@@ -181,6 +203,14 @@ export default function BillingAdminPanel() {
   const totalExpired = subscriptions.filter(
     (item) => getSubscriptionAccessState(item) === "expired",
   ).length;
+  // Organizations awaiting approval: never activated (status 'incomplete') or no
+  // subscription row yet. These are the ones that need a manual "Activate".
+  const totalPending = organizations.filter((organization) => {
+    const subscription = subscriptions.find(
+      (item) => item.organization_id === organization.id,
+    );
+    return !subscription || subscription.status === "incomplete";
+  }).length;
 
   const handleSave = async () => {
     if (!editor) return;
@@ -273,7 +303,7 @@ export default function BillingAdminPanel() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <Building2 size={14} className="text-accent" />
@@ -281,6 +311,20 @@ export default function BillingAdminPanel() {
           </div>
           <div className="mt-3 text-2xl font-semibold text-white">{organizations.length}</div>
         </div>
+        <button
+          type="button"
+          onClick={() => setStatusFilter("incomplete")}
+          className={`rounded-2xl border bg-bg-surface p-4 text-left transition hover:border-warn/60 ${
+            totalPending > 0 ? "border-warn/50" : "border-border"
+          }`}
+        >
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+            <Hourglass size={14} className="text-warn" />
+            Pending approval
+          </div>
+          <div className="mt-3 text-2xl font-semibold text-white">{totalPending}</div>
+          <div className="mt-1 text-xs text-txt-muted">Awaiting activation</div>
+        </button>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <CreditCard size={14} className="text-accent" />
@@ -408,12 +452,16 @@ export default function BillingAdminPanel() {
                       <td className="data-cell-num">{pendingInvites}</td>
                       <td className="data-cell-wrap">
                         <div>{formatSubscriptionExpiry(subscription)}</div>
-                        <div className="text-xs text-txt-dim">
-                          {daysRemaining === null
-                            ? "No duration"
-                            : daysRemaining < 0
-                              ? `${Math.abs(daysRemaining)} days overdue`
-                              : `${daysRemaining} days left`}
+                        <div
+                          className={`text-xs ${
+                            daysRemaining !== null && daysRemaining < 0
+                              ? "text-err"
+                              : daysRemaining !== null && daysRemaining <= 7
+                                ? "text-warn"
+                                : "text-txt-dim"
+                          }`}
+                        >
+                          {formatRemaining(daysRemaining)}
                         </div>
                       </td>
                       <td>
