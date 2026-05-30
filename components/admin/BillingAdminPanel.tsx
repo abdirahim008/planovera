@@ -49,6 +49,7 @@ type EditableSubscription = {
   seatCount: string;
   durationPreset: "14" | "30" | "90" | "365" | "custom";
   expiryDate: string;
+  isPersonal: boolean;
 };
 
 const formatMoney = (cents: number) =>
@@ -116,6 +117,7 @@ export default function BillingAdminPanel() {
   const [editor, setEditor] = useState<EditableSubscription | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | OrganizationSubscriptionRecord["status"]>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "individual" | "organization">("all");
 
   const loadData = async () => {
     if (!configured) {
@@ -193,8 +195,13 @@ export default function BillingAdminPanel() {
       })
       .filter((item) =>
         statusFilter === "all" ? true : item.subscription?.status === statusFilter,
-      );
-  }, [inviteRows, memberRows, organizations, statusFilter, subscriptions]);
+      )
+      .filter((item) => {
+        if (typeFilter === "all") return true;
+        if (typeFilter === "individual") return item.organization.personal;
+        return !item.organization.personal;
+      });
+  }, [inviteRows, memberRows, organizations, statusFilter, typeFilter, subscriptions]);
 
   const totalActive = subscriptions.filter(
     (item) => getSubscriptionAccessState(item) === "active",
@@ -297,8 +304,10 @@ export default function BillingAdminPanel() {
     const effectivePlanCode =
       subscription?.plan_code ||
       (organization.personal ? "individual-monthly" : "organization-monthly");
-    const effectiveSeatCount =
-      subscription?.seat_count || (organization.personal ? 1 : 5);
+    // Personal workspaces are fixed at a single seat (the owner) — never edit it.
+    const effectiveSeatCount = organization.personal
+      ? 1
+      : subscription?.seat_count || 5;
     const orgBusy = busy?.startsWith(`${organization.id}:`);
     return (
       <div className="flex flex-wrap justify-end gap-2">
@@ -316,7 +325,7 @@ export default function BillingAdminPanel() {
             })
           }
         >
-          <Play size={13} /> Activate 30d
+          <Play size={13} /> {organization.personal ? "Activate (1 mo trial)" : "Activate 30d"}
         </Button>
         <Button
           variant="ghost"
@@ -378,6 +387,7 @@ export default function BillingAdminPanel() {
               seatCount: String(effectiveSeatCount),
               durationPreset: "custom",
               expiryDate: subscriptionExpiryInput(subscription),
+              isPersonal: organization.personal,
             })
           }
         >
@@ -474,6 +484,17 @@ export default function BillingAdminPanel() {
             <option value="canceled">Canceled</option>
             <option value="incomplete">Incomplete</option>
           </select>
+          <select
+            className="input w-full sm:!w-auto sm:min-w-[180px]"
+            value={typeFilter}
+            onChange={(event) =>
+              setTypeFilter(event.target.value as "all" | "individual" | "organization")
+            }
+          >
+            <option value="all">All types</option>
+            <option value="individual">Individuals</option>
+            <option value="organization">Organizations</option>
+          </select>
         </div>
 
         <Button variant="ghost" className="w-full justify-center sm:w-auto" onClick={() => void loadData()} disabled={loading}>
@@ -511,7 +532,7 @@ export default function BillingAdminPanel() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-white">{organization.name}</span>
                         <Badge color={organization.personal ? "ok" : "accent"}>
-                          {organization.personal ? "PERSONAL" : "ORG"}
+                          {organization.personal ? "INDIVIDUAL" : "ORG"}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -598,7 +619,7 @@ export default function BillingAdminPanel() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-semibold text-white">{organization.name}</span>
                             <Badge color={organization.personal ? "ok" : "accent"}>
-                              {organization.personal ? "PERSONAL" : "ORG"}
+                              {organization.personal ? "INDIVIDUAL" : "ORG"}
                             </Badge>
                           </div>
                         </td>
@@ -708,15 +729,21 @@ export default function BillingAdminPanel() {
               </div>
               <div>
                 <label className="label">Seat count</label>
-                <input
-                  className="input"
-                  value={editor.seatCount}
-                  onChange={(event) =>
-                    setEditor((current) =>
-                      current ? { ...current, seatCount: event.target.value } : current,
-                    )
-                  }
-                />
+                {editor.isPersonal ? (
+                  <div className="input flex items-center text-txt-muted">
+                    Individual — 1 user (fixed)
+                  </div>
+                ) : (
+                  <input
+                    className="input"
+                    value={editor.seatCount}
+                    onChange={(event) =>
+                      setEditor((current) =>
+                        current ? { ...current, seatCount: event.target.value } : current,
+                      )
+                    }
+                  />
+                )}
               </div>
             </div>
 
