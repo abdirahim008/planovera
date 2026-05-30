@@ -79,6 +79,9 @@ const StakeholderLogModule = dynamic(() => import("@/components/stakeholders/Sta
 const MeetingMinutesModule = dynamic(() => import("@/components/meetings/MeetingMinutesModule"), {
   loading: () => <ModuleLoading label="Loading meetings..." />,
 });
+const ActionPointsModule = dynamic(() => import("@/components/action-points/ActionPointsModule"), {
+  loading: () => <ModuleLoading label="Loading action points..." />,
+});
 const ConstructionDrawingsModule = dynamic(
   () => import("@/components/drawings/ConstructionDrawingsModule"),
   { loading: () => <ModuleLoading label="Loading drawing launcher..." /> },
@@ -99,6 +102,7 @@ const moduleLabels: Record<string, string> = {
   risks: "Risk Register",
   stakeholders: "Stakeholder Log",
   meetings: "Meetings",
+  "action-points": "Action Points",
 };
 
 type CollaboratorPresence = {
@@ -180,7 +184,11 @@ function Workspace({
   const hasProject = Boolean(project);
   const isConstruction = project?.type === "construction";
   const routeSafeModule = pathname === "/workspace" && activeModule === "drawings" ? "dashboard" : activeModule;
-  const module = hasProject ? routeSafeModule : routeSafeModule === "meetings" ? "meetings" : "dashboard";
+  const module = hasProject
+    ? routeSafeModule
+    : routeSafeModule === "meetings" || routeSafeModule === "action-points"
+    ? routeSafeModule
+    : "dashboard";
   const activeLabel =
     module === "dashboard"
       ? hasProject
@@ -268,6 +276,7 @@ function Workspace({
           ) : null}
           {module === "dashboard" && <Dashboard />}
           {module === "meetings" && !hasProject && <MeetingMinutesModule />}
+          {module === "action-points" && <ActionPointsModule />}
           {module === "boq" && hasProject && isConstruction && <BOQModule />}
           {module === "items" && hasProject && !isConstruction && <SimpleItemsTable />}
           {module === "progress" && hasProject && <ProgressModule />}
@@ -330,6 +339,7 @@ export default function WorkspaceShell() {
     attendeeGroups: state.attendeeGroups,
     meetingMinutes: state.meetingMinutes,
     meetingSeries: state.meetingSeries,
+    actionPoints: state.actionPoints,
   }));
 
   useEffect(() => {
@@ -509,6 +519,7 @@ export default function WorkspaceShell() {
         { data: correspondenceRows, error: correspondenceError },
         { data: attendeeGroupRows, error: attendeeGroupError },
         { data: meetingMinuteRows, error: meetingMinuteError },
+        { data: actionPointRows, error: actionPointError },
       ] = await Promise.all([
         supabase
           .from("projects")
@@ -567,6 +578,10 @@ export default function WorkspaceShell() {
           .from("workspace_meeting_minutes")
           .select("*")
           .order("updated_at", { ascending: false }),
+        supabase
+          .from("workspace_action_points")
+          .select("*")
+          .order("updated_at", { ascending: false }),
       ]);
 
       if (!active) return;
@@ -616,6 +631,7 @@ export default function WorkspaceShell() {
           correspondenceRecords: (correspondenceRows ?? []) as any,
           attendeeGroups: (attendeeGroupRows ?? []) as any,
           meetingMinutes: (meetingMinuteRows ?? []) as any,
+          actionPoints: (actionPointRows ?? []) as any,
         });
         const normalizedSnapshot = normalizeConstructionWorkspacePayload(
           (snapshotRow as ConstructionWorkspaceRecord | null)?.payload,
@@ -649,7 +665,8 @@ export default function WorkspaceShell() {
           !generatedDocumentError &&
           !correspondenceError &&
           !attendeeGroupError &&
-          !meetingMinuteError
+          !meetingMinuteError &&
+          !actionPointError
         ) {
           setWorkspaceNotice(null);
         }
@@ -665,6 +682,7 @@ export default function WorkspaceShell() {
         correspondenceError,
         attendeeGroupError,
         meetingMinuteError,
+        actionPointError,
       ].filter(Boolean);
 
       if (relationalErrors.length > 0) {

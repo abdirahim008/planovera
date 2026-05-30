@@ -16,6 +16,7 @@ import {
   FileText,
   Home,
   LayoutGrid,
+  ListChecks,
   LogOut,
   Mail,
   MessagesSquare,
@@ -90,10 +91,12 @@ export default function Sidebar({
         { id: "checklist", label: labels.nav.checklist, icon: ClipboardCheck },
         { id: "risks", label: "Risks", icon: Shield },
         { id: "stakeholders", label: "Stakeholders", icon: Users },
+        { id: "action-points", label: "Action Points", icon: ListChecks },
       ]
     : [
         { id: "dashboard", label: "Portfolio", icon: Home },
         { id: "meetings", label: "Meetings", icon: MessagesSquare },
+        { id: "action-points", label: "Action Points", icon: ListChecks },
       ];
 
   const collapsed = isMobile ? false : forceCollapsed || sidebarCollapsed;
