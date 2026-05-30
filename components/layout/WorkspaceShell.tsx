@@ -408,8 +408,10 @@ export default function WorkspaceShell() {
     setActiveUserId(null);
     setCollaborators([]);
     setSubscriptionBlock(null);
-    setPrograms([]);
-    setCategories([]);
+    // NOTE: programs/categories/projects are intentionally NOT reset here.
+    // In demo mode they live in the persisted Zustand store, so clearing them
+    // on every mount would wipe adopted sample data (and any locally created
+    // programs/categories) on refresh.
     setProjectsReady(true);
     setWorkspaceNotice(null);
     lastSavedWorkspaceRef.current = "";

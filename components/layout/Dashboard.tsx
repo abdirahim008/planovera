@@ -32,6 +32,7 @@ import CompactKpiList from "@/components/ui/CompactKpiList";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { SOMALIA_REGIONS, findSomaliaTown } from "@/lib/somaliaLocations";
 import {
+  emptyConstructionWorkspacePayload,
   mapProgramRecord,
   mapProjectCategoryRecord,
   mapProjectRecord,
@@ -56,9 +57,12 @@ import type {
   SavedBOQ,
   SavedWorkPlan,
 } from "@/lib/supabase";
-import { SURP2_PROGRAM_ID } from "@/lib/surp2ImportTypes";
-import { FINAL_CERTIFICATE_PROGRAM_ID } from "@/lib/finalCertificateImportTypes";
-import { buildFinalCertificateDemoPayload, buildRoadPackagesDemoPayload } from "@/lib/sampleData";
+import {
+  buildFinalCertificateDemoPayload,
+  buildRoadPackagesDemoPayload,
+  remintAdoptableWorkspace,
+  type AdoptableWorkspace,
+} from "@/lib/sampleData";
 import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "@/lib/projectCategories";
 import { PROJECT_PRESETS, getProjectPreset } from "@/lib/project-presets";
 
@@ -870,7 +874,7 @@ export default function Dashboard() {
     createCategory,
     createNewProject,
     updateProject,
-    importLocalTestData,
+    mergeAdoptedWorkspace,
     selectProject,
     setActiveModule,
   } = useAppStore();
@@ -1187,13 +1191,96 @@ export default function Dashboard() {
     setCreateError(null);
   };
 
+  // Adopt a sample workspace as the user's own, persisted records. In auth
+  // mode we write real owned rows to Supabase (categories → programs →
+  // projects, respecting the FK order, then per-project scoped data via the
+  // sync endpoint) so the sample survives a refresh and is fully editable. In
+  // demo mode the merge into local state is itself persisted by Zustand.
+  const adoptWorkspace = async (workspace: AdoptableWorkspace) => {
+    if (!authConfigured) {
+      mergeAdoptedWorkspace(workspace);
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      throw new Error("Supabase environment variables are missing for project creation.");
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      router.replace("/login");
+      router.refresh();
+      throw new Error("You need to be signed in to adopt a sample project.");
+    }
+
+    if (workspace.categories.length > 0) {
+      const { error } = await supabase
+        .from("project_categories")
+        .insert(workspace.categories.map((category) => toProjectCategoryRecord(category, user.id)));
+      if (error) throw new Error(error.message);
+    }
+
+    if (workspace.programs.length > 0) {
+      const { error } = await supabase
+        .from("programs")
+        .insert(workspace.programs.map((program) => toProgramRecord(program, user.id)));
+      if (error) throw new Error(error.message);
+    }
+
+    if (workspace.projects.length > 0) {
+      const { error } = await supabase
+        .from("projects")
+        .insert(workspace.projects.map((project) => toProjectRecord(project, user.id)));
+      if (error) throw new Error(error.message);
+    }
+
+    // Project-scoped data (BOQ, work plans, certificates, progress reports) is
+    // persisted through the workspace sync endpoint, which processes one active
+    // project at a time and filters the payload by project_id.
+    const syncPayload = {
+      ...emptyConstructionWorkspacePayload(),
+      savedBOQs: workspace.savedBOQs,
+      savedWorkPlans: workspace.savedWorkPlans,
+      certificates: workspace.certificates,
+      progressReports: workspace.progressReports,
+    };
+
+    for (const project of workspace.projects) {
+      const response = await fetch("/api/workspace/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payload: syncPayload,
+          activeProjectId: project.id,
+          activeModule: "dashboard",
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "Could not save sample project data.");
+      }
+    }
+
+    mergeAdoptedWorkspace(workspace);
+  };
+
   const handleImportSurp2 = async () => {
     setSurp2Importing(true);
     setSurp2ImportError(null);
     try {
-      const payload = buildRoadPackagesDemoPayload();
-      importLocalTestData(payload);
-      setPortfolioFilters({ programId: SURP2_PROGRAM_ID, categoryId: "", location: "", client: "" });
+      const workspace = remintAdoptableWorkspace(buildRoadPackagesDemoPayload());
+      await adoptWorkspace(workspace);
+      setPortfolioFilters({
+        programId: workspace.programs[0]?.id ?? "",
+        categoryId: "",
+        location: "",
+        client: "",
+      });
       setActiveModule("dashboard");
     } catch (error) {
       setSurp2ImportError(error instanceof Error ? error.message : "Could not load road package demo data.");
@@ -1206,10 +1293,10 @@ export default function Dashboard() {
     setFinalCertImporting(true);
     setFinalCertImportError(null);
     try {
-      const payload = buildFinalCertificateDemoPayload();
-      importLocalTestData(payload);
+      const workspace = remintAdoptableWorkspace(buildFinalCertificateDemoPayload());
+      await adoptWorkspace(workspace);
       setPortfolioFilters({
-        programId: FINAL_CERTIFICATE_PROGRAM_ID,
+        programId: workspace.programs[0]?.id ?? "",
         categoryId: "",
         location: "",
         client: "",
@@ -1406,7 +1493,7 @@ function PortfolioDashboard({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" size="sm" onClick={onImportSurp2} disabled={importingSurp2}>
-              <DatabaseZap size={14} /> {importingSurp2 ? "Loading..." : "Load 4 Road Package Demo"}
+              <DatabaseZap size={14} /> {importingSurp2 ? "Adding..." : "Add 4 Road Package Samples"}
             </Button>
             <Button
               variant="ghost"
@@ -1415,7 +1502,7 @@ function PortfolioDashboard({
               disabled={importingFinalCertificateTest}
             >
               <DatabaseZap size={14} />{" "}
-              {importingFinalCertificateTest ? "Loading..." : "Load Final Certificate Demo"}
+              {importingFinalCertificateTest ? "Adding..." : "Add Final Certificate Sample"}
             </Button>
             <Button variant="primary" size="sm" onClick={onCreateProject}>
               <Plus size={14} /> New Project

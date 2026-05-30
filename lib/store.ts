@@ -46,6 +46,7 @@ import type { Surp2ImportPayload } from "./surp2ImportTypes";
 import { SURP2_IMPORT_ID } from "./surp2ImportTypes";
 import type { FinalCertificateImportPayload } from "./finalCertificateImportTypes";
 import { FINAL_CERTIFICATE_IMPORT_ID, FINAL_CERTIFICATE_ID_PREFIX } from "./finalCertificateImportTypes";
+import type { AdoptableWorkspace } from "./sampleData";
 import { calculateBOQLineAmount, isPercentageUnit } from "./boq-calculations";
 import {
   inverseBOQLineAmount,
@@ -1757,6 +1758,7 @@ interface AppState {
   updateProject: (projectId: string, updates: Partial<Project>) => void;
   loadDemoWorkspace: () => void;
   importLocalTestData: (payload: Surp2ImportPayload | FinalCertificateImportPayload) => void;
+  mergeAdoptedWorkspace: (workspace: AdoptableWorkspace) => void;
 
   activeModule: string;
   setActiveModule: (m: string) => void;
@@ -2079,6 +2081,28 @@ export const useAppStore = create<AppState>()(
           };
         }),
       loadDemoWorkspace: () => set(() => buildDemoWorkspace()),
+      mergeAdoptedWorkspace: (workspace) =>
+        set((s) => {
+          // Additive, id-keyed merge: an adopted sample's records are folded
+          // into the user's existing workspace, replacing any prior row with
+          // the same id (so re-running adoption is idempotent) without
+          // disturbing the rest of their data.
+          const mergeById = <T extends { id: string }>(existing: T[], incoming: T[]): T[] => {
+            if (incoming.length === 0) return existing;
+            const incomingIds = new Set(incoming.map((item) => item.id));
+            return [...existing.filter((item) => !incomingIds.has(item.id)), ...deepClone(incoming)];
+          };
+
+          return {
+            programs: mergeById(s.programs, workspace.programs),
+            categories: mergeById(s.categories, workspace.categories),
+            projects: mergeById(s.projects, workspace.projects),
+            savedBOQs: mergeById(s.savedBOQs, workspace.savedBOQs),
+            savedWorkPlans: mergeById(s.savedWorkPlans, workspace.savedWorkPlans),
+            certificates: mergeById(s.certificates, workspace.certificates),
+            progressReports: mergeById(s.progressReports, workspace.progressReports),
+          };
+        }),
       importLocalTestData: (payload) =>
         set((s) => {
           const allowedImportIds = [SURP2_IMPORT_ID, FINAL_CERTIFICATE_IMPORT_ID];

@@ -1,14 +1,18 @@
+import { v4 as uuid } from "uuid";
 import type {
   BOQRow,
   PaymentCertificate,
   PaymentItem,
   Program,
   ProgressItem,
+  ProgressReport,
   Project,
+  ProjectCategory,
   SavedBOQ,
   SavedWorkPlan,
   WorkPlanActivity,
 } from "@/lib/supabase";
+import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "@/lib/projectCategories";
 import {
   FINAL_CERTIFICATE_ID_PREFIX,
   FINAL_CERTIFICATE_IMPORT_ID,
@@ -709,6 +713,133 @@ export function buildFinalCertificateDemoPayload(): FinalCertificateImportPayloa
     preview,
     programs: [program],
     projects: [project],
+    savedBOQs,
+    savedWorkPlans,
+    progressReports,
+    certificates,
+  };
+}
+
+/**
+ * A fully de-sentinelized copy of a sample workspace, ready to be persisted as
+ * the signed-in user's own owned records (auth mode) or merged into local
+ * Zustand state (demo mode). Every primary id is a fresh UUID and every
+ * cross-reference (programId / project_id / previousCertificateId) is rewired
+ * to match, so adopting the same sample twice never collides.
+ */
+export interface AdoptableWorkspace {
+  programs: Program[];
+  categories: ProjectCategory[];
+  projects: Project[];
+  savedBOQs: SavedBOQ[];
+  savedWorkPlans: SavedWorkPlan[];
+  progressReports: ProgressReport[];
+  certificates: PaymentCertificate[];
+}
+
+/**
+ * Convert a built-in sample payload (which uses stable sentinel ids like
+ * `surp2-...` / `final-cert-...`) into adoptable records with fresh UUIDs.
+ *
+ * The sample payloads carry no category rows, so we synthesize one real
+ * category per distinct `categoryName` on the projects — satisfying the
+ * project's `category_id` FK when the project is written to Supabase.
+ */
+export function remintAdoptableWorkspace(
+  payload: Surp2ImportPayload | FinalCertificateImportPayload,
+): AdoptableWorkspace {
+  const now = new Date().toISOString();
+
+  // Consistent id remapping: the same original id always maps to the same
+  // fresh UUID regardless of call order, which keeps cross-references intact.
+  const idMap = new Map<string, string>();
+  const remap = (id: string): string => {
+    const existing = idMap.get(id);
+    if (existing) return existing;
+    const fresh = uuid();
+    idMap.set(id, fresh);
+    return fresh;
+  };
+
+  // Deep-clone (detaching from the shared sample object) while rewiring every
+  // reference field. Nested entity ids (BOQ rows, work-plan activities, payment
+  // items) live inside JSON payload columns and reference nothing, so they are
+  // left untouched.
+  const referenceKeys = new Set(["project_id", "programId", "previousCertificateId"]);
+  const remapReferences = <T,>(value: T): T =>
+    JSON.parse(
+      JSON.stringify(value, (key, val) =>
+        referenceKeys.has(key) && typeof val === "string" && val ? remap(val) : val,
+      ),
+    ) as T;
+
+  // One synthesized category per distinct categoryName.
+  const categoryByName = new Map<string, ProjectCategory>();
+  const resolveCategoryId = (project: Project): string | undefined => {
+    const name = (project.categoryName || "").trim();
+    if (!name) return undefined;
+    const key = name.toLowerCase();
+    const existing = categoryByName.get(key);
+    if (existing) return existing.id;
+    const meta = DEFAULT_PROJECT_CATEGORIES.find(
+      (category) => category.name.toLowerCase() === key,
+    );
+    const category: ProjectCategory = {
+      id: uuid(),
+      name,
+      code: meta?.code || categorySlug(name).slice(0, 12).toUpperCase() || "GEN",
+      description: meta?.description || "",
+      color: meta?.color || "#3b82f6",
+      status: "active",
+      created_at: now,
+    };
+    categoryByName.set(key, category);
+    return category.id;
+  };
+
+  const programs = payload.programs.map((program) => ({
+    ...remapReferences(program),
+    id: remap(program.id),
+    created_at: now,
+    updated_at: now,
+  }));
+
+  const projects = payload.projects.map((project) => {
+    const categoryId = resolveCategoryId(project);
+    return {
+      ...remapReferences(project),
+      id: remap(project.id),
+      categoryId: categoryId ?? project.categoryId,
+      created_at: now,
+    };
+  });
+
+  const categories = Array.from(categoryByName.values());
+
+  const savedBOQs = payload.savedBOQs.map((boq) => ({
+    ...remapReferences(boq),
+    id: remap(boq.id),
+  }));
+
+  const savedWorkPlans = payload.savedWorkPlans.map((workPlan) => ({
+    ...remapReferences(workPlan),
+    id: remap(workPlan.id),
+  }));
+
+  const progressReports = payload.progressReports.map((report) => ({
+    ...remapReferences(report),
+    id: remap(report.id),
+  }));
+
+  const certificates = payload.certificates.map((certificate) => ({
+    ...remapReferences(certificate),
+    id: remap(certificate.id),
+  }));
+
+  return {
+    programs,
+    categories,
+    projects,
     savedBOQs,
     savedWorkPlans,
     progressReports,
