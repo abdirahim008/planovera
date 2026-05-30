@@ -14,9 +14,40 @@ create table if not exists public.profiles (
 );
 
 alter table public.profiles
+  add column if not exists email text,
+  add column if not exists full_name text,
+  add column if not exists company text,
+  add column if not exists role text not null default 'engineer',
   add column if not exists signature_display_name text,
   add column if not exists signature_role_title text,
   add column if not exists signature_image_data_url text;
+
+-- Backfill email for pre-existing profile rows that predate the column, so the
+-- not-null/unique constraint and the org backfill below have a value to use.
+update public.profiles p
+set email = u.email
+from auth.users u
+where u.id = p.id
+  and (p.email is null or p.email = '');
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'profiles_email_key'
+  ) then
+    alter table public.profiles add constraint profiles_email_key unique (email);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'profiles_role_check'
+  ) then
+    alter table public.profiles add constraint profiles_role_check check (role in ('engineer', 'admin'));
+  end if;
+
+  if not exists (select 1 from public.profiles where email is null) then
+    alter table public.profiles alter column email set not null;
+  end if;
+end $$;
 
 create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(),
