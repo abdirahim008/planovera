@@ -1610,12 +1610,6 @@ function PortfolioDashboard({
             </div>
           </div>
         </div>
-        <div className="mt-4">
-          <DualTrendChart
-            planned={summaries.map((summary) => summary.progress.planned)}
-            actual={summaries.map((summary) => summary.progress.actual)}
-          />
-        </div>
       </div>
 
       <ProjectLocationsCard summaries={summaries} />
@@ -1886,7 +1880,7 @@ function ProjectLocationsCard({ summaries }: { summaries: ProjectSummary[] }) {
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") setOpen(true);
         }}
-        className="mt-5 w-full overflow-hidden rounded-[24px] border border-border bg-bg-surface text-left shadow-soft transition hover:border-accent/50"
+        className="mt-5 hidden w-full overflow-hidden rounded-[24px] border border-border bg-bg-surface text-left shadow-soft transition hover:border-accent/50 sm:block"
       >
         <div className="grid gap-0 lg:grid-cols-[0.72fr_1.28fr]">
           <div className="border-b border-border p-5 lg:border-b-0 lg:border-r">
