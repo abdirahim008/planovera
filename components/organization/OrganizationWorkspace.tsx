@@ -2,10 +2,13 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   BarChart3,
   Building2,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardCheck,
   Copy,
   CreditCard,
@@ -21,6 +24,7 @@ import {
   Trash2,
   TrendingUp,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 
@@ -712,6 +716,13 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<MemberDirectoryEntry | null>(null);
   const [removeTransferTo, setRemoveTransferTo] = useState<string>("");
+  // Drill-down modal mode (null = closed). Each mode renders the same filter row
+  // and a metric-specific table with a live total at the bottom that updates as
+  // the user filters inside the modal.
+  const [drillMode, setDrillMode] = useState<
+    "contract" | "paid" | "outstanding" | "delayed" | null
+  >(null);
+  const [portfolioMapOpen, setPortfolioMapOpen] = useState(false);
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     userId: "",
     programId: "",
@@ -924,6 +935,29 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
       overdueActions: overdueActionItems.length,
     };
   }, [boqRecords, certificateRecords, filteredProjects, meetingMinuteRecords, progressRecords, workspaceSnapshots]);
+
+  // Currency for portfolio-wide totals. Falls back gracefully when no projects
+  // are loaded yet. Assumes the portfolio shares one display currency.
+  const portfolioCurrency = useMemo(
+    () =>
+      filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD",
+    [filteredProjects, selectedProjects],
+  );
+
+  // Per-mode portfolio totals, recomputed live whenever filters narrow the
+  // project set. The drill modal reads from these so the bottom total always
+  // matches the visible rows.
+  const portfolioTotals = useMemo(() => {
+    const cards = portfolio.projectCards;
+    const contract = cards.reduce((sum, item) => sum + item.contractValue, 0);
+    const paid = cards.reduce((sum, item) => sum + item.certifiedValue, 0);
+    const outstanding = cards.reduce(
+      (sum, item) => sum + Math.max(item.contractValue - item.certifiedValue, 0),
+      0,
+    );
+    const delayed = cards.filter((item) => item.progress.variance < -5);
+    return { contract, paid, outstanding, delayed };
+  }, [portfolio.projectCards]);
 
   const memberUsage = useMemo(() => {
     const createdCounts = new Map<string, number>();
@@ -2224,171 +2258,195 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </div>
                     </div>
 
-                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                      <ProgressGaugeCard
-                        title="Physical progress"
-                        value={portfolio.actual}
-                        subtitle="Weighted actual progress across filtered organization projects."
-                        accentClass="text-ok"
-                        accentHex="#22c55e"
+                    {/* Top KPI strip — 4 high-signal numbers, each clickable to
+                        open a filtered drill-down table with a live total. */}
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <button
+                        type="button"
+                        onClick={() => setDrillMode("contract")}
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60"
                       >
-                        <MiniMetric label="Planned" value={`${portfolio.planned.toFixed(1)}%`} />
-                        <MiniMetric label="Variance" value={`${portfolio.variance >= 0 ? "+" : ""}${portfolio.variance.toFixed(1)}%`} />
-                      </ProgressGaugeCard>
-                      <ProgressGaugeCard
-                        title="Financial progress"
-                        value={portfolio.financial}
-                        subtitle="Certified value as a percentage of contract or BOQ portfolio value."
-                        accentClass="text-accent"
-                        accentHex="#3b82f6"
-                      >
-                        <MiniMetric
-                          label="Portfolio value"
-                          value={formatCurrency(
-                            portfolio.portfolioValue,
-                            filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD",
-                          )}
-                        />
-                        <MiniMetric
-                          label="Certified"
-                          value={formatCurrency(
-                            portfolio.certified,
-                            filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD",
-                          )}
-                        />
-                      </ProgressGaugeCard>
-                    </div>
-
-                    <OrganizationMapCard cards={portfolio.projectCards} />
-
-                    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <FolderKanban size={14} className="text-accent" />
-                          Projects
+                          <DollarSign size={14} className="text-accent" />
+                          Contract value
                         </div>
                         <div className="mt-3 text-2xl font-semibold text-white">
-                          {filteredProjects.length}
+                          {formatCurrency(portfolioTotals.contract, portfolioCurrency)}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
-                          {portfolio.delayedProjects} need management attention
+                          across {filteredProjects.length} project{filteredProjects.length === 1 ? "" : "s"}
                         </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <TrendingUp size={14} className="text-ok" />
-                          Physical progress
-                        </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
-                          {portfolio.actual.toFixed(1)}%
-                        </div>
-                        <div className="mt-1 text-xs text-txt-muted">
-                          Planned {portfolio.planned.toFixed(1)}%
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <DollarSign size={14} className="text-warn" />
-                          Portfolio value
-                        </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
-                          {formatCurrency(
-                            portfolio.portfolioValue,
-                            filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD",
-                          )}
-                        </div>
-                        <div className="mt-1 text-xs text-txt-muted">
-                          Contract and BOQ-derived value
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <CreditCard size={14} className="text-accent" />
-                          Financial progress
-                        </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
-                          {portfolio.financial.toFixed(1)}%
-                        </div>
-                        <div className="mt-1 text-xs text-txt-muted">
-                          Certified {formatCurrency(portfolio.certified, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <DollarSign size={14} className="text-ok" />
-                          Earned / certified
-                        </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
-                          {formatCurrency(portfolio.earned, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
-                        </div>
-                        <div className="mt-1 text-xs text-txt-muted">
-                          Certified {formatCurrency(portfolio.certified, filteredProjects[0]?.currency || selectedProjects[0]?.currency || "USD")}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <TrendingUp size={14} className="text-warn" />
-                          Delayed projects
-                        </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
-                          {portfolio.delayedProjects}
-                        </div>
-                        <div className="mt-1 text-xs text-txt-muted">
-                          Variance worse than -5%
-                        </div>
-                      </div>
+                      </button>
 
                       <button
                         type="button"
-                        onClick={() => setComplianceModalOpen(true)}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/45"
+                        onClick={() => setDrillMode("paid")}
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-ok/60"
                       >
                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <ClipboardCheck size={14} className={portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-ok"} />
+                          <CheckCircle2 size={14} className="text-ok" />
+                          Paid to date
+                        </div>
+                        <div className="mt-3 text-2xl font-semibold text-white">
+                          {formatCurrency(portfolioTotals.paid, portfolioCurrency)}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          {portfolioTotals.contract > 0
+                            ? `${((portfolioTotals.paid / portfolioTotals.contract) * 100).toFixed(1)}% of contract`
+                            : "—"}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDrillMode("outstanding")}
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-warn/60"
+                      >
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                          <Wallet size={14} className="text-warn" />
+                          Outstanding
+                        </div>
+                        <div className="mt-3 text-2xl font-semibold text-white">
+                          {formatCurrency(portfolioTotals.outstanding, portfolioCurrency)}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          {portfolioTotals.contract > 0
+                            ? `${((portfolioTotals.outstanding / portfolioTotals.contract) * 100).toFixed(1)}% remaining`
+                            : "—"}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDrillMode("delayed")}
+                        className={`rounded-2xl border bg-bg-raised p-4 text-left transition ${
+                          portfolioTotals.delayed.length > 0
+                            ? "border-err/40 hover:border-err"
+                            : "border-border hover:border-ok/60"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                          <AlertTriangle
+                            size={14}
+                            className={portfolioTotals.delayed.length > 0 ? "text-err" : "text-ok"}
+                          />
+                          Delayed projects
+                        </div>
+                        <div
+                          className={`mt-3 text-2xl font-semibold ${
+                            portfolioTotals.delayed.length > 0 ? "text-err" : "text-white"
+                          }`}
+                        >
+                          {portfolioTotals.delayed.length}
+                        </div>
+                        <div className="mt-1 text-xs text-txt-muted">
+                          actual &lt; planned by more than 5%
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Single visual: Plan vs Actual at the portfolio level. */}
+                    <div className="mt-5 rounded-2xl border border-border bg-bg-raised p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                          <TrendingUp size={14} className="text-accent" />
+                          Plan vs Actual
+                        </div>
+                        <div className="font-mono text-xs tabular-nums text-txt-dim">
+                          <span className="text-accent">Planned {portfolio.planned.toFixed(1)}%</span>
+                          {" · "}
+                          <span className={portfolio.variance >= -0.5 ? "text-ok" : "text-warn"}>
+                            Actual {portfolio.actual.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-1.5">
+                        <div className="h-2 overflow-hidden rounded-full bg-black/30">
+                          <div
+                            className="h-full rounded-full bg-accent transition-[width] duration-300"
+                            style={{ width: `${Math.min(Math.max(portfolio.planned, 0), 100)}%` }}
+                          />
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-black/30">
+                          <div
+                            className={`h-full rounded-full transition-[width] duration-300 ${
+                              portfolio.variance >= -0.5 ? "bg-ok" : "bg-warn"
+                            }`}
+                            style={{ width: `${Math.min(Math.max(portfolio.actual, 0), 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Secondary KPIs (these already open their own drill modals). */}
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setComplianceModalOpen(true)}
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60"
+                      >
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                          <ClipboardCheck
+                            size={14}
+                            className={portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-ok"}
+                          />
                           Checklist
                         </div>
-                        <div className={`mt-3 text-2xl font-semibold ${portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-white"}`}>
+                        <div
+                          className={`mt-3 text-2xl font-semibold ${
+                            portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-white"
+                          }`}
+                        >
                           {portfolio.overdueChecklistItems.length}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
-                          overdue documents from {portfolio.checklistItems.length} required
+                          overdue from {portfolio.checklistItems.length} required
                         </div>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setActionModalOpen(true)}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/45"
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60"
                       >
                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <CheckCircle2 size={14} className={portfolio.overdueActions > 0 ? "text-err" : "text-ok"} />
+                          <CheckCircle2
+                            size={14}
+                            className={portfolio.overdueActions > 0 ? "text-err" : "text-ok"}
+                          />
                           Action points
                         </div>
-                        <div className={`mt-3 text-2xl font-semibold ${portfolio.overdueActions > 0 ? "text-err" : "text-white"}`}>
+                        <div
+                          className={`mt-3 text-2xl font-semibold ${
+                            portfolio.overdueActions > 0 ? "text-err" : "text-white"
+                          }`}
+                        >
                           {portfolio.overdueActions}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
-                          overdue from {portfolio.openActions} open action point{portfolio.openActions === 1 ? "" : "s"}
+                          overdue from {portfolio.openActions} open
                         </div>
                       </button>
+                    </div>
 
-                      <div className="rounded-2xl border border-border bg-bg-raised p-4">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <Users size={14} className="text-accent" />
-                          Open actions
-                        </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
-                          {portfolio.openActions}
-                        </div>
-                        <div className="mt-1 text-xs text-txt-muted">
-                          {portfolio.overdueActions} overdue where available
-                        </div>
-                      </div>
+                    {/* Map collapsed by default — keep status check uncluttered. */}
+                    <div className="mt-5">
+                      <button
+                        type="button"
+                        onClick={() => setPortfolioMapOpen((open) => !open)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg-raised px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-txt-dim transition hover:border-accent/60 hover:text-txt"
+                      >
+                        <MapPin size={14} />
+                        {portfolioMapOpen ? "Hide" : "Show"} portfolio map
+                        {portfolioMapOpen ? (
+                          <ChevronUp size={14} />
+                        ) : (
+                          <ChevronDown size={14} />
+                        )}
+                      </button>
+                      {portfolioMapOpen ? (
+                        <OrganizationMapCard cards={portfolio.projectCards} />
+                      ) : null}
                     </div>
 
                     <div className="mt-6 overflow-hidden rounded-2xl border border-border">
@@ -3564,6 +3622,312 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      {/* Portfolio drill-down modal — one component, four modes. Title and table
+          columns vary by mode; filters are shared with the dashboard so the
+          bottom total updates live as the user narrows the set. */}
+      <Modal
+        open={drillMode !== null}
+        onClose={() => setDrillMode(null)}
+        title={
+          drillMode === "contract"
+            ? `Contract value — ${formatCurrency(portfolioTotals.contract, portfolioCurrency)}`
+            : drillMode === "paid"
+              ? `Paid to date — ${formatCurrency(portfolioTotals.paid, portfolioCurrency)}`
+              : drillMode === "outstanding"
+                ? `Outstanding — ${formatCurrency(portfolioTotals.outstanding, portfolioCurrency)}`
+                : drillMode === "delayed"
+                  ? `Delayed projects — ${portfolioTotals.delayed.length}`
+                  : ""
+        }
+        width={1000}
+      >
+        {drillMode ? (() => {
+          const visibleCards =
+            drillMode === "delayed" ? portfolioTotals.delayed : portfolio.projectCards;
+          const headers =
+            drillMode === "contract"
+              ? ["Project", "Program", "Contract value", "% of total"]
+              : drillMode === "paid"
+                ? ["Project", "Program", "Contract", "Paid", "% paid"]
+                : drillMode === "outstanding"
+                  ? ["Project", "Program", "Contract", "Paid", "Outstanding", "% remaining"]
+                  : ["Project", "Due date", "Planned", "Actual", "Variance"];
+          const totalLine =
+            drillMode === "contract"
+              ? `Total contract: ${formatCurrency(portfolioTotals.contract, portfolioCurrency)}`
+              : drillMode === "paid"
+                ? `Total paid: ${formatCurrency(portfolioTotals.paid, portfolioCurrency)}${
+                    portfolioTotals.contract > 0
+                      ? ` (${((portfolioTotals.paid / portfolioTotals.contract) * 100).toFixed(1)}% of contract)`
+                      : ""
+                  }`
+                : drillMode === "outstanding"
+                  ? `Total outstanding: ${formatCurrency(portfolioTotals.outstanding, portfolioCurrency)}`
+                  : `${portfolioTotals.delayed.length} project${
+                      portfolioTotals.delayed.length === 1 ? "" : "s"
+                    } delayed`;
+          return (
+            <div className="space-y-4">
+              {/* Compact filter row, same state as the dashboard so changes flow both ways. */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                    Program
+                  </span>
+                  <select
+                    className="input"
+                    value={portfolioFilters.programId}
+                    onChange={(event) =>
+                      setPortfolioFilters((prev) => ({ ...prev, programId: event.target.value }))
+                    }
+                  >
+                    <option value="">All programs</option>
+                    {selectedPrograms.map((program) => (
+                      <option key={program.id} value={program.id}>
+                        {program.code ? `${program.code} - ${program.name}` : program.name}
+                      </option>
+                    ))}
+                    {hasUnassignedProjects ? (
+                      <option value="__unassigned__">Unassigned</option>
+                    ) : null}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                    Category
+                  </span>
+                  <select
+                    className="input"
+                    value={portfolioFilters.categoryId}
+                    onChange={(event) =>
+                      setPortfolioFilters((prev) => ({ ...prev, categoryId: event.target.value }))
+                    }
+                  >
+                    <option value="">All categories</option>
+                    {selectedCategories
+                      .filter((category) => category.status === "active")
+                      .map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.code ? `${category.code} - ${category.name}` : category.name}
+                        </option>
+                      ))}
+                    {hasUncategorizedProjects ? (
+                      <option value="__uncategorized__">Uncategorized</option>
+                    ) : null}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                    Client
+                  </span>
+                  <select
+                    className="input"
+                    value={portfolioFilters.client}
+                    onChange={(event) =>
+                      setPortfolioFilters((prev) => ({ ...prev, client: event.target.value }))
+                    }
+                  >
+                    <option value="">All clients</option>
+                    {selectedClients.map((client) => (
+                      <option key={client} value={client}>
+                        {client}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                    Location
+                  </span>
+                  <select
+                    className="input"
+                    value={portfolioFilters.location}
+                    onChange={(event) =>
+                      setPortfolioFilters((prev) => ({ ...prev, location: event.target.value }))
+                    }
+                  >
+                    <option value="">All locations</option>
+                    {selectedLocations.map((location) => (
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                    User
+                  </span>
+                  <select
+                    className="input"
+                    value={portfolioFilters.userId}
+                    onChange={(event) =>
+                      setPortfolioFilters((prev) => ({ ...prev, userId: event.target.value }))
+                    }
+                  >
+                    <option value="">All users</option>
+                    {activeMembers.map((member) => (
+                      <option key={member.user_id} value={member.user_id}>
+                        {memberDisplayName(member)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={activeFilterCount === 0}
+                    onClick={() =>
+                      setPortfolioFilters({
+                        userId: "",
+                        programId: "",
+                        categoryId: "",
+                        location: "",
+                        client: "",
+                      })
+                    }
+                  >
+                    <X size={14} /> Clear filters
+                  </Button>
+                </div>
+              </div>
+
+              {/* Drill table */}
+              <div className="data-table-shell max-h-[55vh] overflow-auto">
+                <table className="data-table data-table-sticky">
+                  <thead>
+                    <tr>
+                      {headers.map((label) => (
+                        <th key={label}>{label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleCards.length === 0 ? (
+                      <tr>
+                        <td colSpan={headers.length} className="text-center text-sm text-txt-muted py-6">
+                          No projects match the current filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      visibleCards.map((item) => {
+                        const currency = item.project.currency || portfolioCurrency;
+                        const outstandingValue = Math.max(
+                          item.contractValue - item.certifiedValue,
+                          0,
+                        );
+                        const pctOfContract =
+                          item.contractValue > 0
+                            ? (item.certifiedValue / item.contractValue) * 100
+                            : 0;
+                        const pctOfPortfolio =
+                          portfolioTotals.contract > 0
+                            ? (item.contractValue / portfolioTotals.contract) * 100
+                            : 0;
+                        const pctRemaining =
+                          item.contractValue > 0
+                            ? (outstandingValue / item.contractValue) * 100
+                            : 0;
+                        if (drillMode === "delayed") {
+                          return (
+                            <tr key={item.project.id}>
+                              <td className="data-cell-wrap font-semibold text-white">
+                                {item.project.name}
+                              </td>
+                              <td className="text-txt-muted">{formatDate(item.project.end_date)}</td>
+                              <td className="data-cell-num text-accent">
+                                {item.progress.planned.toFixed(1)}%
+                              </td>
+                              <td className="data-cell-num text-warn">
+                                {item.progress.actual.toFixed(1)}%
+                              </td>
+                              <td className="data-cell-num text-err">
+                                {item.progress.variance.toFixed(1)}%
+                              </td>
+                            </tr>
+                          );
+                        }
+                        if (drillMode === "contract") {
+                          return (
+                            <tr key={item.project.id}>
+                              <td className="data-cell-wrap font-semibold text-white">
+                                {item.project.name}
+                              </td>
+                              <td className="text-txt-muted">
+                                {programLabel(selectedPrograms, item.project.program_id)}
+                              </td>
+                              <td className="data-cell-num font-mono text-txt">
+                                {formatCurrency(item.contractValue, currency)}
+                              </td>
+                              <td className="data-cell-num text-txt-muted">
+                                {pctOfPortfolio.toFixed(1)}%
+                              </td>
+                            </tr>
+                          );
+                        }
+                        if (drillMode === "paid") {
+                          return (
+                            <tr key={item.project.id}>
+                              <td className="data-cell-wrap font-semibold text-white">
+                                {item.project.name}
+                              </td>
+                              <td className="text-txt-muted">
+                                {programLabel(selectedPrograms, item.project.program_id)}
+                              </td>
+                              <td className="data-cell-num font-mono text-txt">
+                                {formatCurrency(item.contractValue, currency)}
+                              </td>
+                              <td className="data-cell-num font-mono text-ok">
+                                {formatCurrency(item.certifiedValue, currency)}
+                              </td>
+                              <td className="data-cell-num text-txt-muted">
+                                {pctOfContract.toFixed(1)}%
+                              </td>
+                            </tr>
+                          );
+                        }
+                        // outstanding
+                        return (
+                          <tr key={item.project.id}>
+                            <td className="data-cell-wrap font-semibold text-white">
+                              {item.project.name}
+                            </td>
+                            <td className="text-txt-muted">
+                              {programLabel(selectedPrograms, item.project.program_id)}
+                            </td>
+                            <td className="data-cell-num font-mono text-txt">
+                              {formatCurrency(item.contractValue, currency)}
+                            </td>
+                            <td className="data-cell-num font-mono text-ok">
+                              {formatCurrency(item.certifiedValue, currency)}
+                            </td>
+                            <td className="data-cell-num font-mono text-warn">
+                              {formatCurrency(outstandingValue, currency)}
+                            </td>
+                            <td className="data-cell-num text-txt-muted">
+                              {pctRemaining.toFixed(1)}%
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Sticky live total */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-bg-raised px-4 py-3 text-sm">
+                <span className="text-txt-dim">
+                  Showing {visibleCards.length} of {portfolio.projectCards.length} projects
+                </span>
+                <span className="font-mono font-semibold text-white">{totalLine}</span>
+              </div>
+            </div>
+          );
+        })() : null}
       </Modal>
     </div>
   );
