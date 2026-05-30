@@ -415,7 +415,10 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
-  overflow: hidden;
+  /* Horizontal scroll on narrow viewports so wide tables stay reachable on
+     mobile instead of clipping their rightmost columns (e.g. action buttons). */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Context menu */

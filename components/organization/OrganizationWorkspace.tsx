@@ -2707,95 +2707,187 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             No members yet.
                           </div>
                         ) : (
-                          <div className="data-table-shell">
-                            <table className="data-table">
-                              <thead>
-                                <tr>
-                                  <th>Name</th>
-                                  <th>Email</th>
-                                  <th>Role</th>
-                                  <th>Joined</th>
-                                  <th>Status</th>
-                                  <th>Assigned</th>
-                                  <th>Created</th>
-                                  {canManageSelectedOrganization ? (
-                                    <th aria-label="Actions" />
-                                  ) : null}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {selectedMembers.map((member) => {
-                                  const assigned = memberUsage.assignedCounts.get(member.user_id) ?? 0;
-                                  const created = memberUsage.createdCounts.get(member.user_id) ?? 0;
-                                  const isSelf = member.user_id === viewerUserId;
-                                  const isSuspended = member.status === "suspended";
-                                  const statusBusy =
-                                    busyAction === `member-status:${member.user_id}` ||
-                                    busyAction === `remove:${member.user_id}`;
-                                  return (
-                                    <tr key={member.id}>
-                                      <td className="data-cell-wrap font-semibold text-white">
-                                        {member.profiles?.full_name || member.profiles?.email || "User"}
-                                      </td>
-                                      <td className="data-cell-wrap text-txt-muted">
-                                        {member.profiles?.email || "—"}
-                                      </td>
-                                      <td>
+                          <>
+                            {/* Mobile: stacked cards so actions stay reachable. */}
+                            <div className="space-y-3 sm:hidden">
+                              {selectedMembers.map((member) => {
+                                const assigned = memberUsage.assignedCounts.get(member.user_id) ?? 0;
+                                const created = memberUsage.createdCounts.get(member.user_id) ?? 0;
+                                const isSelf = member.user_id === viewerUserId;
+                                const isSuspended = member.status === "suspended";
+                                const statusBusy =
+                                  busyAction === `member-status:${member.user_id}` ||
+                                  busyAction === `remove:${member.user_id}`;
+                                return (
+                                  <div
+                                    key={member.id}
+                                    className="rounded-2xl border border-border bg-bg-raised p-4 space-y-3"
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div>
+                                        <div className="font-semibold text-white">
+                                          {member.profiles?.full_name || member.profiles?.email || "User"}
+                                        </div>
+                                        {member.profiles?.email ? (
+                                          <div className="text-xs text-txt-muted">{member.profiles.email}</div>
+                                        ) : null}
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-1.5">
                                         <Badge color={roleBadgeColor(member.role)}>
                                           {member.role.toUpperCase()}
                                         </Badge>
-                                      </td>
-                                      <td className="text-txt-muted">{formatDate(member.joined_at)}</td>
-                                      <td>
                                         <Badge color={isSuspended ? "warn" : "ok"}>
                                           {member.status.toUpperCase()}
                                         </Badge>
-                                      </td>
-                                      <td className="data-cell-num">{assigned}</td>
-                                      <td className="data-cell-num">{created}</td>
-                                      {canManageSelectedOrganization ? (
-                                        <td>
-                                          {isSelf ? (
-                                            <span className="text-xs text-txt-dim">You</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                      <div>
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Joined</div>
+                                        <div className="text-txt">{formatDate(member.joined_at)}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Assigned</div>
+                                        <div className="font-mono tabular-nums text-txt">{assigned}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Created</div>
+                                        <div className="font-mono tabular-nums text-txt">{created}</div>
+                                      </div>
+                                    </div>
+
+                                    {canManageSelectedOrganization ? (
+                                      isSelf ? (
+                                        <div className="text-xs text-txt-dim">This is you.</div>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                          {isSuspended ? (
+                                            <Button
+                                              variant="success"
+                                              size="sm"
+                                              disabled={statusBusy}
+                                              onClick={() => handleSetMemberStatus(member, "active")}
+                                            >
+                                              <CheckCircle2 size={13} /> Reactivate
+                                            </Button>
                                           ) : (
-                                            <div className="flex flex-wrap justify-end gap-2">
-                                              {isSuspended ? (
-                                                <Button
-                                                  variant="success"
-                                                  size="sm"
-                                                  disabled={statusBusy}
-                                                  onClick={() => handleSetMemberStatus(member, "active")}
-                                                >
-                                                  <CheckCircle2 size={13} /> Reactivate
-                                                </Button>
-                                              ) : (
-                                                <Button
-                                                  variant="warning"
-                                                  size="sm"
-                                                  disabled={statusBusy}
-                                                  onClick={() => handleSetMemberStatus(member, "suspended")}
-                                                >
-                                                  <X size={13} /> Deactivate
-                                                </Button>
-                                              )}
-                                              <Button
-                                                variant="danger"
-                                                size="sm"
-                                                disabled={statusBusy}
-                                                onClick={() => openRemoveDialog(member)}
-                                              >
-                                                <Trash2 size={13} /> Remove
-                                              </Button>
-                                            </div>
+                                            <Button
+                                              variant="warning"
+                                              size="sm"
+                                              disabled={statusBusy}
+                                              onClick={() => handleSetMemberStatus(member, "suspended")}
+                                            >
+                                              <X size={13} /> Deactivate
+                                            </Button>
                                           )}
+                                          <Button
+                                            variant="danger"
+                                            size="sm"
+                                            disabled={statusBusy}
+                                            onClick={() => openRemoveDialog(member)}
+                                          >
+                                            <Trash2 size={13} /> Remove
+                                          </Button>
+                                        </div>
+                                      )
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Desktop: tabular layout. */}
+                            <div className="hidden data-table-shell sm:block">
+                              <table className="data-table">
+                                <thead>
+                                  <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Joined</th>
+                                    <th>Status</th>
+                                    <th>Assigned</th>
+                                    <th>Created</th>
+                                    {canManageSelectedOrganization ? (
+                                      <th aria-label="Actions" />
+                                    ) : null}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {selectedMembers.map((member) => {
+                                    const assigned = memberUsage.assignedCounts.get(member.user_id) ?? 0;
+                                    const created = memberUsage.createdCounts.get(member.user_id) ?? 0;
+                                    const isSelf = member.user_id === viewerUserId;
+                                    const isSuspended = member.status === "suspended";
+                                    const statusBusy =
+                                      busyAction === `member-status:${member.user_id}` ||
+                                      busyAction === `remove:${member.user_id}`;
+                                    return (
+                                      <tr key={member.id}>
+                                        <td className="data-cell-wrap font-semibold text-white">
+                                          {member.profiles?.full_name || member.profiles?.email || "User"}
                                         </td>
-                                      ) : null}
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
+                                        <td className="data-cell-wrap text-txt-muted">
+                                          {member.profiles?.email || "—"}
+                                        </td>
+                                        <td>
+                                          <Badge color={roleBadgeColor(member.role)}>
+                                            {member.role.toUpperCase()}
+                                          </Badge>
+                                        </td>
+                                        <td className="text-txt-muted">{formatDate(member.joined_at)}</td>
+                                        <td>
+                                          <Badge color={isSuspended ? "warn" : "ok"}>
+                                            {member.status.toUpperCase()}
+                                          </Badge>
+                                        </td>
+                                        <td className="data-cell-num">{assigned}</td>
+                                        <td className="data-cell-num">{created}</td>
+                                        {canManageSelectedOrganization ? (
+                                          <td>
+                                            {isSelf ? (
+                                              <span className="text-xs text-txt-dim">You</span>
+                                            ) : (
+                                              <div className="flex flex-wrap justify-end gap-2">
+                                                {isSuspended ? (
+                                                  <Button
+                                                    variant="success"
+                                                    size="sm"
+                                                    disabled={statusBusy}
+                                                    onClick={() => handleSetMemberStatus(member, "active")}
+                                                  >
+                                                    <CheckCircle2 size={13} /> Reactivate
+                                                  </Button>
+                                                ) : (
+                                                  <Button
+                                                    variant="warning"
+                                                    size="sm"
+                                                    disabled={statusBusy}
+                                                    onClick={() => handleSetMemberStatus(member, "suspended")}
+                                                  >
+                                                    <X size={13} /> Deactivate
+                                                  </Button>
+                                                )}
+                                                <Button
+                                                  variant="danger"
+                                                  size="sm"
+                                                  disabled={statusBusy}
+                                                  onClick={() => openRemoveDialog(member)}
+                                                >
+                                                  <Trash2 size={13} /> Remove
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </td>
+                                        ) : null}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>

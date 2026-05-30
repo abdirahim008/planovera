@@ -285,6 +285,108 @@ export default function BillingAdminPanel() {
     await loadData();
   };
 
+  // Per-org action buttons. Shared between the desktop table row and the
+  // mobile card layout so behaviour stays identical.
+  const renderOrgActions = ({
+    organization,
+    subscription,
+  }: {
+    organization: OrganizationRecord;
+    subscription?: OrganizationSubscriptionRecord;
+  }) => {
+    const effectivePlanCode =
+      subscription?.plan_code ||
+      (organization.personal ? "individual-monthly" : "organization-monthly");
+    const effectiveSeatCount =
+      subscription?.seat_count || (organization.personal ? 1 : 5);
+    const orgBusy = busy?.startsWith(`${organization.id}:`);
+    return (
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          variant="success"
+          size="sm"
+          disabled={orgBusy}
+          onClick={() =>
+            handleQuickUpdate({
+              organizationId: organization.id,
+              planCode: effectivePlanCode,
+              status: "active",
+              seatCount: effectiveSeatCount,
+              days: 30,
+            })
+          }
+        >
+          <Play size={13} /> Activate 30d
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={orgBusy}
+          onClick={() =>
+            handleQuickUpdate({
+              organizationId: organization.id,
+              planCode: effectivePlanCode,
+              status: subscription?.status === "trialing" ? "trialing" : "active",
+              seatCount: effectiveSeatCount,
+              days: 90,
+            })
+          }
+        >
+          Extend 90d
+        </Button>
+        <Button
+          variant="warning"
+          size="sm"
+          disabled={orgBusy}
+          onClick={() =>
+            handleQuickUpdate({
+              organizationId: organization.id,
+              planCode: effectivePlanCode,
+              status: "past_due",
+              seatCount: effectiveSeatCount,
+              days: -1,
+            })
+          }
+        >
+          <Ban size={13} /> Suspend
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={orgBusy}
+          onClick={() =>
+            handleQuickUpdate({
+              organizationId: organization.id,
+              planCode: effectivePlanCode,
+              status: "canceled",
+              seatCount: effectiveSeatCount,
+              days: -1,
+            })
+          }
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() =>
+            setEditor({
+              organizationId: organization.id,
+              organizationName: organization.name,
+              planCode: effectivePlanCode,
+              status: subscription?.status || "trialing",
+              seatCount: String(effectiveSeatCount),
+              durationPreset: "custom",
+              expiryDate: subscriptionExpiryInput(subscription),
+            })
+          }
+        >
+          Edit
+        </Button>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -393,67 +495,65 @@ export default function BillingAdminPanel() {
         ) : null}
 
         {!loading && organizationCards.length > 0 ? (
-          <div className="data-table-shell">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Organization</th>
-                  <th>Plan</th>
-                  <th>Status</th>
-                  <th>Seats</th>
-                  <th>Members</th>
-                  <th>Pending</th>
-                  <th>Access until</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {organizationCards.map(({ organization, subscription, activeMembers, pendingInvites, occupiedSeats }) => {
-                  const plan = plans.find((item) => item.code === subscription?.plan_code);
-                  const accessState = getSubscriptionAccessState(subscription);
-                  const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
-                  const effectivePlanCode =
-                    subscription?.plan_code ||
-                    (organization.personal ? "individual-monthly" : "organization-monthly");
-                  const effectiveSeatCount = subscription?.seat_count || (organization.personal ? 1 : 5);
-                  return (
-                    <tr key={organization.id}>
-                      <td className="data-cell-wrap">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-white">{organization.name}</span>
-                          <Badge color={organization.personal ? "ok" : "accent"}>
-                            {organization.personal ? "PERSONAL" : "ORG"}
+          <>
+            {/* Mobile: stacked cards so action buttons stay reachable on phones. */}
+            <div className="space-y-3 sm:hidden">
+              {organizationCards.map(({ organization, subscription, activeMembers, pendingInvites, occupiedSeats }) => {
+                const plan = plans.find((item) => item.code === subscription?.plan_code);
+                const accessState = getSubscriptionAccessState(subscription);
+                const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
+                return (
+                  <div
+                    key={organization.id}
+                    className="rounded-2xl border border-border bg-bg-surface p-4 space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-white">{organization.name}</span>
+                        <Badge color={organization.personal ? "ok" : "accent"}>
+                          {organization.personal ? "PERSONAL" : "ORG"}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {subscription ? (
+                          <Badge color={subscriptionBadgeColor(accessState)}>
+                            {subscriptionStateLabel(accessState).toUpperCase()}
                           </Badge>
+                        ) : (
+                          <Badge color="warn">NO SUBSCRIPTION</Badge>
+                        )}
+                        {subscription ? (
+                          <Badge color={statusBadge(subscription.status)}>
+                            {subscription.status.toUpperCase()}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Plan</div>
+                        <div className="text-txt">
+                          {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
                         </div>
-                      </td>
-                      <td className="data-cell-wrap">
-                        {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {subscription ? (
-                            <Badge color={subscriptionBadgeColor(accessState)}>
-                              {subscriptionStateLabel(accessState).toUpperCase()}
-                            </Badge>
-                          ) : (
-                            <Badge color="warn">NO SUBSCRIPTION</Badge>
-                          )}
-                          {subscription ? (
-                            <Badge color={statusBadge(subscription.status)}>
-                              {subscription.status.toUpperCase()}
-                            </Badge>
-                          ) : null}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Seats</div>
+                        <div className="font-mono tabular-nums text-txt">
+                          {occupiedSeats}/{subscription?.seat_count || 0}
                         </div>
-                      </td>
-                      <td className="data-cell-num">
-                        {occupiedSeats}/{subscription?.seat_count || 0}
-                      </td>
-                      <td className="data-cell-num">{activeMembers}</td>
-                      <td className="data-cell-num">{pendingInvites}</td>
-                      <td className="data-cell-wrap">
-                        <div>{formatSubscriptionExpiry(subscription)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Members</div>
+                        <div className="font-mono tabular-nums text-txt">
+                          {activeMembers} active · {pendingInvites} pending
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Access until</div>
+                        <div className="text-txt">{formatSubscriptionExpiry(subscription)}</div>
                         <div
-                          className={`text-xs ${
+                          className={`${
                             daysRemaining !== null && daysRemaining < 0
                               ? "text-err"
                               : daysRemaining !== null && daysRemaining <= 7
@@ -463,98 +563,91 @@ export default function BillingAdminPanel() {
                         >
                           {formatRemaining(daysRemaining)}
                         </div>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button
-                            variant="success"
-                            size="sm"
-                            disabled={busy?.startsWith(`${organization.id}:`)}
-                            onClick={() =>
-                              handleQuickUpdate({
-                                organizationId: organization.id,
-                                planCode: effectivePlanCode,
-                                status: "active",
-                                seatCount: effectiveSeatCount,
-                                days: 30,
-                              })
-                            }
+                      </div>
+                    </div>
+
+                    {renderOrgActions({ organization, subscription })}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop: tabular layout. */}
+            <div className="hidden data-table-shell sm:block">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Organization</th>
+                    <th>Plan</th>
+                    <th>Status</th>
+                    <th>Seats</th>
+                    <th>Members</th>
+                    <th>Pending</th>
+                    <th>Access until</th>
+                    <th aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {organizationCards.map(({ organization, subscription, activeMembers, pendingInvites, occupiedSeats }) => {
+                    const plan = plans.find((item) => item.code === subscription?.plan_code);
+                    const accessState = getSubscriptionAccessState(subscription);
+                    const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
+                    return (
+                      <tr key={organization.id}>
+                        <td className="data-cell-wrap">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-white">{organization.name}</span>
+                            <Badge color={organization.personal ? "ok" : "accent"}>
+                              {organization.personal ? "PERSONAL" : "ORG"}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="data-cell-wrap">
+                          {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
+                        </td>
+                        <td>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {subscription ? (
+                              <Badge color={subscriptionBadgeColor(accessState)}>
+                                {subscriptionStateLabel(accessState).toUpperCase()}
+                              </Badge>
+                            ) : (
+                              <Badge color="warn">NO SUBSCRIPTION</Badge>
+                            )}
+                            {subscription ? (
+                              <Badge color={statusBadge(subscription.status)}>
+                                {subscription.status.toUpperCase()}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="data-cell-num">
+                          {occupiedSeats}/{subscription?.seat_count || 0}
+                        </td>
+                        <td className="data-cell-num">{activeMembers}</td>
+                        <td className="data-cell-num">{pendingInvites}</td>
+                        <td className="data-cell-wrap">
+                          <div>{formatSubscriptionExpiry(subscription)}</div>
+                          <div
+                            className={`text-xs ${
+                              daysRemaining !== null && daysRemaining < 0
+                                ? "text-err"
+                                : daysRemaining !== null && daysRemaining <= 7
+                                  ? "text-warn"
+                                  : "text-txt-dim"
+                            }`}
                           >
-                            <Play size={13} /> Activate 30d
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy?.startsWith(`${organization.id}:`)}
-                            onClick={() =>
-                              handleQuickUpdate({
-                                organizationId: organization.id,
-                                planCode: effectivePlanCode,
-                                status: subscription?.status === "trialing" ? "trialing" : "active",
-                                seatCount: effectiveSeatCount,
-                                days: 90,
-                              })
-                            }
-                          >
-                            Extend 90d
-                          </Button>
-                          <Button
-                            variant="warning"
-                            size="sm"
-                            disabled={busy?.startsWith(`${organization.id}:`)}
-                            onClick={() =>
-                              handleQuickUpdate({
-                                organizationId: organization.id,
-                                planCode: effectivePlanCode,
-                                status: "past_due",
-                                seatCount: effectiveSeatCount,
-                                days: -1,
-                              })
-                            }
-                          >
-                            <Ban size={13} /> Suspend
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            disabled={busy?.startsWith(`${organization.id}:`)}
-                            onClick={() =>
-                              handleQuickUpdate({
-                                organizationId: organization.id,
-                                planCode: effectivePlanCode,
-                                status: "canceled",
-                                seatCount: effectiveSeatCount,
-                                days: -1,
-                              })
-                            }
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() =>
-                              setEditor({
-                                organizationId: organization.id,
-                                organizationName: organization.name,
-                                planCode: effectivePlanCode,
-                                status: subscription?.status || "trialing",
-                                seatCount: String(effectiveSeatCount),
-                                durationPreset: "custom",
-                                expiryDate: subscriptionExpiryInput(subscription),
-                              })
-                            }
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {formatRemaining(daysRemaining)}
+                          </div>
+                        </td>
+                        <td>{renderOrgActions({ organization, subscription })}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : null}
       </div>
 
