@@ -135,38 +135,54 @@ type SubscriptionBlockState = {
   expiresAt: string;
   canManage: boolean;
   awaitingApproval: boolean;
+  // The current user has been deactivated by their organization admin. This is
+  // a per-member lockout distinct from awaitingApproval (org not yet activated)
+  // or the default expired state (subscription lapsed).
+  deactivated?: boolean;
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState }) {
   const pending = block.awaitingApproval;
+  const deactivated = block.deactivated === true;
+  const headline = deactivated
+    ? "Access deactivated"
+    : pending
+      ? "Awaiting approval"
+      : "Subscription expired";
+  const headlineColor = deactivated
+    ? "text-warn"
+    : pending
+      ? "text-accent"
+      : "text-err";
+  const body = deactivated
+    ? "Your organization administrator has deactivated your access. Your work is preserved — contact your administrator to be reactivated."
+    : pending
+      ? "Your account is registered. An administrator will activate your access once your subscription is confirmed. Your data is safe in the meantime."
+      : `Access ended ${block.expiresAt}.`;
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6">
       <div className="w-full max-w-md rounded-2xl border border-border bg-bg-surface p-7 text-center">
         <div
-          className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${
-            pending ? "text-accent" : "text-err"
-          }`}
+          className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${headlineColor}`}
         >
-          {pending ? "Awaiting approval" : "Subscription expired"}
+          {headline}
         </div>
         <h1 className="mt-2 text-xl font-semibold text-white">
           {block.organizationName}
         </h1>
-        <p className="mt-1.5 text-sm text-txt-muted">
-          {pending
-            ? "Your account is registered. An administrator will activate your access once your subscription is confirmed. Your data is safe in the meantime."
-            : `Access ended ${block.expiresAt}.`}
-        </p>
+        <p className="mt-1.5 text-sm text-txt-muted">{body}</p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
-          <a
-            href="/organization"
-            className="inline-flex items-center justify-center rounded-lg border border-border bg-bg-raised px-3.5 py-2 text-[13px] font-medium text-txt transition hover:bg-bg-hover"
-          >
-            Organization
-          </a>
-          {block.canManage ? (
+          {!deactivated ? (
+            <a
+              href="/organization"
+              className="inline-flex items-center justify-center rounded-lg border border-border bg-bg-raised px-3.5 py-2 text-[13px] font-medium text-txt transition hover:bg-bg-hover"
+            >
+              Organization
+            </a>
+          ) : null}
+          {block.canManage && !deactivated ? (
             <a
               href={`mailto:support@planovera.com?subject=Planovera subscription ${
                 pending ? "activation" : "reactivation"
@@ -467,14 +483,19 @@ export default function WorkspaceShell() {
         { data: membershipRows, error: membershipError },
       ] = await Promise.all([
         supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
+        // Fetch ALL memberships (active + suspended) so we can detect and
+        // surface a "deactivated by admin" state. Subscription checks below
+        // are scoped to active memberships only.
         supabase
           .from("organization_members")
           .select("id, organization_id, role, status, organizations(id,name,personal)")
-          .eq("user_id", user.id)
-          .eq("status", "active"),
+          .eq("user_id", user.id),
       ]);
 
-      const memberships = (membershipRows ?? []) as OrganizationMembershipRecord[];
+      const allMemberships = (membershipRows ?? []) as OrganizationMembershipRecord[];
+      const memberships = allMemberships.filter(
+        (membership) => membership.status === "active",
+      );
       const organizationIds = memberships.map((membership) => membership.organization_id);
       const { data: subscriptionRows, error: accessSubscriptionError } =
         organizationIds.length > 0
@@ -488,6 +509,36 @@ export default function WorkspaceShell() {
       const hasUsableSubscription = subscriptions.some((subscription) =>
         isSubscriptionUsable(subscription),
       );
+
+      // If every membership the user has is suspended, lock them out with a
+      // clear "deactivated by your organization admin" screen rather than an
+      // empty workspace.
+      if (
+        !userIsAdmin &&
+        allMemberships.length > 0 &&
+        memberships.length === 0 &&
+        !membershipError
+      ) {
+        const firstMembership = allMemberships[0];
+        const firstOrganization = Array.isArray(firstMembership.organizations)
+          ? firstMembership.organizations[0]
+          : firstMembership.organizations;
+        setPrograms([]);
+        setCategories([]);
+        setProjects([]);
+        clearWorkspaceData();
+        setCollaborators([]);
+        setSubscriptionBlock({
+          organizationName: firstOrganization?.name || "Your organization",
+          expiresAt: "",
+          canManage: false,
+          awaitingApproval: false,
+          deactivated: true,
+        });
+        setWorkspaceNotice(null);
+        setProjectsReady(true);
+        return;
+      }
 
       if (
         !userIsAdmin &&

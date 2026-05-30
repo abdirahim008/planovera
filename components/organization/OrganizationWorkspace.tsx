@@ -709,6 +709,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     useState<OrganizationInviteRecord["delivery_method"]>("email");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [freshInviteLink, setFreshInviteLink] = useState<string | null>(null);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<MemberDirectoryEntry | null>(null);
+  const [removeTransferTo, setRemoveTransferTo] = useState<string>("");
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     userId: "",
     programId: "",
@@ -972,6 +975,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
         return;
       }
 
+      setViewerUserId(user.id);
       await supabase.rpc("expire_overdue_organization_subscriptions");
 
       const { data: membershipRows, error: membershipError } = await supabase
@@ -1720,6 +1724,84 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
     setBusyAction(null);
     setNotice("Invite revoked and the reserved seat was released.");
+    await reloadData();
+  };
+
+  const handleSetMemberStatus = async (
+    member: MemberDirectoryEntry,
+    nextStatus: "active" | "suspended",
+  ) => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setNotice("Supabase environment variables are missing.");
+      return;
+    }
+    if (!selectedOrganization) return;
+
+    setBusyAction(`member-status:${member.user_id}`);
+    setNotice(null);
+    const { error } = await supabase.rpc("set_organization_member_status", {
+      org_uuid: selectedOrganization.id,
+      target_user: member.user_id,
+      new_status: nextStatus,
+    });
+
+    if (error) {
+      setBusyAction(null);
+      setNotice(error.message);
+      return;
+    }
+
+    setBusyAction(null);
+    setNotice(
+      nextStatus === "suspended"
+        ? `${memberDisplayName(member)} was deactivated. Their seat is now available.`
+        : `${memberDisplayName(member)} was reactivated.`,
+    );
+    await reloadData();
+  };
+
+  const openRemoveDialog = (member: MemberDirectoryEntry) => {
+    setRemoveTarget(member);
+    setRemoveTransferTo("");
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!removeTarget) return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setNotice("Supabase environment variables are missing.");
+      return;
+    }
+    if (!selectedOrganization) return;
+
+    setBusyAction(`remove:${removeTarget.user_id}`);
+    setNotice(null);
+    const { error } = await supabase.rpc("remove_organization_member", {
+      org_uuid: selectedOrganization.id,
+      target_user: removeTarget.user_id,
+      transfer_to: removeTransferTo || null,
+    });
+
+    if (error) {
+      setBusyAction(null);
+      setNotice(error.message);
+      return;
+    }
+
+    const transferredName = removeTransferTo
+      ? memberDisplayName(
+          selectedMembers.find((entry) => entry.user_id === removeTransferTo) ?? null,
+        )
+      : null;
+    setBusyAction(null);
+    setRemoveTarget(null);
+    setRemoveTransferTo("");
+    setNotice(
+      transferredName
+        ? `Member removed and projects reassigned to ${transferredName}.`
+        : "Member removed. Their seat is now available.",
+    );
     await reloadData();
   };
 
@@ -2636,12 +2718,20 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                                   <th>Status</th>
                                   <th>Assigned</th>
                                   <th>Created</th>
+                                  {canManageSelectedOrganization ? (
+                                    <th aria-label="Actions" />
+                                  ) : null}
                                 </tr>
                               </thead>
                               <tbody>
                                 {selectedMembers.map((member) => {
                                   const assigned = memberUsage.assignedCounts.get(member.user_id) ?? 0;
                                   const created = memberUsage.createdCounts.get(member.user_id) ?? 0;
+                                  const isSelf = member.user_id === viewerUserId;
+                                  const isSuspended = member.status === "suspended";
+                                  const statusBusy =
+                                    busyAction === `member-status:${member.user_id}` ||
+                                    busyAction === `remove:${member.user_id}`;
                                   return (
                                     <tr key={member.id}>
                                       <td className="data-cell-wrap font-semibold text-white">
@@ -2656,9 +2746,50 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                                         </Badge>
                                       </td>
                                       <td className="text-txt-muted">{formatDate(member.joined_at)}</td>
-                                      <td className="text-txt-muted">{member.status}</td>
+                                      <td>
+                                        <Badge color={isSuspended ? "warn" : "ok"}>
+                                          {member.status.toUpperCase()}
+                                        </Badge>
+                                      </td>
                                       <td className="data-cell-num">{assigned}</td>
                                       <td className="data-cell-num">{created}</td>
+                                      {canManageSelectedOrganization ? (
+                                        <td>
+                                          {isSelf ? (
+                                            <span className="text-xs text-txt-dim">You</span>
+                                          ) : (
+                                            <div className="flex flex-wrap justify-end gap-2">
+                                              {isSuspended ? (
+                                                <Button
+                                                  variant="success"
+                                                  size="sm"
+                                                  disabled={statusBusy}
+                                                  onClick={() => handleSetMemberStatus(member, "active")}
+                                                >
+                                                  <CheckCircle2 size={13} /> Reactivate
+                                                </Button>
+                                              ) : (
+                                                <Button
+                                                  variant="warning"
+                                                  size="sm"
+                                                  disabled={statusBusy}
+                                                  onClick={() => handleSetMemberStatus(member, "suspended")}
+                                                >
+                                                  <X size={13} /> Deactivate
+                                                </Button>
+                                              )}
+                                              <Button
+                                                variant="danger"
+                                                size="sm"
+                                                disabled={statusBusy}
+                                                onClick={() => openRemoveDialog(member)}
+                                              >
+                                                <Trash2 size={13} /> Remove
+                                              </Button>
+                                            </div>
+                                          )}
+                                        </td>
+                                      ) : null}
                                     </tr>
                                   );
                                 })}
@@ -3271,6 +3402,76 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!removeTarget}
+        onClose={() => {
+          if (busyAction?.startsWith("remove:")) return;
+          setRemoveTarget(null);
+          setRemoveTransferTo("");
+        }}
+        title="Remove member"
+        width={480}
+      >
+        {removeTarget ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-warn/30 bg-warn/10 px-4 py-3 text-sm text-txt">
+              You are removing <strong>{memberDisplayName(removeTarget)}</strong> from{" "}
+              <strong>{selectedOrganization?.name}</strong>. Their seat will be released.
+            </div>
+
+            <div>
+              <label className="label">Transfer their projects to (optional)</label>
+              <select
+                className="input"
+                value={removeTransferTo}
+                onChange={(event) => setRemoveTransferTo(event.target.value)}
+              >
+                <option value="">Keep ownership unchanged</option>
+                {selectedMembers
+                  .filter(
+                    (entry) =>
+                      entry.user_id !== removeTarget.user_id && entry.status === "active",
+                  )
+                  .map((entry) => (
+                    <option key={entry.user_id} value={entry.user_id}>
+                      {memberDisplayName(entry)}
+                      {entry.profiles?.email ? ` · ${entry.profiles.email}` : ""}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1.5 text-xs text-txt-muted">
+                Reassigns projects, programs, and categories owned by this user inside the
+                organization. Recommended when an employee leaves so the work is retained.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setRemoveTarget(null);
+                  setRemoveTransferTo("");
+                }}
+                disabled={busyAction === `remove:${removeTarget.user_id}`}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleConfirmRemove}
+                disabled={busyAction === `remove:${removeTarget.user_id}`}
+              >
+                {busyAction === `remove:${removeTarget.user_id}`
+                  ? "Removing..."
+                  : removeTransferTo
+                    ? "Transfer & Remove"
+                    : "Remove member"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

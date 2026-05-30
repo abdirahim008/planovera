@@ -1973,6 +1973,273 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Organization member lifecycle: deactivate / reactivate / transfer / remove
+-- ---------------------------------------------------------------------------
+
+-- Change a member's status within an organization. Only owner/admin members can
+-- call this. Suspending frees the seat immediately (seat capacity counts only
+-- active members + pending reserved invites). Activating verifies seat capacity
+-- and that the subscription is currently usable.
+create or replace function public.set_organization_member_status(
+  org_uuid uuid,
+  target_user uuid,
+  new_status text
+)
+returns public.organization_members
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_role text;
+  target_member public.organization_members;
+  subscription_record public.organization_subscriptions;
+  active_members integer;
+  pending_invites integer;
+  seat_capacity integer;
+  remaining_owners integer;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required.';
+  end if;
+
+  if new_status not in ('active', 'suspended') then
+    raise exception 'Unsupported member status. Use active or suspended.';
+  end if;
+
+  select role
+  into caller_role
+  from public.organization_members
+  where organization_id = org_uuid
+    and user_id = auth.uid()
+    and status = 'active';
+
+  if caller_role is null or caller_role not in ('owner', 'admin') then
+    raise exception 'Only organization owners and admins can change member status.';
+  end if;
+
+  select *
+  into target_member
+  from public.organization_members
+  where organization_id = org_uuid
+    and user_id = target_user;
+
+  if target_member.id is null then
+    raise exception 'That user is not a member of this organization.';
+  end if;
+
+  if target_member.status = new_status then
+    return target_member;
+  end if;
+
+  -- Guard against suspending the last remaining active owner.
+  if new_status = 'suspended' and target_member.role = 'owner' then
+    select count(*)
+    into remaining_owners
+    from public.organization_members
+    where organization_id = org_uuid
+      and role = 'owner'
+      and status = 'active'
+      and user_id <> target_user;
+
+    if remaining_owners = 0 then
+      raise exception 'Cannot suspend the last active owner of the organization.';
+    end if;
+  end if;
+
+  -- When reactivating, verify the subscription is usable and a seat is free.
+  if new_status = 'active' then
+    perform public.expire_overdue_organization_subscriptions();
+
+    select *
+    into subscription_record
+    from public.organization_subscriptions
+    where organization_id = org_uuid
+      and status in ('trialing', 'active')
+      and (
+        (status = 'trialing' and (coalesce(trial_ends_at, current_period_end) is null
+            or coalesce(trial_ends_at, current_period_end) > timezone('utc', now())))
+        or
+        (status = 'active' and (current_period_end is null
+            or current_period_end > timezone('utc', now())))
+      );
+
+    if subscription_record.id is null then
+      raise exception 'This organization subscription is expired or inactive. Activate the subscription before reactivating members.';
+    end if;
+
+    select count(*)
+    into active_members
+    from public.organization_members
+    where organization_id = org_uuid
+      and status = 'active';
+
+    select count(*)
+    into pending_invites
+    from public.organization_invites
+    where organization_id = org_uuid
+      and status = 'pending'
+      and seat_reserved = true;
+
+    seat_capacity := coalesce(subscription_record.seat_count, 1);
+    if active_members + pending_invites >= seat_capacity then
+      raise exception 'No available seats. Increase the seat count before reactivating this member.';
+    end if;
+  end if;
+
+  update public.organization_members
+  set status = new_status,
+      updated_at = timezone('utc', now())
+  where id = target_member.id
+  returning * into target_member;
+
+  return target_member;
+end;
+$$;
+
+-- Reassign ownership of an organization's projects, programs, and project
+-- categories from one member to another. Used to retain work history when a
+-- user leaves the organization. Only owner/admin members can call this.
+create or replace function public.transfer_member_assets(
+  org_uuid uuid,
+  from_user uuid,
+  to_user uuid
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_role text;
+  recipient_member public.organization_members;
+  total_transferred integer := 0;
+  moved integer;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required.';
+  end if;
+
+  if from_user = to_user then
+    raise exception 'Source and destination members must differ.';
+  end if;
+
+  select role
+  into caller_role
+  from public.organization_members
+  where organization_id = org_uuid
+    and user_id = auth.uid()
+    and status = 'active';
+
+  if caller_role is null or caller_role not in ('owner', 'admin') then
+    raise exception 'Only organization owners and admins can transfer member assets.';
+  end if;
+
+  select *
+  into recipient_member
+  from public.organization_members
+  where organization_id = org_uuid
+    and user_id = to_user
+    and status = 'active';
+
+  if recipient_member.id is null then
+    raise exception 'The destination user must be an active member of this organization.';
+  end if;
+
+  update public.projects
+  set owner_id = to_user,
+      updated_at = timezone('utc', now())
+  where organization_id = org_uuid
+    and owner_id = from_user;
+  get diagnostics moved = row_count;
+  total_transferred := total_transferred + coalesce(moved, 0);
+
+  update public.programs
+  set owner_id = to_user,
+      updated_at = timezone('utc', now())
+  where organization_id = org_uuid
+    and owner_id = from_user;
+  get diagnostics moved = row_count;
+  total_transferred := total_transferred + coalesce(moved, 0);
+
+  update public.project_categories
+  set owner_id = to_user,
+      updated_at = timezone('utc', now())
+  where organization_id = org_uuid
+    and owner_id = from_user;
+  get diagnostics moved = row_count;
+  total_transferred := total_transferred + coalesce(moved, 0);
+
+  return total_transferred;
+end;
+$$;
+
+-- Remove a member from an organization. If transfer_to is provided, first
+-- transfers the leaving user's projects/programs/categories to that recipient
+-- so the data is retained inside the organization. The auth.users / profiles
+-- row is NOT deleted by this function — only the membership.
+create or replace function public.remove_organization_member(
+  org_uuid uuid,
+  target_user uuid,
+  transfer_to uuid default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_role text;
+  target_member public.organization_members;
+  remaining_owners integer;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required.';
+  end if;
+
+  select role
+  into caller_role
+  from public.organization_members
+  where organization_id = org_uuid
+    and user_id = auth.uid()
+    and status = 'active';
+
+  if caller_role is null or caller_role not in ('owner', 'admin') then
+    raise exception 'Only organization owners and admins can remove members.';
+  end if;
+
+  select *
+  into target_member
+  from public.organization_members
+  where organization_id = org_uuid
+    and user_id = target_user;
+
+  if target_member.id is null then
+    raise exception 'That user is not a member of this organization.';
+  end if;
+
+  if target_member.role = 'owner' then
+    select count(*)
+    into remaining_owners
+    from public.organization_members
+    where organization_id = org_uuid
+      and role = 'owner'
+      and user_id <> target_user;
+
+    if remaining_owners = 0 then
+      raise exception 'Cannot remove the last owner of the organization.';
+    end if;
+  end if;
+
+  if transfer_to is not null then
+    perform public.transfer_member_assets(org_uuid, target_user, transfer_to);
+  end if;
+
+  delete from public.organization_members where id = target_member.id;
+end;
+$$;
+
 create or replace function public.log_project_audit_event()
 returns trigger
 language plpgsql
