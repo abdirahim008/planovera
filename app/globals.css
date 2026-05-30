@@ -222,6 +222,20 @@ body {
   outline-offset: -1px;
 }
 
+/* Sticky left columns (row # gutter + Description) so they stay visible
+   while the numeric columns scroll horizontally on narrow screens. */
+.boq-table-shell td.boq-sticky-col {
+  position: sticky;
+  z-index: 6;
+  background: var(--boq-bg);
+}
+.boq-table-shell .row-gutter.boq-sticky-col {
+  z-index: 7;
+}
+.boq-table-shell td.boq-sticky-col.left-8 {
+  box-shadow: inset -1px 0 0 var(--boq-border-soft), 6px 0 8px -6px rgba(0, 0, 0, 0.45);
+}
+
 .boq-summary-table table {
   overflow: hidden;
   border-radius: 18px;

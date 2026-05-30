@@ -42,11 +42,10 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
-import CompactKpiList, { type CompactKpiTone } from "@/components/ui/CompactKpiList";
 
 const BOQ_COLS = [
   { key: "itemNo" as const, label: "Item No.", width: "w-[80px]", align: "text-center" },
-  { key: "description" as const, label: "Description", width: "min-w-[280px] w-full", align: "text-left" },
+  { key: "description" as const, label: "Description", width: "min-w-[200px] w-full", align: "text-left" },
   { key: "unit" as const, label: "Unit", width: "w-[70px]", align: "text-center" },
   { key: "qty" as const, label: "Quantity", width: "w-[100px]", align: "text-right", mono: true },
   { key: "rate" as const, label: "Rate", width: "w-[110px]", align: "text-right", mono: true },
@@ -618,137 +617,17 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
           <p className="text-accent text-sm font-medium">Paste your data here (Ctrl+V / ⌘V)</p>
         </div>
       )}
-      <div className="space-y-3 p-3 lg:hidden">
-        {rows.map((row, ri) => {
-          const isSelected = selectedRowIds.has(row.id);
-          const rowTone =
-            row.type === "header"
-              ? "border-emerald-500/30 bg-emerald-500/10"
-              : row.type === "subtotal"
-                ? "border-accent/25 bg-accent/10"
-                : row.type === "grandtotal"
-                  ? "border-violet-500/30 bg-violet-500/10"
-                  : row.type === "notes"
-                    ? "border-amber-500/25 bg-amber-500/10"
-                    : "border-border bg-bg-raised/50";
-          return (
-            <div
-              key={`${row.id}-compact`}
-              className={`rounded-2xl border p-3 ${rowTone} ${isSelected ? "ring-2 ring-accent/50" : ""}`}
-              onClick={(e) => handleRowSelect(e, row.id)}
-              onContextMenu={(e) => handleContextMenu(e, row.id)}
-            >
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                    Row {ri + 1} • {row.type}
-                  </div>
-                  {row.type !== "item" && readOnly && (
-                    <div className="mt-1 text-sm font-semibold text-txt">{row.description || "Untitled row"}</div>
-                  )}
-                </div>
-                <Badge color={row.type === "item" ? "accent" : row.type === "notes" ? "warn" : "ok"}>
-                  {row.type}
-                </Badge>
-              </div>
-
-              {row.type === "item" ? (
-                <div className="space-y-3">
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Description</span>
-                    {readOnly ? (
-                      <div className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm text-txt">{row.description || "—"}</div>
-                    ) : (
-                      <textarea
-                        rows={2}
-                        className="w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
-                        value={row.description}
-                        onChange={(e) => updateCell(row.id, "description", e.target.value)}
-                      />
-                    )}
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {([
-                      ["itemNo", "Item No."],
-                      ["unit", "Unit"],
-                      ["qty", "Qty"],
-                      ["rate", "Rate"],
-                    ] as const).map(([key, label]) => {
-                      const isNumericKey = key === "qty" || key === "rate";
-                      const rawValue = (row as any)[key] as string | number | undefined;
-                      const showResolvedFormula = isNumericKey && isFormulaValue(rawValue);
-                      return (
-                        <label key={key} className="block">
-                          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</span>
-                          {readOnly || showResolvedFormula ? (
-                            <div className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm text-txt">
-                              <span className={isNumericKey ? "font-mono" : ""}>
-                                {isNumericKey ? formatBOQNumberDisplay(rawValue, boqSheets) : rawValue || "—"}
-                              </span>
-                              {showResolvedFormula && (
-                                <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
-                                  formula
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <input
-                              className="w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
-                              value={(row as any)[key] || ""}
-                              onChange={(e) => updateCell(row.id, key, e.target.value)}
-                            />
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <div className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-right font-mono text-sm font-bold text-accent">
-                    {formatBOQNumberDisplay(row.amount, boqSheets)}
-                  </div>
-                </div>
-              ) : row.type === "notes" ? (
-                readOnly ? (
-                  <div className="whitespace-pre-wrap rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm text-txt-muted">{row.description || "—"}</div>
-                ) : (
-                  <textarea
-                    rows={3}
-                    className="w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
-                    value={row.description}
-                    onChange={(e) => updateCell(row.id, "description", e.target.value)}
-                  />
-                )
-              ) : (
-                <div className="space-y-2">
-                  {readOnly ? (
-                    <div className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm font-semibold text-txt">{row.description || "—"}</div>
-                  ) : (
-                    <input
-                      className="w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm font-semibold text-txt outline-none focus:border-accent"
-                      value={row.description}
-                      onChange={(e) => updateCell(row.id, "description", e.target.value)}
-                    />
-                  )}
-                  {(row.type === "subtotal" || row.type === "grandtotal") && (
-                    <div className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-right font-mono text-sm font-bold text-accent">
-                      {formatBOQNumberDisplay(row.amount, boqSheets)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <table className="boq-reference-table hidden w-full select-none table-fixed border-collapse lg:table" style={{ minWidth: 820 }}>
+      <table className="boq-reference-table w-full select-none table-fixed border-collapse" style={{ minWidth: 760 }}>
         <thead>
           <tr>
-            <th className="w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 z-10 text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">#</th>
+            <th className="w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 left-0 z-30 text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">#</th>
             {BOQ_COLS.map((col) => {
               const locked = isColumnLocked(col.key);
+              const stickyCol = col.key === "description";
               return (
                 <th
                   key={col.key}
-                  className={`${col.width} px-2 py-2 bg-bg-raised border-b-2 border-b-accent border-r border-r-border text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim ${col.align} sticky top-0 z-10 ${locked ? "cursor-context-menu" : ""}`}
+                  className={`${col.width} px-2 py-2 bg-bg-raised border-b-2 border-b-accent border-r border-r-border text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim ${col.align} sticky top-0 ${stickyCol ? "left-8 z-30" : "z-10"} ${locked ? "cursor-context-menu" : ""}`}
                   onContextMenu={(e) => handleHeaderContextMenu(e, col.key)}
                 >
                   {col.label}
@@ -762,7 +641,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
             const isSelected = selectedRowIds.has(row.id);
             return (
               <tr key={row.id} className={`${getRowClass(row)} ${isSelected ? "row-selected" : ""} transition-colors duration-75`} onContextMenu={(e) => handleContextMenu(e, row.id)}>
-                <td className={`row-gutter ${isSelected ? "selected" : ""}`} onClick={(e) => handleRowSelect(e, row.id)}>{ri + 1}</td>
+                <td className={`row-gutter boq-sticky-col left-0 ${isSelected ? "selected" : ""}`} onClick={(e) => handleRowSelect(e, row.id)}>{ri + 1}</td>
                 {row.type === "notes" ? (
                   <td
                     colSpan={BOQ_COLS.length}
@@ -833,7 +712,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                     <td
                       key={col.key}
                       colSpan={colSpan}
-                      className={`relative px-2 py-[6px] min-h-[34px] border-r border-r-border border-b border-b-border ${col.align} text-[13px] transition-colors ${col.mono ? "font-mono" : ""} ${isInSelection(ri, col.key) ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""} ${locked ? "bg-bg-raised/30 cursor-not-allowed select-none" : ""} ${isFormulaSourceCell ? "cell-linking-source" : ""} ${isFormulaTargetCell ? "cell-linking-target" : ""}`}
+                      className={`relative px-2 py-[6px] min-h-[34px] border-r border-r-border border-b border-b-border ${col.align} text-[13px] transition-colors ${col.mono ? "font-mono" : ""} ${col.key === "description" ? "boq-sticky-col left-8" : ""} ${isInSelection(ri, col.key) ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""} ${locked ? "bg-bg-raised/30 cursor-not-allowed select-none" : ""} ${isFormulaSourceCell ? "cell-linking-source" : ""} ${isFormulaTargetCell ? "cell-linking-target" : ""}`}
                       onMouseDown={(e) => {
                         if (formulaLinking?.active) {
                           e.preventDefault();
@@ -1981,33 +1860,6 @@ export default function BOQModule() {
 
   // ─── VIEW / EDIT MODE ───────────────────────────────────────────
   const isViewMode = mode === "view";
-  const activeRows = boqSheets[activeSheetIndex]?.rows || [];
-  const subtotalTotal = activeRows
-    .filter((row) => row.type === "subtotal")
-    .reduce((sum, row) => sum + resolveBOQNumber(row.amount, boqSheets), 0);
-  const itemTotal = activeRows
-    .filter((row) => row.type === "item")
-    .reduce((sum, row) => sum + resolveBOQNumber(row.amount, boqSheets), 0);
-  const grandTotal = [...activeRows]
-    .reverse()
-    .find((row) => row.type === "grandtotal" && resolveBOQNumber(row.amount, boqSheets) > 0);
-  const boqTotal = grandTotal ? resolveBOQNumber(grandTotal.amount, boqSheets) : subtotalTotal || itemTotal;
-  const contractSum = numberValue(project?.contractAmount);
-  const variance = contractSum > 0 ? contractSum - boqTotal : 0;
-  const summaryCards = [
-    { label: "Contract Sum", value: contractSum ? `USD ${currency(contractSum)}` : "Not set", tone: "blue" },
-    { label: "BOQ Total", value: `USD ${currency(boqTotal)}`, tone: "green" },
-    { label: "Variance", value: contractSum ? `USD ${currency(variance)}` : "Pending", tone: variance < 0 ? "red" : "amber" },
-    { label: "Sections", value: String(activeRows.filter((row) => row.type === "header").length), tone: "neutral" },
-    { label: "Line Items", value: String(activeRows.filter((row) => row.type === "item").length), tone: "neutral" },
-  ];
-  const boqToneToCompact: Record<string, CompactKpiTone> = {
-    blue: "accent",
-    green: "ok",
-    red: "err",
-    amber: "warn",
-    neutral: "neutral",
-  };
 
   return (
     <div className="boq-reference-page animate-fade-in">
@@ -2070,26 +1922,6 @@ export default function BOQModule() {
             </>
           )}
         </div>
-      </div>
-
-      <div className="mb-5 sm:hidden">
-        <CompactKpiList
-          rows={summaryCards.map((card) => ({
-            label: card.label,
-            value: card.value,
-            tone: boqToneToCompact[card.tone] ?? "neutral",
-          }))}
-        />
-      </div>
-      <div className="boq-summary-strip mb-5 hidden overflow-hidden rounded-2xl border border-border bg-bg-surface sm:grid md:grid-cols-5">
-        {summaryCards.map((card) => (
-          <div key={card.label} className="boq-summary-card border-b border-border px-5 py-4 md:border-b-0 md:border-r last:border-r-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{card.label}</div>
-            <div className={`mt-2 text-xl font-semibold tracking-tight boq-summary-value-${card.tone}`}>
-              {card.value}
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Sheet table */}
