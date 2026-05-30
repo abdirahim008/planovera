@@ -22,6 +22,10 @@ export default function AuthPage() {
   const inviteToken = searchParams.get("invite") || searchParams.get("token");
   const inviteEmail = searchParams.get("email");
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
+  // Google sign-in is implemented but disabled for launch (email-only). Flip it on
+  // later by setting NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=true (and finishing the
+  // Google/Supabase provider config) — no code changes required.
+  const googleEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 
   const finalizeAccess = async () => {
     const supabase = getSupabaseBrowserClient();
@@ -58,6 +62,40 @@ export default function AuthPage() {
 
     router.replace("/workspace");
     router.refresh();
+  };
+
+  const handleGoogle = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setNotice("Supabase environment variables are missing.");
+      return;
+    }
+
+    // Preserve invite context through the OAuth round-trip: after Google returns
+    // to /auth/callback we forward the user to the invite page (to claim the
+    // reserved seat) or to the workspace.
+    const nextPath = inviteToken
+      ? `/invite?token=${encodeURIComponent(inviteToken)}${
+          inviteEmail ? `&email=${encodeURIComponent(inviteEmail)}` : ""
+        }`
+      : "/workspace";
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+      nextPath,
+    )}`;
+
+    setBusy(true);
+    setNotice(null);
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+
+    if (error) {
+      setNotice(formatAuthError(error.message));
+      setBusy(false);
+    }
+    // On success the browser is redirected to Google; no further action here.
   };
 
   const handleSignIn = async ({
@@ -148,6 +186,7 @@ export default function AuthPage() {
       initialMode={initialMode}
       onSignIn={handleSignIn}
       onSignUp={handleSignUp}
+      onGoogle={googleEnabled ? handleGoogle : undefined}
     />
   );
 }
