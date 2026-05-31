@@ -623,64 +623,6 @@ function MiniTrendChart({
   );
 }
 
-function DualTrendChart({
-  planned,
-  actual,
-}: {
-  planned: number[];
-  actual: number[];
-}) {
-  const maxCount = Math.max(planned.length, actual.length, 2);
-  const plannedValues = planned.length ? planned : [0, 0];
-  const actualValues = actual.length ? actual : [0, 0];
-  const maxValue = Math.max(...plannedValues, ...actualValues, 1);
-
-  const lineFor = (values: number[]) =>
-    values
-      .map((value, index) => {
-        const x = (index / Math.max(maxCount - 1, 1)) * 220;
-        const y = 110 - (clamp(value, 0, maxValue) / maxValue) * 78;
-        return `${x},${y}`;
-      })
-      .join(" ");
-
-  return (
-    <div className="rounded-2xl border border-border bg-black/10 p-4">
-      <div className="mb-4 flex items-center gap-4 text-[11px] uppercase tracking-[0.18em] text-txt-dim">
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-accent" />
-          Planned
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-ok" />
-          Actual
-        </span>
-      </div>
-      <svg viewBox="0 0 220 118" className="h-36 w-full">
-        {[18, 56, 94].map((y) => (
-          <line key={y} x1="0" x2="220" y1={y} y2={y} stroke="rgba(124, 135, 158, 0.12)" />
-        ))}
-        <polyline
-          fill="none"
-          stroke="#3b82f6"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          points={lineFor(plannedValues)}
-        />
-        <polyline
-          fill="none"
-          stroke="#22c55e"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          points={lineFor(actualValues)}
-        />
-      </svg>
-    </div>
-  );
-}
-
 function RadialGauge({
   value,
   label,
@@ -2481,25 +2423,7 @@ function ProjectOverviewDashboard({
         })}
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-3">
-        <div className="rounded-[24px] border border-border bg-bg-surface p-5 xl:col-span-2">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
-              <TrendingUp size={18} />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
-                Progress Trend
-              </div>
-              <div className="mt-1 text-lg font-black text-white">Planned vs actual movement</div>
-            </div>
-          </div>
-          <DualTrendChart
-            planned={progressHistory.map((item) => item.planned)}
-            actual={progressHistory.map((item) => item.actual)}
-          />
-        </div>
-
+      <div className="mt-5">
         <div className="rounded-2xl border border-border bg-bg-surface p-5">
           <h3 className="mb-4 text-sm font-semibold text-white">Commercial</h3>
 
