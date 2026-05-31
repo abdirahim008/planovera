@@ -482,6 +482,15 @@ function parseContentBlocks(content: string) {
       const isBulletList = lines.every((line) => line.startsWith("- "));
       const headingWithBullets =
         lines.length > 1 && !lines[0].startsWith("- ") && lines.slice(1).every((line) => line.startsWith("- "));
+      // A short label line followed by prose ("Purpose\nThis instruction relates…").
+      // Without this case the heading was being folded into the paragraph text and
+      // rendered as a run-on line. Treat it as a titled section with a body paragraph.
+      const headingWithBody =
+        lines.length > 1 &&
+        !lines[0].startsWith("- ") &&
+        lines[0].length <= 50 &&
+        !/[.;:]$/.test(lines[0]) &&
+        lines.slice(1).every((line) => !line.startsWith("- "));
 
       if (isBulletList) return { type: "bullets" as const, title: "", items: lines.map((line) => line.replace(/^- /, "")) };
       if (headingWithBullets) {
@@ -490,6 +499,9 @@ function parseContentBlocks(content: string) {
           title: lines[0],
           items: lines.slice(1).map((line) => line.replace(/^- /, "")),
         };
+      }
+      if (headingWithBody) {
+        return { type: "section" as const, title: lines[0], items: [lines.slice(1).join(" ")] };
       }
       if (lines.length === 1 && lines[0].length <= 50) return { type: "heading" as const, title: lines[0], items: [] as string[] };
       return { type: "paragraph" as const, title: "", items: [lines.join(" ")] };
@@ -520,6 +532,11 @@ function blocksToHtml(content: string) {
         return `<section class="doc-section"><h3 class="doc-section-title">${escapeHtml(block.title)}</h3><ul class="doc-list">${block.items
           .map((item) => `<li>${escapeHtml(item)}</li>`)
           .join("")}</ul></section>`;
+      }
+      if (block.type === "section") {
+        return `<section class="doc-section"><h3 class="doc-section-label">${escapeHtml(block.title)}</h3><p class="doc-paragraph">${escapeHtml(
+          block.items[0] || "",
+        )}</p></section>`;
       }
       return `<p class="doc-paragraph">${escapeHtml(block.items[0] || "")}</p>`;
     })
@@ -805,12 +822,21 @@ function documentPrintStyles() {
       margin: 0;
     }
     .document-title {
-      font-size: 22px;
+      font-size: 23px;
       text-transform: none;
       letter-spacing: -0.01em;
-      margin: 24px 0 16px;
-      color: #0f172a;
-      font-weight: 600;
+      margin: 24px 0 10px;
+      color: #0f2742;
+      font-weight: 700;
+    }
+    .document-title::after {
+      content: '';
+      display: block;
+      width: 52px;
+      height: 3px;
+      border-radius: 2px;
+      background: #0ea5e9;
+      margin-top: 8px;
     }
     .cover-title {
       color: #0f172a;
@@ -885,6 +911,15 @@ function documentPrintStyles() {
       color: #0f172a;
       margin: 0 0 8px;
       font-weight: 600;
+    }
+    /* Short label heading for letter sections (Purpose / Instruction / Closing …). */
+    .doc-section-label {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #1d5f8b;
+      margin: 0 0 5px;
+      font-weight: 700;
     }
     .doc-paragraph {
       font-size: 13px;
@@ -984,9 +1019,9 @@ function documentPrintStyles() {
       justify-content: space-between;
       gap: 18px;
       margin: -26mm -22mm 22px;
-      padding: 18mm 22mm 16mm;
-      background: #eef8ff;
-      border-bottom: 3px solid #19aee6;
+      padding: 18mm 22mm 14mm;
+      background: linear-gradient(180deg, #f4f9fd 0%, #ffffff 100%);
+      border-bottom: 2px solid #0f2742;
     }
     .brand-mark-box {
       display: flex;
@@ -1001,29 +1036,30 @@ function documentPrintStyles() {
     }
     .brand-kicker {
       font-family: Arial, sans-serif;
-      font-size: 10px;
-      letter-spacing: 0.22em;
+      font-size: 9.5px;
+      letter-spacing: 0.28em;
       text-transform: uppercase;
-      color: #54708c;
+      color: #1d5f8b;
       margin-bottom: 8px;
       font-weight: 700;
     }
     .brand-name {
-      font-size: 26px;
+      font-size: 25px;
       line-height: 1.15;
       margin: 0;
-      color: #12263f;
+      color: #0f2742;
       font-weight: 700;
+      letter-spacing: -0.01em;
       overflow-wrap: anywhere;
     }
     .brand-tagline {
       margin-top: 6px;
       font-family: Arial, sans-serif;
-      font-size: 11px;
+      font-size: 10.5px;
       letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: #1d5f8b;
-      font-weight: 700;
+      color: #64748b;
+      font-weight: 600;
       line-height: 1.5;
     }
     .brand-address {
@@ -3681,39 +3717,42 @@ function DocumentPreview({
             </div>
           ) : (
             <>
-              <div className="-mx-10 -mt-10 mb-8 flex items-start justify-between gap-6 border-b-[3px] border-sky-400 bg-sky-50 px-10 py-8">
-                <div className="flex min-w-0 items-start gap-4">
-                  {mergedDoc.brandLogoDataUrl ? (
-                    <div className="h-16 w-16 overflow-hidden border border-slate-200 bg-white shadow-[0_18px_30px_rgba(15,39,66,0.1)]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={mergedDoc.brandLogoDataUrl} alt="Document logo" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="flex h-16 w-16 items-center justify-center bg-gradient-to-br from-[#145b85] to-[#0f2742] font-black tracking-[0.18em] text-white shadow-[0_18px_30px_rgba(15,39,66,0.22)]">
-                      {documentInitials(mergedDoc)}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                      Official project correspondence
-                    </div>
-                    <h2 className="mt-2 text-[28px] font-bold leading-tight text-slate-900 break-words">
-                      {mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.name || "Project Office"}
-                    </h2>
-                    <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700 break-words">
-                      {mergedDoc.letterheadSubtitle || branding.headerTagline || project?.contractTitle || mergedDoc.title}
-                    </div>
-                    <div className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-500">
-                      {mergedDoc.letterheadAddress || branding.issuerAddress || project?.location || "Project Location"}
+              <div className="-mx-10 -mt-10 mb-9 border-b-2 border-[#0f2742] bg-gradient-to-b from-[#f4f9fd] to-white px-10 pb-7 pt-9">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="flex min-w-0 items-start gap-4">
+                    {mergedDoc.brandLogoDataUrl ? (
+                      <div className="h-16 w-16 shrink-0 overflow-hidden border border-slate-200 bg-white shadow-[0_18px_30px_rgba(15,39,66,0.1)]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={mergedDoc.brandLogoDataUrl} alt="Document logo" className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center bg-gradient-to-br from-[#145b85] to-[#0f2742] text-base font-black tracking-[0.16em] text-white shadow-[0_18px_30px_rgba(15,39,66,0.22)]">
+                        {documentInitials(mergedDoc)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-[9.5px] font-semibold uppercase tracking-[0.28em] text-sky-700">
+                        Official project correspondence
+                      </div>
+                      <h2 className="mt-2 text-[26px] font-bold leading-tight tracking-tight text-[#0f2742] break-words">
+                        {mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.name || "Project Office"}
+                      </h2>
+                      <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 break-words">
+                        {mergedDoc.letterheadSubtitle || branding.headerTagline || project?.contractTitle || mergedDoc.title}
+                      </div>
+                      <div className="mt-3 whitespace-pre-line text-[13px] leading-6 text-slate-500">
+                        {mergedDoc.letterheadAddress || branding.issuerAddress || project?.location || "Project Location"}
+                      </div>
                     </div>
                   </div>
+                  <Badge color={mergedDoc.status === "approved" ? "ok" : mergedDoc.status === "issued" ? "accent" : "warn"}>
+                    {mergedDoc.status.toUpperCase()}
+                  </Badge>
                 </div>
-                <Badge color={mergedDoc.status === "approved" ? "ok" : mergedDoc.status === "issued" ? "accent" : "warn"}>
-                  {mergedDoc.status.toUpperCase()}
-                </Badge>
               </div>
               <div className="mt-8">
-                <h1 className="text-[30px] font-black uppercase tracking-[0.12em] text-slate-900">{mergedDoc.title}</h1>
+                <h1 className="text-[26px] font-bold tracking-tight text-[#0f2742]">{mergedDoc.title}</h1>
+                <div className="mt-2 h-[3px] w-14 rounded-full bg-sky-500" />
               </div>
             </>
           )}
@@ -3816,6 +3855,17 @@ function DocumentPreview({
                         <li key={itemIndex}>{item}</li>
                       ))}
                     </ul>
+                  </section>
+                );
+              }
+
+              if (block.type === "section") {
+                return (
+                  <section key={index}>
+                    <h3 className="mb-1.5 text-[12px] font-bold uppercase tracking-[0.16em] text-sky-700 font-sans">
+                      {block.title}
+                    </h3>
+                    <p className="text-[15px] leading-8 text-slate-700">{block.items[0]}</p>
                   </section>
                 );
               }
