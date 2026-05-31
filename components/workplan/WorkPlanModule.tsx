@@ -284,7 +284,7 @@ function WorkPlanTable({
     isDragging: boolean;
   } | null>(null);
 
-  const wpCols = ["description", "duration", "startDate", "status"];
+  const wpCols = ["description", "duration", "startDate"];
 
   useEffect(() => {
     setSelectedRowIds([]);
@@ -485,9 +485,11 @@ function WorkPlanTable({
                     />
                   )}
                 </div>
-                <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${isSection ? "border-border bg-bg-surface text-txt-dim" : statusColors[act.status]}`}>
-                  {isSection ? "Section" : statusLabel(act.status)}
-                </span>
+                {isSection && (
+                  <span className="rounded-full border border-border bg-bg-surface px-2 py-1 text-[10px] font-bold text-txt-dim">
+                    Section
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="rounded-xl border border-border bg-bg-raised/50 p-3">
@@ -520,23 +522,6 @@ function WorkPlanTable({
                   <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">End</div>
                   <div className="mt-1 font-mono font-bold text-txt">{act.endDate || "—"}</div>
                 </div>
-                <label className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                  <span className="block text-[10px] uppercase tracking-[0.14em] text-txt-dim">Status</span>
-                  {readOnly || isSection ? (
-                    <div className="mt-1 font-semibold text-txt">{isSection ? "Section" : statusLabel(act.status)}</div>
-                  ) : (
-                    <select
-                      value={act.status}
-                      onChange={(e) => updateActivity(act.id, "status", e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-border bg-bg-input px-2 py-1 text-sm text-txt outline-none focus:border-accent"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="in-progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="delayed">Delayed</option>
-                    </select>
-                  )}
-                </label>
               </div>
               {!readOnly && !isSection && (
                 <button
@@ -563,7 +548,6 @@ function WorkPlanTable({
               <th style={{ width: 110 }} className="text-center">Duration (days)</th>
               <th style={{ width: 130 }} className="text-center">Start Date</th>
               <th style={{ width: 130 }} className="text-center">End Date</th>
-              <th style={{ width: 120 }} className="text-center">Status</th>
               {!readOnly && <th style={{ width: 40 }} aria-label="Actions" />}
             </tr>
           </thead>
@@ -600,22 +584,6 @@ function WorkPlanTable({
                         onChange={(e) => updateActivity(act.id, "startDate", e.target.value)} onPaste={(e) => handlePaste(i, "startDate", e)} />}
                 </td>
                 <td className="text-center text-xs font-mono text-txt-muted">{act.endDate || "—"}</td>
-                <td className={`text-center transition-colors ${isInSelection(i, "status") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
-                    onMouseDown={() => handleMouseDown(i, "status")} onMouseEnter={() => handleMouseEnter(i, "status")}>
-                  {readOnly || isSection ? (
-                    <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold border ${isSection ? "text-txt-dim bg-bg-surface border-border" : statusColors[act.status] || ""}`}>
-                      {isSection ? "Section" : act.status === "in-progress" ? "In Progress" : act.status.charAt(0).toUpperCase() + act.status.slice(1)}
-                    </span>
-                  ) : (
-                    <select value={act.status} onChange={(e) => updateActivity(act.id, "status", e.target.value)}
-                      className={`px-1.5 py-0.5 rounded text-[11px] font-semibold border cursor-pointer outline-none ${statusColors[act.status] || ""}`}>
-                      <option value="pending">Pending</option>
-                      <option value="in-progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="delayed">Delayed</option>
-                    </select>
-                  )}
-                </td>
                 {!readOnly && (
                   <td className="data-cell-action">
                     <button onClick={() => deleteActivity(act.id)} className="data-row-action danger" aria-label="Delete activity"><Trash2 size={13} /></button>
