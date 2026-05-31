@@ -237,6 +237,12 @@ create table if not exists public.projects (
   currency text not null default 'USD',
   start_date date,
   end_date date,
+  client_logo_data_url text,
+  client_display_name text,
+  client_address text,
+  issuer_display_name text,
+  issuer_address text,
+  header_tagline text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
