@@ -2247,7 +2247,6 @@ function ProjectOverviewDashboard({
 }) {
   const {
     project,
-    physical,
     financial,
     progress,
     commercial,
@@ -2290,7 +2289,7 @@ function ProjectOverviewDashboard({
     },
     {
       title: "Physical Progress",
-      value: `${physical}%`,
+      value: `${progress.actual.toFixed(1)}%`,
       subtitle: `Planned ${progress.planned.toFixed(1)}% vs actual ${progress.actual.toFixed(1)}%`,
       icon: Activity,
       tone: progress.variance >= 0 ? ("ok" as Tone) : ("warn" as Tone),
@@ -2396,7 +2395,7 @@ function ProjectOverviewDashboard({
               <ProgressStrip label="Actual" value={progress.actual} tone={progress.variance >= 0 ? "ok" : "warn"} />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <CompactGauge value={physical} label="Physical" tone="ok" />
+              <CompactGauge value={timeline?.percent ?? 0} label="Time Elapsed" tone="warn" />
               <CompactGauge value={financial} label="Financial" tone="accent" />
             </div>
           </div>
@@ -2407,10 +2406,7 @@ function ProjectOverviewDashboard({
 
           {timeline ? (
             <>
-              <CompactGauge value={timeline.percent} label="Time Elapsed" tone="warn" />
-              <div className="mt-5">
-                <ProgressStrip label={`${timeline.elapsedDays} of ${timeline.totalDays} days`} value={timeline.percent} tone="warn" />
-              </div>
+              <ProgressStrip label={`${timeline.elapsedDays} of ${timeline.totalDays} days`} value={timeline.percent} tone="warn" />
               <div className="mt-5 grid gap-2 text-xs sm:grid-cols-3">
                 <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Start</div>
