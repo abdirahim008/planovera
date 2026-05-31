@@ -572,7 +572,7 @@ export default function ProgressModule() {
         {projectReports.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <p className="text-txt-muted text-sm font-medium">No progress reports yet</p>
-            <Button variant="primary" size="md" className="mt-4" onClick={() => setShowCreate(true)} disabled={!sourceOptions.length}>
+            <Button variant="primary" size="md" className="mt-4" onClick={() => setShowCreate(true)} disabled={!sourceOptions.length || showCreate}>
               <Plus size={14} /> Create Report
             </Button>
           </div>

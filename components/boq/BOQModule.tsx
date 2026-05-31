@@ -695,7 +695,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                   const colSpan = mergedSpanCount ? mergedSpanCount : undefined;
                   const isEditing = !readOnly && editing?.id === row.id && editing?.key === col.key;
                   const locked = isColumnLocked(col.key);
-                  const editable = !readOnly && !locked && (row.type === "item" || (col.key === "description" && (row.type === "header" || row.type === "subtotal" || row.type === "grandtotal")));
+                  const editable = !readOnly && !locked && (row.type === "item" || (col.key === "description" && (row.type === "header" || row.type === "subtotal" || row.type === "grandtotal")) || (col.key === "itemNo" && row.type === "header"));
                   const cellValue = String((row as any)[col.key] ?? "");
                   const showFormulaSuggestions = isEditing && cellValue.startsWith("=");
                   const isFormulaSourceCell =

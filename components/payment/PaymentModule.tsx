@@ -587,6 +587,69 @@ export default function PaymentModule() {
                 </table>
               </div>
 
+              {activeCert.type !== "final" && (() => {
+                const outstandingBefore = Math.max(
+                  0,
+                  activeCalcs.advancePaymentAmount - activeCalcs.previousAdvanceRecovered
+                );
+                const proposed = Math.min(
+                  Math.max(0, (activeCalcs.curr.grand * (activeCert.advancePaymentPercent || 0)) / 100),
+                  outstandingBefore
+                );
+                return (
+                  <div className="rounded-2xl border border-purple-400/30 bg-purple-500/5 p-4">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Advance recovery</div>
+                      <div className="text-xs text-txt-muted">
+                        Balance after this certificate:{" "}
+                        <span className="font-mono font-semibold text-purple-300">$ {currency(activeCalcs.total.advanceBalance)}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                      {[
+                        ["Original advance", `$ ${currency(activeCalcs.advancePaymentAmount)}`],
+                        ["Previously recovered", `$ ${currency(activeCalcs.previousAdvanceRecovered)}`],
+                        ["Recovered to date", `$ ${currency(activeCalcs.total.advance)}`],
+                        ["Outstanding before this", `$ ${currency(outstandingBefore)}`],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
+                          <div className="mt-1 font-mono font-semibold text-txt">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <label className="flex-1">
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Recovery this period</span>
+                        {isEditMode && !activeLocked ? (
+                          <input
+                            value={activeCert.advanceRecoveryCurrent ?? ""}
+                            onChange={(e) => updateCertSettings(activeCert.id, { advanceRecoveryCurrent: e.target.value })}
+                            placeholder={proposed.toFixed(2)}
+                            className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-right font-mono text-sm text-txt outline-none focus:border-accent"
+                          />
+                        ) : (
+                          <div className="font-mono font-semibold text-purple-300">$ {currency(activeCalcs.currentAdvanceRecovery)}</div>
+                        )}
+                      </label>
+                      {isEditMode && !activeLocked && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => updateCertSettings(activeCert.id, { advanceRecoveryCurrent: proposed.toFixed(2) })}
+                        >
+                          Propose {activeCert.advancePaymentPercent || 0}% proportional
+                        </Button>
+                      )}
+                    </div>
+                    <div className="mt-2 text-[11px] text-txt-dim">
+                      Proposed = {activeCert.advancePaymentPercent || 0}% of this period&apos;s gross valuation
+                      (${currency(activeCalcs.curr.grand)}), capped at the outstanding advance.
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="rounded-2xl border border-border bg-bg-surface p-4">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Deductions and adjustments</div>
@@ -701,8 +764,10 @@ export default function PaymentModule() {
                           {[
                             ["BOQ Qty", `${currency(line.boqQty)} ${item.unit}`],
                             ["Previous Qty", currency(line.previousQty)],
-                            ["This period", currency(line.currentQty)],
+                            ["This period (qty)", currency(line.currentQty)],
                             ["Balance Qty", currency(line.balanceQty)],
+                            ["Current Amount", `$ ${currency(line.currentAmount)}`],
+                            ["Cumulative Amount", `$ ${currency(line.totalAmount)}`],
                           ].map(([label, value]) => (
                             <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
                               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
@@ -710,7 +775,7 @@ export default function PaymentModule() {
                             </div>
                           ))}
                           <label className="col-span-2 rounded-xl border border-accent/30 bg-accent/5 p-3">
-                            <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Cumulative Qty to date</span>
+                            <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Cumulative Qty to date <span className="text-accent">(enter — "This period" is derived)</span></span>
                             {isEditMode && !activeLocked ? (
                               <input
                                 value={
@@ -737,6 +802,29 @@ export default function PaymentModule() {
                       </div>
                     );
                   })}
+                  {(() => {
+                    const totals = sheetTotals(sheet);
+                    return (
+                      <div className="rounded-2xl border border-accent/40 bg-accent/10 p-4">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                          Sheet total — {sheet.name}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {[
+                            ["BOQ Amount", `$ ${currency(totals.boq)}`],
+                            ["Previous Amount", `$ ${currency(totals.previous)}`],
+                            ["Current Amount", `$ ${currency(totals.current)}`],
+                            ["Cumulative Amount", `$ ${currency(totals.total)}`],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
+                              <div className="mt-1 font-mono font-semibold text-txt">{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="hidden data-table-shell overflow-auto xl:block" style={{ maxHeight: "calc(100vh - 425px)" }}>
@@ -752,9 +840,9 @@ export default function PaymentModule() {
                         <th className="text-right">BOQ Amount</th>
                         <th className="text-right">Prev Qty</th>
                         <th className="text-right">Prev Amount</th>
-                        <th className="text-right">Current Qty</th>
+                        <th className="text-right" title="Derived automatically = Cumulative Qty − Previous Qty">Current Qty <span className="font-normal text-txt-dim">(auto)</span></th>
                         <th className="text-right">Current Amount</th>
-                        <th className="text-right">Cumulative Qty</th>
+                        <th className="text-right" title="Enter the total quantity completed to date. Current Qty is derived from this.">Cumulative Qty <span className="font-normal text-accent">(enter)</span></th>
                         <th className="text-right">Balance Qty</th>
                         <th className="text-right">Cumulative Amount</th>
                         <th>Note</th>
