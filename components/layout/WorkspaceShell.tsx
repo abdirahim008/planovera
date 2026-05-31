@@ -804,6 +804,10 @@ export default function WorkspaceShell() {
       // user must NOT flip the shell back to "Loading workspace". Only do a
       // full re-sync when the signed-in user actually changes.
       if (session.user.id === syncedUserIdRef.current) {
+        // Defensive: we've already loaded this user's workspace, so make sure
+        // the shell is never left stranded on the loading screen by a benign
+        // event. (No-op when projectsReady is already true.)
+        setProjectsReady(true);
         return;
       }
 
