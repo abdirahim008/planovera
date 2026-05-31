@@ -1790,9 +1790,20 @@ function PortfolioDashboard({
                       {summary.project.name}
                     </button>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => onEditProject(summary.project)}>
-                    <PenTool size={14} /> Edit
-                  </Button>
+                  <div className="flex flex-shrink-0 items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => onEditProject(summary.project)}>
+                      <PenTool size={14} /> Edit
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteProject(summary.project)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-txt-dim transition hover:bg-rose-500/10 hover:text-rose-400"
+                      aria-label={`Delete ${summary.project.name}`}
+                      title="Delete project"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
