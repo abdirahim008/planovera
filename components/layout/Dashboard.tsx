@@ -95,6 +95,8 @@ type ProjectFormData = {
   contractAmount: string;
   currency: string;
   start_date: string;
+  /** Project duration in whole months; drives the auto-calculated end date. */
+  durationMonths: string;
   end_date: string;
   documentClientLogoDataUrl: string;
   documentClientDisplayName: string;
@@ -130,6 +132,7 @@ const defaultProjectFormData = (): ProjectFormData => ({
   contractAmount: "",
   currency: "USD",
   start_date: "",
+  durationMonths: "",
   end_date: "",
   documentClientLogoDataUrl: "",
   documentClientDisplayName: "",
@@ -166,6 +169,7 @@ const projectToFormData = (project: Project): ProjectFormData => ({
   contractAmount: project.contractAmount || "",
   currency: project.currency || "USD",
   start_date: project.start_date || "",
+  durationMonths: monthsBetweenIso(project.start_date || "", project.end_date || ""),
   end_date: project.end_date || "",
   documentClientLogoDataUrl: project.documentBranding?.clientLogoDataUrl || "",
   documentClientDisplayName: project.documentBranding?.clientDisplayName || "",
@@ -174,6 +178,39 @@ const projectToFormData = (project: Project): ProjectFormData => ({
   documentIssuerAddress: project.documentBranding?.issuerAddress || "",
   documentHeaderTagline: project.documentBranding?.headerTagline || "",
 });
+
+/**
+ * Add a whole number of months to an ISO date (YYYY-MM-DD), clamping the day so
+ * e.g. Jan 31 + 1 month becomes Feb 28/29 rather than rolling into March.
+ * Returns "" when the inputs are invalid.
+ */
+function addMonthsIso(startIso: string, months: number): string {
+  if (!startIso || !Number.isFinite(months)) return "";
+  const date = new Date(`${startIso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  const targetMonth = date.getMonth() + months;
+  const result = new Date(date);
+  result.setDate(1);
+  result.setMonth(targetMonth);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(date.getDate(), lastDay));
+  return result.toISOString().slice(0, 10);
+}
+
+/**
+ * Whole months between two ISO dates, used to seed the duration field when
+ * editing a project that only has start/end dates stored. Returns "" if the
+ * span isn't a positive whole-month-ish value.
+ */
+function monthsBetweenIso(startIso: string, endIso: string): string {
+  if (!startIso || !endIso) return "";
+  const start = new Date(`${startIso}T00:00:00`);
+  const end = new Date(`${endIso}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+  let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  if (end.getDate() < start.getDate()) months -= 1;
+  return months > 0 ? String(months) : "";
+}
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -1803,9 +1840,6 @@ function PortfolioDashboard({
                           >
                             {summary.project.name}
                           </button>
-                          <span className="shrink-0 rounded border border-border bg-black/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-txt-muted">
-                            {summary.project.type === "construction" ? "Constr" : "Non-c"}
-                          </span>
                         </div>
                         {meta ? (
                           <div className="mt-0.5 truncate text-[11px] text-txt-dim">{meta}</div>
@@ -2954,44 +2988,30 @@ function CreateProjectModal({
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
               What kind of project is this?
             </label>
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-              {PROJECT_PRESETS.map((preset) => {
-                const selected = formData.preset === preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        preset: preset.id,
-                        type: preset.type,
-                        // Only nudge the role / category when the user hasn't already typed
-                        // anything else — preserves edits if they jumped back to swap preset.
-                        role: prev.role === "supervision" || prev.role === "contractor" || prev.role === "employer"
-                          ? preset.defaultRole
-                          : prev.role,
-                      }))
-                    }
-                    className={`flex h-full flex-col items-start gap-1 rounded-xl border px-3 py-3 text-left transition-all ${
-                      selected
-                        ? "border-accent bg-accent/10 ring-2 ring-accent/40"
-                        : "border-border bg-bg-input hover:border-accent/45 hover:bg-bg-hover"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-base leading-none">{preset.marker}</span>
-                      <span className={`text-[13px] font-semibold leading-tight ${selected ? "text-accent" : "text-txt"}`}>
-                        {preset.title}
-                      </span>
-                    </div>
-                    <div className="text-[10px] leading-snug text-txt-muted">
-                      {preset.blurb}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <select
+              className="w-full appearance-none rounded-xl border border-border bg-bg-input px-3 py-3 text-sm font-semibold text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
+              value={formData.preset}
+              onChange={(e) => {
+                const next = getProjectPreset(e.target.value);
+                setFormData((prev) => ({
+                  ...prev,
+                  preset: next.id,
+                  type: next.type,
+                  // Only nudge the role when it's still one of the known defaults —
+                  // preserves a manual choice if the user re-opens the dropdown.
+                  role:
+                    prev.role === "supervision" || prev.role === "contractor" || prev.role === "employer"
+                      ? next.defaultRole
+                      : prev.role,
+                }));
+              }}
+            >
+              {PROJECT_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.marker} {preset.title} — {preset.blurb}
+                </option>
+              ))}
+            </select>
             <p className="text-[11px] text-txt-dim">
               {getProjectPreset(formData.preset).helper}
             </p>
@@ -3262,7 +3282,7 @@ function CreateProjectModal({
               />
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-3">
             <div className="space-y-2">
               <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
                 Start Date
@@ -3271,7 +3291,41 @@ function CreateProjectModal({
                 type="date"
                 className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
                 value={formData.start_date}
-                onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => {
+                    const start = e.target.value;
+                    const months = Number(prev.durationMonths);
+                    const end =
+                      start && prev.durationMonths && Number.isFinite(months) && months > 0
+                        ? addMonthsIso(start, months)
+                        : prev.end_date;
+                    return { ...prev, start_date: start, end_date: end };
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
+                Duration (months)
+              </label>
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
+                placeholder="e.g. 12"
+                value={formData.durationMonths}
+                onChange={(e) =>
+                  setFormData((prev) => {
+                    const raw = e.target.value;
+                    const months = Number(raw);
+                    const end =
+                      prev.start_date && raw && Number.isFinite(months) && months > 0
+                        ? addMonthsIso(prev.start_date, months)
+                        : prev.end_date;
+                    return { ...prev, durationMonths: raw, end_date: end };
+                  })
+                }
               />
             </div>
             <div className="space-y-2">
@@ -3282,8 +3336,18 @@ function CreateProjectModal({
                 type="date"
                 className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
                 value={formData.end_date}
-                onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    end_date: e.target.value,
+                    // Manual end-date edit re-derives the duration to keep them in sync.
+                    durationMonths: monthsBetweenIso(prev.start_date, e.target.value),
+                  }))
+                }
               />
+              <p className="text-[11px] text-txt-dim">
+                Auto-filled from start date + duration. You can still adjust it directly.
+              </p>
             </div>
           </div>
         </div>
