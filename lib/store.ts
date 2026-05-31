@@ -1756,6 +1756,7 @@ interface AppState {
   selectProject: (projectId: string) => void;
   createNewProject: (p: Project) => void;
   updateProject: (projectId: string, updates: Partial<Project>) => void;
+  deleteProject: (projectId: string) => void;
   loadDemoWorkspace: () => void;
   importLocalTestData: (payload: Surp2ImportPayload | FinalCertificateImportPayload) => void;
   mergeAdoptedWorkspace: (workspace: AdoptableWorkspace) => void;
@@ -2078,6 +2079,32 @@ export const useAppStore = create<AppState>()(
           return {
             projects,
             project: s.project?.id === projectId ? updatedProject : s.project,
+          };
+        }),
+      deleteProject: (projectId) =>
+        set((s) => {
+          // Cascade: drop every project-scoped record so deleting a project
+          // doesn't leave orphaned BOQs, certificates, reports, notes, etc.
+          const keep = <T extends { project_id?: string }>(rows: T[]) =>
+            rows.filter((row) => row.project_id !== projectId);
+          const wasActive = s.project?.id === projectId;
+
+          return {
+            projects: s.projects.filter((p) => p.id !== projectId),
+            savedBOQs: keep(s.savedBOQs),
+            savedWorkPlans: keep(s.savedWorkPlans),
+            savedSimpleItemSets: keep(s.savedSimpleItemSets),
+            certificates: keep(s.certificates),
+            progressReports: keep(s.progressReports),
+            generatedDocuments: keep(s.generatedDocuments),
+            correspondenceRecords: keep(s.correspondenceRecords),
+            checklistItems: keep(s.checklistItems),
+            siteNotes: keep(s.siteNotes),
+            risks: keep(s.risks),
+            stakeholders: keep(s.stakeholders),
+            // If the deleted project was the one currently open, clear the
+            // selection and reset the per-project working state.
+            ...(wasActive ? { project: null, ...resetProjectWorkspace() } : {}),
           };
         }),
       loadDemoWorkspace: () => set(() => buildDemoWorkspace()),

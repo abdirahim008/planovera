@@ -47,15 +47,202 @@ type RoadPackageSeed = {
   longitude: string;
   plannedProgress: number;
   actualProgress: number;
-  rows: Array<{
-    itemNo: string;
-    description: string;
-    unit: string;
-    qty: number;
-    rate: number;
-    currentPercent: number;
-    plannedPercent: number;
-  }>;
+  /** Scales the base bill quantities/lump sums so each package has a distinct contract value. */
+  scale: number;
+};
+
+// Percentage added on the BOQ summary page, mirroring a real FIDIC-style bill of quantities.
+const CONTINGENCY_PERCENT = 15;
+const GOVERNMENT_TAX_PERCENT = 8;
+
+type BillItemTemplate = {
+  description: string;
+  unit: string;
+  qty: number;
+  rate: number;
+};
+
+type BillTemplate = {
+  billNo: string;
+  title: string;
+  /** Which detail sheet the bill is printed on. */
+  sheet: "prelim" | "road";
+  items: BillItemTemplate[];
+};
+
+// Reusable road-rehabilitation bill structure, modelled on a typical Mogadishu urban-roads
+// contract BOQ (Preliminary & General + measured road and drainage bills). Quantities are the
+// base values for scale = 1.0 and are scaled per package below.
+const ROAD_BILL_TEMPLATES: BillTemplate[] = [
+  {
+    billNo: "1",
+    title: "Preliminary & General",
+    sheet: "prelim",
+    items: [
+      { description: "Mobilisation, site establishment and demobilisation", unit: "LS", qty: 1, rate: 45000 },
+      { description: "Provision and maintenance of Engineer's site office and facilities", unit: "Month", qty: 6, rate: 2500 },
+      { description: "Material testing and quality control (Provisional Sum)", unit: "PC Sum", qty: 1, rate: 40000 },
+      { description: "Environmental, Social, Health & Safety (ESHS) management", unit: "LS", qty: 1, rate: 22000 },
+      { description: "SEA/GBV prevention and community awareness training", unit: "LS", qty: 1, rate: 8000 },
+      { description: "Traffic management, diversions and temporary signage", unit: "LS", qty: 1, rate: 18000 },
+      { description: "As-built drawings and project close-out documentation", unit: "LS", qty: 1, rate: 6000 },
+    ],
+  },
+  {
+    billNo: "4",
+    title: "Site Clearance",
+    sheet: "road",
+    items: [
+      { description: "Clearing and grubbing of road reserve", unit: "m2", qty: 18000, rate: 1.2 },
+      { description: "Removal and disposal of existing pavement and structures", unit: "m3", qty: 1200, rate: 9.5 },
+      { description: "Relocation of existing services and utilities (Provisional)", unit: "LS", qty: 1, rate: 15000 },
+    ],
+  },
+  {
+    billNo: "5",
+    title: "Earthworks",
+    sheet: "road",
+    items: [
+      { description: "Excavation to formation level in all materials", unit: "m3", qty: 9500, rate: 7.5 },
+      { description: "Fill and compaction with approved imported material", unit: "m3", qty: 7200, rate: 9.0 },
+      { description: "Preparation and compaction of subgrade", unit: "m2", qty: 16000, rate: 1.8 },
+    ],
+  },
+  {
+    billNo: "8",
+    title: "Culverts & Drainage",
+    sheet: "road",
+    items: [
+      { description: "Excavation for drainage structures and pipe trenches", unit: "m3", qty: 1600, rate: 8.5 },
+      { description: "Reinforced concrete box culverts, headwalls and wingwalls", unit: "m3", qty: 320, rate: 280 },
+      { description: "Lined side drains and U-channels", unit: "m", qty: 2400, rate: 38 },
+      { description: "Precast concrete pipe culverts, 600mm diameter", unit: "m", qty: 180, rate: 95 },
+    ],
+  },
+  {
+    billNo: "12",
+    title: "Natural Gravel Sub-base & Base",
+    sheet: "road",
+    items: [
+      { description: "Natural gravel sub-base, placed and compacted", unit: "m3", qty: 4200, rate: 28 },
+      { description: "Crushed stone base course, placed and compacted", unit: "m3", qty: 3100, rate: 42 },
+    ],
+  },
+  {
+    billNo: "15",
+    title: "Bituminous Surface Treatment",
+    sheet: "road",
+    items: [
+      { description: "Prime coat to base course", unit: "m2", qty: 21000, rate: 1.6 },
+      { description: "Tack coat between bituminous layers", unit: "m2", qty: 21000, rate: 0.9 },
+    ],
+  },
+  {
+    billNo: "16",
+    title: "Bituminous Mix (Asphalt Concrete)",
+    sheet: "road",
+    items: [
+      { description: "Asphalt concrete wearing course, 50mm compacted", unit: "m2", qty: 20500, rate: 22 },
+      { description: "Asphalt concrete binder course, 60mm compacted", unit: "m2", qty: 20500, rate: 18 },
+    ],
+  },
+  {
+    billNo: "17",
+    title: "Concrete Works",
+    sheet: "road",
+    items: [
+      { description: "Precast concrete kerbs and channels", unit: "m", qty: 4200, rate: 16 },
+      { description: "Reinforced concrete slabs, aprons and inlets", unit: "m3", qty: 140, rate: 240 },
+    ],
+  },
+  {
+    billNo: "20",
+    title: "Road Furniture & Markings",
+    sheet: "road",
+    items: [
+      { description: "Thermoplastic road markings and studs", unit: "m2", qty: 1800, rate: 22 },
+      { description: "Road signs, posts and gantries", unit: "No.", qty: 60, rate: 380 },
+      { description: "Steel guardrails and safety barriers", unit: "m", qty: 900, rate: 65 },
+      { description: "Concrete walkways and pedestrian facilities", unit: "m2", qty: 3600, rate: 28 },
+    ],
+  },
+  {
+    billNo: "25",
+    title: "Street Lighting (Provisional)",
+    sheet: "road",
+    items: [
+      { description: "Supply and install solar street lighting (Provisional Sum)", unit: "No.", qty: 80, rate: 850 },
+    ],
+  },
+  {
+    billNo: "26",
+    title: "Road Safety & Day Works",
+    sheet: "road",
+    items: [
+      { description: "Community road safety awareness campaign", unit: "LS", qty: 1, rate: 12000 },
+      { description: "Day works and contingency labour (Provisional)", unit: "Ps", qty: 1, rate: 15000 },
+    ],
+  },
+];
+
+type SeedBillItem = BillItemTemplate & { itemNo: string; lineAmount: number };
+
+type SeedBill = {
+  billNo: string;
+  title: string;
+  sheet: "prelim" | "road";
+  items: SeedBillItem[];
+  subtotal: number;
+  currentPercent: number;
+  plannedPercent: number;
+};
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+// Earlier bills (clearance, earthworks) are further along than later finishing trades
+// (asphalt, furniture, lighting). Spread the package-level progress across the bills so the
+// demo progress reports and certificates read like a real mid-contract snapshot.
+const billProgress = (index: number, count: number, actualBase: number, plannedBase: number) => {
+  const lead = count > 1 ? (count - 1 - index) / (count - 1) : 1; // 1 = first bill, 0 = last bill
+  const offset = lead - 0.5; // +0.5 .. -0.5
+  return {
+    currentPercent: clampPercent(actualBase + offset * 55),
+    plannedPercent: clampPercent(plannedBase + offset * 48),
+  };
+};
+
+const buildSeedBills = (seed: RoadPackageSeed): SeedBill[] =>
+  ROAD_BILL_TEMPLATES.map((template, billIndex) => {
+    const items: SeedBillItem[] = template.items.map((item, itemIndex) => {
+      const isLumpSum = item.qty <= 1;
+      const qty = isLumpSum ? item.qty : Math.max(1, Math.round(item.qty * seed.scale));
+      const rate = isLumpSum ? Math.round(item.rate * seed.scale) : item.rate;
+      return {
+        ...item,
+        itemNo: `${template.billNo}.${String(itemIndex + 1).padStart(2, "0")}`,
+        qty,
+        rate,
+        lineAmount: amount(qty, rate),
+      };
+    });
+    const subtotal = items.reduce((sum, item) => sum + item.lineAmount, 0);
+    const { currentPercent, plannedPercent } = billProgress(
+      billIndex,
+      ROAD_BILL_TEMPLATES.length,
+      seed.actualProgress,
+      seed.plannedProgress,
+    );
+    return { billNo: template.billNo, title: template.title, sheet: template.sheet, items, subtotal, currentPercent, plannedPercent };
+  });
+
+const packageBillSubtotal = (seed: RoadPackageSeed) =>
+  buildSeedBills(seed).reduce((sum, bill) => sum + bill.subtotal, 0);
+
+// Sub-total + 15% contingency + 8% government tax = "Total carried to Form of Bid".
+const packageContractSum = (seed: RoadPackageSeed) => {
+  const subtotal = packageBillSubtotal(seed);
+  const afterContingency = subtotal * (1 + CONTINGENCY_PERCENT / 100);
+  return afterContingency * (1 + GOVERNMENT_TAX_PERCENT / 100);
 };
 
 const roadPackages: RoadPackageSeed[] = [
@@ -71,12 +258,7 @@ const roadPackages: RoadPackageSeed[] = [
     longitude: "45.2882",
     plannedProgress: 58,
     actualProgress: 47,
-    rows: [
-      { itemNo: "A.1", description: "Mobilization, site establishment, traffic management, and temporary facilities", unit: "LS", qty: 1, rate: 145000, currentPercent: 100, plannedPercent: 100 },
-      { itemNo: "B.1", description: "Earthworks, excavation, formation preparation, and disposal of unsuitable material", unit: "m3", qty: 2200, rate: 18, currentPercent: 82, plannedPercent: 90 },
-      { itemNo: "C.1", description: "Sub-base and base course pavement layers including compaction and testing", unit: "m3", qty: 1600, rate: 46, currentPercent: 52, plannedPercent: 64 },
-      { itemNo: "D.1", description: "Asphalt surfacing, prime coat, tack coat, and road markings", unit: "m2", qty: 11800, rate: 16, currentPercent: 24, plannedPercent: 45 },
-    ],
+    scale: 0.8,
   },
   {
     packageNumber: 2,
@@ -90,12 +272,7 @@ const roadPackages: RoadPackageSeed[] = [
     longitude: "45.2507",
     plannedProgress: 42,
     actualProgress: 35,
-    rows: [
-      { itemNo: "A.1", description: "General requirements, mobilization, engineer facilities, and health and safety provisions", unit: "LS", qty: 1, rate: 180000, currentPercent: 100, plannedPercent: 100 },
-      { itemNo: "B.1", description: "Drainage excavation, culvert installation, side drains, and outfall connections", unit: "m", qty: 1850, rate: 92, currentPercent: 48, plannedPercent: 58 },
-      { itemNo: "C.1", description: "Granular pavement layers including selected fill, sub-base, base course, and compaction", unit: "m3", qty: 2650, rate: 44, currentPercent: 36, plannedPercent: 46 },
-      { itemNo: "D.1", description: "Bituminous surfacing, shoulders, kerbs, signage, and road furniture", unit: "m2", qty: 14600, rate: 17.5, currentPercent: 18, plannedPercent: 28 },
-    ],
+    scale: 1.05,
   },
   {
     packageNumber: 3,
@@ -109,12 +286,7 @@ const roadPackages: RoadPackageSeed[] = [
     longitude: "45.3420",
     plannedProgress: 61,
     actualProgress: 54,
-    rows: [
-      { itemNo: "A.1", description: "Preliminaries, site management, temporary works, and stakeholder coordination", unit: "LS", qty: 1, rate: 210000, currentPercent: 100, plannedPercent: 100 },
-      { itemNo: "B.1", description: "Road widening, demolition, scarification, and roadbed preparation", unit: "m2", qty: 21500, rate: 4.2, currentPercent: 75, plannedPercent: 82 },
-      { itemNo: "C.1", description: "Drainage structures, manholes, chambers, and reinforced concrete culvert works", unit: "LS", qty: 1, rate: 320000, currentPercent: 42, plannedPercent: 56 },
-      { itemNo: "D.1", description: "Asphalt concrete wearing course, road markings, safety barriers, and signs", unit: "m2", qty: 18600, rate: 18.4, currentPercent: 35, plannedPercent: 48 },
-    ],
+    scale: 1.3,
   },
   {
     packageNumber: 4,
@@ -128,136 +300,154 @@ const roadPackages: RoadPackageSeed[] = [
     longitude: "45.3640",
     plannedProgress: 38,
     actualProgress: 30,
-    rows: [
-      { itemNo: "A.1", description: "Mobilization, site clearance, traffic diversions, and site offices", unit: "LS", qty: 1, rate: 132000, currentPercent: 100, plannedPercent: 100 },
-      { itemNo: "B.1", description: "Drainage clearing, culvert reconstruction, and flood protection works", unit: "m", qty: 1240, rate: 115, currentPercent: 44, plannedPercent: 55 },
-      { itemNo: "C.1", description: "Pavement rehabilitation including sub-base repairs, base course, and compaction", unit: "m2", qty: 14200, rate: 9.8, currentPercent: 25, plannedPercent: 34 },
-      { itemNo: "D.1", description: "Asphalt surfacing, kerbs, road markings, street furniture, and handover works", unit: "m2", qty: 10800, rate: 17.2, currentPercent: 12, plannedPercent: 22 },
-    ],
+    scale: 1.0,
   },
 ];
 
-const buildBoqRows = (seed: RoadPackageSeed): BOQRow[] => {
-  const itemRows = seed.rows.map((row, index) => ({
-    id: `${seed.id}-boq-row-${index + 1}`,
-    type: "item" as const,
-    itemNo: row.itemNo,
-    description: row.description,
-    unit: row.unit,
-    qty: money(row.qty),
-    rate: money(row.rate),
-    amount: money(amount(row.qty, row.rate)),
-  }));
-  const total = itemRows.reduce((sum, row) => sum + Number(row.amount), 0);
+// BOQ is split across three sheets: a summary page, the Preliminary & General bill, and the
+// measured road & drainage bills (each with a header, line items and a bill sub-total).
+const buildBoqSheets = (seed: RoadPackageSeed) => {
+  const bills = buildSeedBills(seed);
+  const billSubtotal = bills.reduce((sum, bill) => sum + bill.subtotal, 0);
+  const contingency = (billSubtotal * CONTINGENCY_PERCENT) / 100;
+  const afterContingency = billSubtotal + contingency;
+  const governmentTax = (afterContingency * GOVERNMENT_TAX_PERCENT) / 100;
+  const totalToBid = afterContingency + governmentTax;
+
+  const summaryRows: BOQRow[] = [
+    { id: `${seed.id}-sum-header`, type: "header", itemNo: "", description: "Bill of Quantities — Summary", unit: "", qty: "", rate: "", amount: "" },
+    ...bills.map((bill) => ({
+      id: `${seed.id}-sum-${bill.billNo}`,
+      type: "item" as const,
+      itemNo: bill.billNo,
+      description: `Bill ${bill.billNo} — ${bill.title}`,
+      unit: "",
+      qty: "",
+      rate: "",
+      amount: money(bill.subtotal),
+    })),
+    { id: `${seed.id}-sum-subtotal-1`, type: "subtotal", itemNo: "", description: "Sub-Total (Carried from Bills)", unit: "", qty: "", rate: "", amount: money(billSubtotal) },
+    { id: `${seed.id}-sum-contingency`, type: "item", itemNo: "", description: `Add: ${CONTINGENCY_PERCENT}% Contingency / Provisional Sums`, unit: "%", qty: "", rate: "", amount: money(contingency) },
+    { id: `${seed.id}-sum-subtotal-2`, type: "subtotal", itemNo: "", description: "Sub-Total (after Contingency)", unit: "", qty: "", rate: "", amount: money(afterContingency) },
+    { id: `${seed.id}-sum-tax`, type: "item", itemNo: "", description: `Add: ${GOVERNMENT_TAX_PERCENT}% Government Tax`, unit: "%", qty: "", rate: "", amount: money(governmentTax) },
+    { id: `${seed.id}-sum-grandtotal`, type: "grandtotal", itemNo: "", description: "TOTAL CARRIED TO FORM OF BID", unit: "", qty: "", rate: "", amount: money(totalToBid) },
+  ];
+
+  const billToRows = (bill: SeedBill, prefix: string): BOQRow[] => [
+    { id: `${seed.id}-${prefix}-${bill.billNo}-header`, type: "header", itemNo: bill.billNo, description: bill.title, unit: "", qty: "", rate: "", amount: "" },
+    ...bill.items.map((item) => ({
+      id: `${seed.id}-${prefix}-${item.itemNo}`,
+      type: "item" as const,
+      itemNo: item.itemNo,
+      description: item.description,
+      unit: item.unit,
+      qty: money(item.qty),
+      rate: money(item.rate),
+      amount: money(item.lineAmount),
+    })),
+    { id: `${seed.id}-${prefix}-${bill.billNo}-subtotal`, type: "subtotal", itemNo: "", description: `Total — Bill ${bill.billNo} (${bill.title})`, unit: "", qty: "", rate: "", amount: money(bill.subtotal) },
+  ];
+
+  const prelimBills = bills.filter((bill) => bill.sheet === "prelim");
+  const roadBills = bills.filter((bill) => bill.sheet === "road");
+  const roadSubtotal = roadBills.reduce((sum, bill) => sum + bill.subtotal, 0);
+
+  const prelimRows: BOQRow[] = prelimBills.flatMap((bill) => billToRows(bill, "prelim"));
+  const roadRows: BOQRow[] = [
+    ...roadBills.flatMap((bill) => billToRows(bill, "road")),
+    { id: `${seed.id}-road-grandtotal`, type: "grandtotal", itemNo: "", description: "TOTAL — ROAD & DRAINAGE WORKS (to Summary)", unit: "", qty: "", rate: "", amount: money(roadSubtotal) },
+  ];
+
   return [
-    {
-      id: `${seed.id}-boq-header-1`,
-      type: "header",
-      itemNo: "1",
-      description: "Road rehabilitation works",
-      unit: "",
-      qty: "",
-      rate: "",
-      amount: "",
-    },
-    ...itemRows,
-    {
-      id: `${seed.id}-boq-subtotal-1`,
-      type: "subtotal",
-      itemNo: "",
-      description: "Sub Total - Road rehabilitation works",
-      unit: "",
-      qty: "",
-      rate: "",
-      amount: money(total),
-    },
-    {
-      id: `${seed.id}-boq-grandtotal`,
-      type: "grandtotal",
-      itemNo: "",
-      description: "GRAND TOTAL",
-      unit: "",
-      qty: "",
-      rate: "",
-      amount: money(total),
-    },
+    { id: `${seed.id}-boq-sheet-summary`, project_id: seed.id, name: "Summary", sort_order: 0, rows: summaryRows },
+    { id: `${seed.id}-boq-sheet-prelim`, project_id: seed.id, name: "Bill 1 - Preliminary & General", sort_order: 1, rows: prelimRows },
+    { id: `${seed.id}-boq-sheet-road`, project_id: seed.id, name: "Road & Drainage Works", sort_order: 2, rows: roadRows },
   ];
 };
 
+// Progress and payment are tracked at bill level (one line per bill) so the totals tie back to
+// the BOQ bill sub-totals exactly.
 const buildProgressItems = (seed: RoadPackageSeed): ProgressItem[] => {
-  const total = seed.rows.reduce((sum, row) => sum + amount(row.qty, row.rate), 0);
-  return seed.rows.map((row, index) => {
-    const boqAmount = amount(row.qty, row.rate);
-    const totalQty = (row.qty * row.currentPercent) / 100;
+  const bills = buildSeedBills(seed);
+  const total = bills.reduce((sum, bill) => sum + bill.subtotal, 0);
+  return bills.map((bill, index) => {
+    const earned = (bill.subtotal * bill.currentPercent) / 100;
     return {
       id: `${seed.id}-progress-item-${index + 1}`,
-      billNo: row.itemNo,
-      description: row.description,
-      unit: row.unit,
-      boqQty: money(row.qty),
-      boqRate: money(row.rate),
-      boqAmount: money(boqAmount),
+      billNo: bill.billNo,
+      description: `Bill ${bill.billNo} — ${bill.title}`,
+      unit: "Sum",
+      boqQty: "1.00",
+      boqRate: money(bill.subtotal),
+      boqAmount: money(bill.subtotal),
       previousQty: "0.00",
-      currentQty: money(totalQty),
-      totalQty: money(totalQty),
-      earnedAmount: money(totalQty * row.rate),
-      weightPercent: pct((boqAmount / total) * 100),
-      plannedPercent: pct(row.plannedPercent),
-      actualPercent: pct(row.currentPercent),
-      variancePercent: pct(row.currentPercent - row.plannedPercent),
-      status: row.currentPercent >= 95 ? "completed" : row.currentPercent > 0 ? "in-progress" : "not-started",
-      remarks: row.currentPercent >= row.plannedPercent ? "Tracking to plan." : "Behind current planned progress.",
+      currentQty: money(bill.currentPercent / 100),
+      totalQty: money(bill.currentPercent / 100),
+      earnedAmount: money(earned),
+      weightPercent: total > 0 ? pct((bill.subtotal / total) * 100) : "0.00",
+      plannedPercent: pct(bill.plannedPercent),
+      actualPercent: pct(bill.currentPercent),
+      variancePercent: pct(bill.currentPercent - bill.plannedPercent),
+      status: bill.currentPercent >= 95 ? "completed" : bill.currentPercent > 0 ? "in-progress" : "not-started",
+      remarks: bill.currentPercent >= bill.plannedPercent ? "Tracking to plan." : "Behind current planned progress.",
     };
   });
 };
 
-const buildCertificateItems = (seed: RoadPackageSeed): PaymentItem[] =>
-  seed.rows.map((row, index) => {
-    const boqAmount = amount(row.qty, row.rate);
-    const totalQty = (row.qty * row.currentPercent) / 100;
-    const totalAmount = totalQty * row.rate;
+const buildCertificateItems = (seed: RoadPackageSeed): PaymentItem[] => {
+  const bills = buildSeedBills(seed);
+  return bills.map((bill, index) => {
+    const totalAmount = (bill.subtotal * bill.currentPercent) / 100;
     return {
       id: `${seed.id}-payment-item-${index + 1}`,
-      billNo: row.itemNo,
-      description: row.description,
-      unit: row.unit,
-      boqQty: money(row.qty),
-      boqRate: money(row.rate),
-      boqAmount: money(boqAmount),
+      billNo: bill.billNo,
+      description: `Bill ${bill.billNo} — ${bill.title}`,
+      unit: "Sum",
+      boqQty: "1.00",
+      boqRate: money(bill.subtotal),
+      boqAmount: money(bill.subtotal),
       previousQty: "0.00",
-      currentQty: money(totalQty),
+      currentQty: money(bill.currentPercent / 100),
       previousAmount: "0.00",
       currentAmount: money(totalAmount),
-      totalQty: money(totalQty),
+      totalQty: money(bill.currentPercent / 100),
       totalAmount: money(totalAmount),
-      balanceQty: money(Math.max(0, row.qty - totalQty)),
+      balanceQty: money(Math.max(0, 1 - bill.currentPercent / 100)),
       warningStatus: "ok",
       overrideNote: "",
     };
   });
+};
 
-const buildWorkPlanActivities = (seed: RoadPackageSeed): WorkPlanActivity[] => [
-  {
-    id: `${seed.id}-wp-section`,
-    project_id: seed.id,
-    rowType: "section",
-    description: "Road rehabilitation works",
-    duration: "120",
-    startDate: "2026-01-15",
-    endDate: "2026-05-14",
-    status: "in-progress",
-  },
-  ...seed.rows.map((row, index) => ({
-    id: `${seed.id}-wp-${index + 1}`,
-    project_id: seed.id,
-    rowType: "activity" as const,
-    description: row.description,
-    duration: String(20 + index * 14),
-    startDate: `2026-0${Math.min(index + 1, 5)}-15`,
-    endDate: `2026-0${Math.min(index + 2, 6)}-14`,
-    status: row.currentPercent >= 95 ? "completed" as const : "in-progress" as const,
-  })),
-];
+const buildWorkPlanActivities = (seed: RoadPackageSeed): WorkPlanActivity[] => {
+  const bills = buildSeedBills(seed);
+  return [
+    {
+      id: `${seed.id}-wp-section`,
+      project_id: seed.id,
+      rowType: "section",
+      description: "Road rehabilitation works",
+      duration: "180",
+      startDate: "2026-01-15",
+      endDate: "2026-07-13",
+      status: "in-progress",
+    },
+    ...bills.map((bill, index) => {
+      const startMonth = Math.min(index + 1, 6);
+      const endMonth = Math.min(index + 2, 7);
+      return {
+        id: `${seed.id}-wp-${index + 1}`,
+        project_id: seed.id,
+        rowType: "activity" as const,
+        description: `Bill ${bill.billNo} — ${bill.title}`,
+        duration: String(25 + index * 10),
+        startDate: `2026-${String(startMonth).padStart(2, "0")}-15`,
+        endDate: `2026-${String(endMonth).padStart(2, "0")}-14`,
+        status: bill.currentPercent >= 95 ? ("completed" as const) : "in-progress" as const,
+      };
+    }),
+  ];
+};
 
 export function buildRoadPackagesDemoPayload(): Surp2ImportPayload {
   const importedAt = new Date().toISOString();
@@ -269,12 +459,7 @@ export function buildRoadPackagesDemoPayload(): Surp2ImportPayload {
     clientName: "Mogadishu Municipality",
     location: "Mogadishu, Somalia",
     currency: "USD",
-    budgetAmount: money(
-      roadPackages.reduce(
-        (sum, seed) => sum + seed.rows.reduce((rowSum, row) => rowSum + amount(row.qty, row.rate), 0),
-        0,
-      ),
-    ),
+    budgetAmount: money(roadPackages.reduce((sum, seed) => sum + packageContractSum(seed), 0)),
     start_date: "2026-01-15",
     end_date: "2026-07-31",
     status: "active",
@@ -283,7 +468,7 @@ export function buildRoadPackagesDemoPayload(): Surp2ImportPayload {
   };
 
   const projects: Project[] = roadPackages.map((seed) => {
-    const contractAmount = seed.rows.reduce((sum, row) => sum + amount(row.qty, row.rate), 0);
+    const contractAmount = packageContractSum(seed);
     return {
       id: seed.id,
       programId: SURP2_PROGRAM_ID,
@@ -322,15 +507,7 @@ export function buildRoadPackagesDemoPayload(): Surp2ImportPayload {
     name: "Contract BOQ - Demo",
     createdAt: importedAt,
     updatedAt: importedAt,
-    sheets: [
-      {
-        id: `${seed.id}-boq-sheet`,
-        project_id: seed.id,
-        name: "Road Works",
-        sort_order: 0,
-        rows: buildBoqRows(seed),
-      },
-    ],
+    sheets: buildBoqSheets(seed),
   }));
 
   const savedWorkPlans: SavedWorkPlan[] = roadPackages.map((seed) => ({
@@ -386,8 +563,8 @@ export function buildRoadPackagesDemoPayload(): Surp2ImportPayload {
     status: "approved",
     locked: true,
     sheets: [{ id: `${seed.id}-ipc-sheet`, name: "Road Works", items: buildCertificateItems(seed) }],
-    contingenciesPercent: 0,
-    governmentTaxPercent: 0,
+    contingenciesPercent: CONTINGENCY_PERCENT,
+    governmentTaxPercent: GOVERNMENT_TAX_PERCENT,
     retentionPercent: 10,
     advancePaymentPercent: 0,
     withholdingTaxPercent: 0,
@@ -408,7 +585,7 @@ export function buildRoadPackagesDemoPayload(): Surp2ImportPayload {
   }));
 
   const previewPackages: Surp2ImportPreviewPackage[] = roadPackages.map((seed) => {
-    const boqTotal = seed.rows.reduce((sum, row) => sum + amount(row.qty, row.rate), 0);
+    const boqTotal = packageContractSum(seed);
     return {
       packageNumber: seed.packageNumber,
       projectName: seed.name,

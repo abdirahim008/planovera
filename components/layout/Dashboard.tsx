@@ -17,9 +17,11 @@ import {
   Mail,
   MapPin,
   Maximize2,
+  MoreVertical,
   PenTool,
   Plus,
   Table,
+  Trash2,
   TrendingUp,
   Wallet,
   X,
@@ -29,6 +31,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import CompactKpiList, { type CompactKpiRow } from "@/components/ui/CompactKpiList";
+import ContextMenu from "@/components/ui/ContextMenu";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { SOMALIA_REGIONS, findSomaliaTown } from "@/lib/somaliaLocations";
 import {
@@ -911,6 +914,7 @@ export default function Dashboard() {
     createCategory,
     createNewProject,
     updateProject,
+    deleteProject,
     mergeAdoptedWorkspace,
     selectProject,
     setActiveModule,
@@ -1002,6 +1006,14 @@ export default function Dashboard() {
     setFormData(projectToFormData(projectToEdit));
     setCreateError(null);
     setIsModalOpen(true);
+  };
+
+  const handleDeleteProject = (projectToDelete: Project) => {
+    const confirmed = window.confirm(
+      `Delete "${projectToDelete.name}"?\n\nThis permanently removes the project and all of its BOQs, certificates, reports, documents, checklist items, and site notes. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    deleteProject(projectToDelete.id);
   };
 
   const handleSaveProject = async () => {
@@ -1371,6 +1383,7 @@ export default function Dashboard() {
           }}
           onCreateProject={openCreateProjectModal}
           onEditProject={openEditProjectModal}
+          onDeleteProject={handleDeleteProject}
           onImportSurp2={handleImportSurp2}
           onImportFinalCertificateTest={handleImportFinalCertificateTest}
           importingSurp2={surp2Importing}
@@ -1411,6 +1424,7 @@ function PortfolioDashboard({
   onOpenProject,
   onCreateProject,
   onEditProject,
+  onDeleteProject,
   onImportSurp2,
   onImportFinalCertificateTest,
   importingSurp2,
@@ -1427,6 +1441,7 @@ function PortfolioDashboard({
   onOpenProject: (projectId: string) => void;
   onCreateProject: () => void;
   onEditProject: (project: Project) => void;
+  onDeleteProject: (project: Project) => void;
   onImportSurp2: () => void;
   onImportFinalCertificateTest: () => void;
   importingSurp2: boolean;
@@ -1434,6 +1449,7 @@ function PortfolioDashboard({
   importingFinalCertificateTest: boolean;
   finalCertificateImportError: string | null;
 }) {
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; project: Project } | null>(null);
   const locations = uniqueFilterValues(allSummaries.map((summary) => projectLocationFilterValue(summary.project)));
   const clients = uniqueFilterValues(allSummaries.map((summary) => summary.project.clientName));
   const defaultCategoryOptions = DEFAULT_PROJECT_CATEGORIES.filter((category) =>
@@ -1896,12 +1912,19 @@ function PortfolioDashboard({
                       <td className="px-2 py-2.5">
                         <button
                           type="button"
-                          onClick={() => onEditProject(summary.project)}
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setRowMenu({
+                              x: rect.right - 180,
+                              y: rect.bottom + 4,
+                              project: summary.project,
+                            });
+                          }}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-txt-dim transition hover:bg-bg-hover hover:text-txt"
-                          aria-label={`Edit ${summary.project.name}`}
-                          title="Edit project"
+                          aria-label={`Actions for ${summary.project.name}`}
+                          title="Project actions"
                         >
-                          <PenTool size={14} />
+                          <MoreVertical size={16} />
                         </button>
                       </td>
                     </tr>
@@ -1912,6 +1935,27 @@ function PortfolioDashboard({
           </table>
         </div>
       </div>
+
+      {rowMenu && (
+        <ContextMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          onClose={() => setRowMenu(null)}
+          items={[
+            {
+              label: "Edit",
+              icon: <PenTool size={14} />,
+              action: () => onEditProject(rowMenu.project),
+            },
+            {
+              label: "Delete",
+              icon: <Trash2 size={14} />,
+              danger: true,
+              action: () => onDeleteProject(rowMenu.project),
+            },
+          ]}
+        />
+      )}
     </>
   );
 }
