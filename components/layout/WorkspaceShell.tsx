@@ -328,6 +328,10 @@ export default function WorkspaceShell() {
   const authConfigured = isSupabaseConfigured();
   const lastSavedWorkspaceRef = useRef("");
   const lastNormalizedSyncRef = useRef("");
+  // Tracks the user id we last fully synced for, so benign auth events
+  // (TOKEN_REFRESHED / INITIAL_SESSION fired when a backgrounded tab regains
+  // focus) don't trigger a full "Loading workspace" re-sync for the same user.
+  const syncedUserIdRef = useRef<string | null>(null);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [projectsReady, setProjectsReady] = useState(() => !authConfigured);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
@@ -463,6 +467,7 @@ export default function WorkspaceShell() {
         setWorkspaceNotice(null);
         lastSavedWorkspaceRef.current = "";
         lastNormalizedSyncRef.current = "";
+        syncedUserIdRef.current = null;
 
         if (redirectIfLoggedOut || !user) {
           router.replace("/login");
@@ -472,6 +477,7 @@ export default function WorkspaceShell() {
       }
 
       setActiveUserId(user.id);
+      syncedUserIdRef.current = user.id;
       setSubscriptionBlock(null);
       await Promise.all([
         supabase.rpc("accept_organization_invites", {
@@ -775,10 +781,12 @@ export default function WorkspaceShell() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
 
-      if (!session?.user) {
+      // A genuine sign-out: tear down and bounce to /login.
+      if (event === "SIGNED_OUT" || !session?.user) {
+        syncedUserIdRef.current = null;
         setActiveUserId(null);
         setCollaborators([]);
         setSubscriptionBlock(null);
@@ -788,6 +796,14 @@ export default function WorkspaceShell() {
         clearWorkspaceData();
         router.replace("/login");
         router.refresh();
+        return;
+      }
+
+      // Benign events that fire when a backgrounded tab regains focus
+      // (TOKEN_REFRESHED, INITIAL_SESSION) or repeat SIGNED_IN for the same
+      // user must NOT flip the shell back to "Loading workspace". Only do a
+      // full re-sync when the signed-in user actually changes.
+      if (session.user.id === syncedUserIdRef.current) {
         return;
       }
 
