@@ -1331,6 +1331,7 @@ export default function Dashboard() {
         client: "",
       });
       setActiveModule("dashboard");
+      setIsModalOpen(false);
     } catch (error) {
       setSurp2ImportError(error instanceof Error ? error.message : "Could not load road package demo data.");
     } finally {
@@ -1351,6 +1352,7 @@ export default function Dashboard() {
         client: "",
       });
       setActiveModule("dashboard");
+      setIsModalOpen(false);
     } catch (error) {
       setFinalCertImportError(
         error instanceof Error ? error.message : "Could not load final certificate demo data."
@@ -1384,19 +1386,13 @@ export default function Dashboard() {
           onCreateProject={openCreateProjectModal}
           onEditProject={openEditProjectModal}
           onDeleteProject={handleDeleteProject}
-          onImportSurp2={handleImportSurp2}
-          onImportFinalCertificateTest={handleImportFinalCertificateTest}
-          importingSurp2={surp2Importing}
-          surp2ImportError={surp2ImportError}
-          importingFinalCertificateTest={finalCertImporting}
-          finalCertificateImportError={finalCertImportError}
         />
       )}
 
       <CreateProjectModal
         open={isModalOpen}
         onClose={() => {
-          if (isSubmitting) return;
+          if (isSubmitting || surp2Importing || finalCertImporting) return;
           setIsModalOpen(false);
           setCreateError(null);
           setEditingProject(null);
@@ -1409,6 +1405,11 @@ export default function Dashboard() {
         onSubmit={handleSaveProject}
         submitting={isSubmitting}
         errorMessage={createError}
+        onImportSurp2={handleImportSurp2}
+        onImportFinalCertificateTest={handleImportFinalCertificateTest}
+        importingSurp2={surp2Importing}
+        importingFinalCertificateTest={finalCertImporting}
+        sampleImportError={surp2ImportError || finalCertImportError}
       />
     </div>
   );
@@ -1425,12 +1426,6 @@ function PortfolioDashboard({
   onCreateProject,
   onEditProject,
   onDeleteProject,
-  onImportSurp2,
-  onImportFinalCertificateTest,
-  importingSurp2,
-  surp2ImportError,
-  importingFinalCertificateTest,
-  finalCertificateImportError,
 }: {
   summaries: ProjectSummary[];
   allSummaries: ProjectSummary[];
@@ -1442,12 +1437,6 @@ function PortfolioDashboard({
   onCreateProject: () => void;
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
-  onImportSurp2: () => void;
-  onImportFinalCertificateTest: () => void;
-  importingSurp2: boolean;
-  surp2ImportError: string | null;
-  importingFinalCertificateTest: boolean;
-  finalCertificateImportError: string | null;
 }) {
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; project: Project } | null>(null);
   const locations = uniqueFilterValues(allSummaries.map((summary) => projectLocationFilterValue(summary.project)));
@@ -1552,37 +1541,12 @@ function PortfolioDashboard({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="ghost" size="sm" onClick={onImportSurp2} disabled={importingSurp2}>
-              <DatabaseZap size={14} /> {importingSurp2 ? "Adding..." : "Add 4 Road Package Samples"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onImportFinalCertificateTest}
-              disabled={importingFinalCertificateTest}
-            >
-              <DatabaseZap size={14} />{" "}
-              {importingFinalCertificateTest ? "Adding..." : "Add Final Certificate Sample"}
-            </Button>
             <Button variant="primary" size="sm" onClick={onCreateProject}>
               <Plus size={14} /> New Project
             </Button>
           </div>
         </div>
       </div>
-
-      {surp2ImportError ? (
-        <div className="mb-5 rounded-[20px] border border-err/40 bg-err/10 p-4 text-sm text-err">
-          {surp2ImportError}
-        </div>
-      ) : null}
-
-      {finalCertificateImportError ? (
-        <div className="mb-5 rounded-[20px] border border-err/40 bg-err/10 p-4 text-sm text-err">
-          {finalCertificateImportError}
-        </div>
-      ) : null}
-
 
       <div className="mb-5 rounded-[24px] border border-border bg-bg-surface p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
@@ -2788,6 +2752,11 @@ function CreateProjectModal({
   onSubmit,
   submitting,
   errorMessage,
+  onImportSurp2,
+  onImportFinalCertificateTest,
+  importingSurp2,
+  importingFinalCertificateTest,
+  sampleImportError,
 }: {
   open: boolean;
   onClose: () => void;
@@ -2799,6 +2768,11 @@ function CreateProjectModal({
   onSubmit: () => void | Promise<void>;
   submitting: boolean;
   errorMessage: string | null;
+  onImportSurp2: () => void;
+  onImportFinalCertificateTest: () => void;
+  importingSurp2: boolean;
+  importingFinalCertificateTest: boolean;
+  sampleImportError: string | null;
 }) {
   const selectedRegion = SOMALIA_REGIONS.find((region) => region.name === formData.region);
   const townOptions = selectedRegion?.towns ?? [];
@@ -2818,6 +2792,40 @@ function CreateProjectModal({
       width={760}
     >
       <div className="flex flex-col gap-5 p-2">
+        {mode === "create" ? (
+          <div className="rounded-2xl border border-border bg-bg-input/40 p-4">
+            <div className="flex items-center gap-2">
+              <DatabaseZap size={15} className="text-accent" />
+              <span className="text-[11px] font-black uppercase tracking-[0.18em] text-txt-muted">
+                Just exploring?
+              </span>
+            </div>
+            <p className="mt-1.5 text-[13px] text-txt-muted">
+              Load a ready-made trial workspace with sample projects, BOQs, progress and payment
+              data — or fill in the form below to start your own project.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={onImportSurp2} disabled={importingSurp2 || importingFinalCertificateTest}>
+                <DatabaseZap size={14} /> {importingSurp2 ? "Adding samples..." : "Load 4 road package samples"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onImportFinalCertificateTest}
+                disabled={importingSurp2 || importingFinalCertificateTest}
+              >
+                <DatabaseZap size={14} />{" "}
+                {importingFinalCertificateTest ? "Adding sample..." : "Load final certificate sample"}
+              </Button>
+            </div>
+            {sampleImportError ? (
+              <div className="mt-3 rounded-xl border border-err/40 bg-err/10 p-3 text-xs text-err">
+                {sampleImportError}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2">
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
