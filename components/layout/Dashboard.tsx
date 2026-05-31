@@ -28,7 +28,7 @@ import { currency, getLiveMeetingActionItems, type MeetingActionSnapshot, useApp
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
-import CompactKpiList from "@/components/ui/CompactKpiList";
+import CompactKpiList, { type CompactKpiRow } from "@/components/ui/CompactKpiList";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { SOMALIA_REGIONS, findSomaliaTown } from "@/lib/somaliaLocations";
 import {
@@ -1481,6 +1481,13 @@ function PortfolioDashboard({
     },
   ];
 
+  const kpiRows: CompactKpiRow[] = metricCards.map((card) => ({
+    label: card.title,
+    value: card.title === "Approved Commercial" ? compactUsd(totalApprovedCommercial) : card.value,
+    icon: card.icon,
+    tone: card.tone,
+  }));
+
   return (
     <>
       <div className="mb-5 border-b border-border pb-5">
@@ -1699,24 +1706,10 @@ function PortfolioDashboard({
         </div>
       </div>
 
-      <ProjectLocationsCard summaries={summaries} />
+      <ProjectLocationsCard summaries={summaries} kpis={kpiRows} />
 
       <div className="mt-5 sm:hidden">
-        <CompactKpiList
-          header={{ label: "Portfolio KPIs", value: "Value" }}
-          rows={metricCards.map((card) => ({
-            label: card.title,
-            value:
-              card.title === "Approved Commercial" ? compactUsd(totalApprovedCommercial) : card.value,
-            icon: card.icon,
-            tone: card.tone,
-          }))}
-        />
-      </div>
-      <div className="mt-5 hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5">
-        {metricCards.map((card) => (
-          <ReferenceMetricTile key={card.title} {...card} />
-        ))}
+        <CompactKpiList header={{ label: "Portfolio KPIs", value: "Value" }} rows={kpiRows} />
       </div>
 
       <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-bg-surface">
@@ -1952,7 +1945,13 @@ function buildProjectMapPoints(summaries: ProjectSummary[]): ProjectMapPoint[] {
   return Array.from(grouped.values());
 }
 
-function ProjectLocationsCard({ summaries }: { summaries: ProjectSummary[] }) {
+function ProjectLocationsCard({
+  summaries,
+  kpis = [],
+}: {
+  summaries: ProjectSummary[];
+  kpis?: CompactKpiRow[];
+}) {
   const [open, setOpen] = useState(false);
   const points = useMemo(() => buildProjectMapPoints(summaries), [summaries]);
   const plottedCount = points.reduce((sum, point) => sum + point.count, 0);
@@ -1960,18 +1959,18 @@ function ProjectLocationsCard({ summaries }: { summaries: ProjectSummary[] }) {
 
   return (
     <>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setOpen(true)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") setOpen(true);
-        }}
-        className="mt-5 hidden w-full overflow-hidden rounded-[24px] border border-border bg-bg-surface text-left shadow-soft transition hover:border-accent/50 sm:block"
-      >
+      <div className="mt-5 hidden w-full overflow-hidden rounded-[24px] border border-border bg-bg-surface text-left shadow-soft sm:block">
         <div className="grid gap-0 lg:grid-cols-[0.72fr_1.28fr]">
-          <div className="border-b border-border p-5 lg:border-b-0 lg:border-r">
-            <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-4 border-b border-border p-5 lg:border-b-0 lg:border-r">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setOpen(true);
+              }}
+              className="flex items-start justify-between gap-3 rounded-lg transition hover:opacity-80"
+            >
               <div>
                 <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
                   <MapPin size={14} className="text-accent" /> Locations
@@ -1982,6 +1981,15 @@ function ProjectLocationsCard({ summaries }: { summaries: ProjectSummary[] }) {
                 <Maximize2 size={16} />
               </span>
             </div>
+
+            {kpis.length > 0 ? (
+              <div className="mt-auto">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Portfolio KPIs
+                </div>
+                <CompactKpiList rows={kpis} />
+              </div>
+            ) : null}
           </div>
           <ProjectLocationMap points={points} missingCount={missingCount} />
         </div>
