@@ -75,6 +75,12 @@ const statusOptions: { value: PaymentCertificate["status"]; label: string }[] = 
   { value: "paid", label: "Paid" },
 ];
 
+// A locked status (approved/paid) freezes the certificate. Moving FROM one of
+// these back to an open status (draft/submitted) reopens it for editing, so we
+// require an explicit confirmation to guard against accidental mis-taps.
+const isLockedStatus = (status: PaymentCertificate["status"]) =>
+  status === "approved" || status === "paid";
+
 const statusToneClass = (status: PaymentCertificate["status"]) =>
   status === "paid"
     ? "bg-ok/15 text-ok hover:bg-ok/20"
@@ -120,8 +126,17 @@ function StatusPill({
               key={option.value}
               type="button"
               onClick={() => {
-                onChange(option.value);
                 setOpen(false);
+                if (option.value === status) return;
+                // Reverting out of a locked (approved/paid) state reopens the
+                // certificate — confirm before doing so.
+                if (isLockedStatus(status) && !isLockedStatus(option.value)) {
+                  const ok = window.confirm(
+                    `This certificate is marked "${status}". Changing it to "${option.label}" will reopen it for editing and recalculation. Continue?`
+                  );
+                  if (!ok) return;
+                }
+                onChange(option.value);
               }}
               className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] transition ${
                 option.value === status
