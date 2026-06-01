@@ -1341,6 +1341,15 @@ export default function MeetingMinutesModule() {
     [projects]
   );
 
+  // Current status of every action point keyed by register id (== actionItem.actionKey).
+  // Meeting snapshots freeze each item's status at save time, so an older meeting's
+  // snapshot goes stale once a later meeting closes/reopens the same action. Resolve
+  // against the register so per-meeting "open" counts reflect live state.
+  const registerStatusByKey = useMemo(
+    () => new Map(actionPoints.map((point) => [point.id, point.status])),
+    [actionPoints]
+  );
+
   // Distinct projects that currently have an action group in the draft, used to
   // populate (and validate) the action-register project filter.
   const actionFilterProjectIds = useMemo(
@@ -1565,7 +1574,11 @@ export default function MeetingMinutesModule() {
                 {sortedMinutes.map((minute) => {
                   const minuteOpen = minute.actionGroups
                     .flatMap((group) => group.actionItems)
-                    .filter((actionItem) => actionItem.status !== "closed").length;
+                    .filter(
+                      (actionItem) =>
+                        (registerStatusByKey.get(actionItem.actionKey) ?? actionItem.status) !==
+                        "closed"
+                    ).length;
                   const minuteAttendees = minute.attendees.length;
                   const minuteProjects = new Set(minute.actionGroups.map((group) => group.project_id)).size;
 
