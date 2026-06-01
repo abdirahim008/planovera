@@ -14,7 +14,7 @@ import type { ActionPoint } from "@/lib/supabase";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
-import { type CompactKpiRow } from "@/components/ui/CompactKpiList";
+import CompactKpiList, { type CompactKpiRow } from "@/components/ui/CompactKpiList";
 
 const todayIso = () => new Date().toISOString().split("T")[0];
 
@@ -137,7 +137,11 @@ export default function ActionPointsModule() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Mobile (<sm): stripped striped metric list so the KPIs barely take space. */}
+      <CompactKpiList rows={kpiRows} className="sm:hidden" />
+
+      {/* Desktop (sm+): full metric cards. */}
+      <div className="hidden gap-3 sm:grid sm:grid-cols-3 lg:grid-cols-5">
         {kpiRows.map((row) => {
           const Icon = row.icon;
           return (
