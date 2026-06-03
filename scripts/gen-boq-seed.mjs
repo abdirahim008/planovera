@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -19,18 +20,20 @@ const literal = src.slice(arrStart, arrEnd + 1);
 // eslint-disable-next-line no-eval
 const seeds = eval("(" + literal + ")");
 
+// Each row/sheet gets a real uuid: empty ids collide on id-keyed editor
+// operations (patchRow/moveRow) and React keys in the admin template editor.
 const seedToRow = (seed) => {
   switch (seed[0]) {
     case "header":
-      return { id: "", type: "header", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "" };
+      return { id: randomUUID(), type: "header", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "" };
     case "item":
-      return { id: "", type: "item", itemNo: seed[1], description: seed[2], unit: seed[3], qty: seed[4], rate: "", amount: "" };
+      return { id: randomUUID(), type: "item", itemNo: seed[1], description: seed[2], unit: seed[3], qty: seed[4], rate: "", amount: "" };
     case "subtotal":
-      return { id: "", type: "subtotal", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "0.00" };
+      return { id: randomUUID(), type: "subtotal", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "0.00" };
     case "grandtotal":
-      return { id: "", type: "grandtotal", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "0.00" };
+      return { id: randomUUID(), type: "grandtotal", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "0.00" };
     case "notes":
-      return { id: "", type: "notes", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "" };
+      return { id: randomUUID(), type: "notes", itemNo: "", description: seed[1], unit: "", qty: "", rate: "", amount: "" };
     default:
       throw new Error("unknown row type " + seed[0]);
   }
@@ -53,7 +56,7 @@ lines.push("");
 
 for (const t of seeds) {
   const sheets = t.sheets.map((sheet, i) => ({
-    id: "",
+    id: randomUUID(),
     project_id: "",
     name: sheet.name,
     sort_order: i,

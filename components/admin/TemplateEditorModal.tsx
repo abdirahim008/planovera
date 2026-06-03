@@ -39,9 +39,19 @@ const blankRow = (): BOQRow => ({
   amount: "",
 });
 
-/** Deep-clone sheets so edits never mutate the live store object. */
+/**
+ * Deep-clone sheets so edits never mutate the live store object.
+ * Seeded library templates ship with empty `id` fields ("") on every sheet and
+ * row, which makes id-keyed operations (patchRow, moveRow, React keys) collide —
+ * editing one row would mutate them all. Backfill a stable uuid for any missing
+ * or blank id so each sheet/row is uniquely addressable.
+ */
 const cloneSheets = (sheets: BOQSheet[]): BOQSheet[] =>
-  sheets.map((sh) => ({ ...sh, rows: sh.rows.map((r) => ({ ...r })) }));
+  sheets.map((sh) => ({
+    ...sh,
+    id: sh.id || uuid(),
+    rows: sh.rows.map((r) => ({ ...r, id: r.id || uuid() })),
+  }));
 
 /** Borderless, auto-growing cell textarea so long descriptions wrap to multiple lines. */
 function CellTextarea({
