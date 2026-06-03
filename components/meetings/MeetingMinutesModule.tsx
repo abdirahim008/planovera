@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Copy,
+  MoreVertical,
+  Pencil,
   Plus,
   Printer,
   Trash2,
@@ -29,6 +31,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import CompactKpiList from "@/components/ui/CompactKpiList";
+import ContextMenu from "@/components/ui/ContextMenu";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import { sanitizeRichTextHtml, stripRichTextToPlain } from "@/lib/richText";
 
@@ -1286,6 +1289,7 @@ export default function MeetingMinutesModule() {
   const [showSeriesModal, setShowSeriesModal] = useState(false);
   const [showSeriesPicker, setShowSeriesPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [draftMinute, setDraftMinute] = useState<MeetingMinute | null>(null);
   const [showNoProjectHint, setShowNoProjectHint] = useState(false);
@@ -1570,63 +1574,92 @@ export default function MeetingMinutesModule() {
                 No meeting minutes yet. Create your first meeting and action register.
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                {sortedMinutes.map((minute) => {
-                  const minuteOpen = minute.actionGroups
-                    .flatMap((group) => group.actionItems)
-                    .filter(
-                      (actionItem) =>
-                        (registerStatusByKey.get(actionItem.actionKey) ?? actionItem.status) !==
-                        "closed"
-                    ).length;
-                  const minuteAttendees = minute.attendees.length;
-                  const minuteProjects = new Set(minute.actionGroups.map((group) => group.project_id)).size;
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-[0.16em] text-txt-dim">
+                      <th className="px-2 py-2 font-semibold">Date</th>
+                      <th className="px-2 py-2 font-semibold">Meeting</th>
+                      <th className="px-2 py-2 text-right font-semibold">Open</th>
+                      <th className="w-9 px-2 py-2" aria-label="Actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedMinutes.map((minute) => {
+                      const minuteOpen = minute.actionGroups
+                        .flatMap((group) => group.actionItems)
+                        .filter(
+                          (actionItem) =>
+                            (registerStatusByKey.get(actionItem.actionKey) ?? actionItem.status) !==
+                            "closed"
+                        ).length;
+                      const minuteAttendees = minute.attendees.length;
+                      const minuteProjects = new Set(
+                        minute.actionGroups.map((group) => group.project_id)
+                      ).size;
 
-                  return (
-                    <div
-                      key={minute.id}
-                      className="rounded-2xl border border-border bg-bg-raised p-4 transition hover:border-accent/30"
-                    >
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <button
-                          type="button"
-                          onClick={() => openEditor(minute)}
-                          className="bg-transparent text-left"
+                      return (
+                        <tr
+                          key={minute.id}
+                          className="border-t border-border/60 transition hover:bg-bg-raised/50"
                         >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-lg font-bold text-white">{minute.title}</div>
-                            <Badge color={minute.status === "final" ? "ok" : "warn"}>
-                              {minute.status.toUpperCase()}
-                            </Badge>
-                            {minute.meetingSeriesId && seriesById[minute.meetingSeriesId] ? (
-                              <Badge color="accent">
-                                {seriesById[minute.meetingSeriesId].name}
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="mt-2 text-xs text-txt-muted">
-                            {minute.meetingDate} • {minute.referenceNo} • {minuteAttendees} attendees •{" "}
-                            {minuteProjects} project registr{minuteProjects === 1 ? "y" : "ies"}
-                          </div>
-                        </button>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="rounded-full border border-border bg-black/10 px-3 py-1 text-[11px] text-txt-muted">
-                            {minuteOpen} open action{minuteOpen !== 1 ? "s" : ""}
-                          </div>
-                          <Button variant="ghost" size="sm" onClick={() => openMeetingMinutePdf(minute, projects)}>
-                            <Printer size={14} /> Export PDF
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => duplicateMeetingMinute(minute.id)}>
-                            <Copy size={14} /> Duplicate
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(minute.id)}>
-                            <Trash2 size={14} /> Delete
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                          <td className="whitespace-nowrap px-2 py-2.5 align-top text-xs text-txt-muted">
+                            {minute.meetingDate}
+                          </td>
+                          <td className="px-2 py-2.5 align-top">
+                            <button
+                              type="button"
+                              onClick={() => openEditor(minute)}
+                              className="block bg-transparent text-left"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-white">{minute.title}</span>
+                                <Badge color={minute.status === "final" ? "ok" : "warn"}>
+                                  {minute.status.toUpperCase()}
+                                </Badge>
+                                {minute.meetingSeriesId && seriesById[minute.meetingSeriesId] ? (
+                                  <Badge color="accent">
+                                    {seriesById[minute.meetingSeriesId].name}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <div className="mt-1 text-[11px] text-txt-muted">
+                                {minute.referenceNo} • {minuteAttendees} attendee
+                                {minuteAttendees === 1 ? "" : "s"} • {minuteProjects} project registr
+                                {minuteProjects === 1 ? "y" : "ies"}
+                              </div>
+                            </button>
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-2.5 text-right align-top">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                                minuteOpen > 0
+                                  ? "border-warn/40 bg-warn/10 text-warn"
+                                  : "border-border bg-black/10 text-txt-muted"
+                              }`}
+                            >
+                              {minuteOpen}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2.5 text-right align-top">
+                            <button
+                              type="button"
+                              aria-label="Meeting actions"
+                              aria-haspopup="menu"
+                              onClick={(event) => {
+                                const rect = event.currentTarget.getBoundingClientRect();
+                                setRowMenu({ id: minute.id, x: rect.right, y: rect.bottom });
+                              }}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-transparent text-txt-muted transition hover:border-accent/40 hover:text-white"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -2113,7 +2146,7 @@ export default function MeetingMinutesModule() {
                   </div>
                 </div>
 
-                <div className="space-y-3 lg:hidden">
+                <div className="space-y-3 lg:hidden" data-variant="mobile" data-action-registry={group.id}>
                   {group.actionItems.map((actionItem, index) => (
                     <div key={`${actionItem.id}-compact`} className="rounded-2xl border border-border bg-bg-raised/40 p-4">
                       <div className="mb-3 flex items-start justify-between gap-3">
@@ -2149,6 +2182,8 @@ export default function MeetingMinutesModule() {
                       </div>
                       <div className="space-y-2">
                         <textarea
+                          data-field="description"
+                          data-action-id={actionItem.id}
                           value={actionItem.description}
                           onChange={(event) =>
                             updateActionItem(group.id, actionItem.id, {
@@ -2161,6 +2196,8 @@ export default function MeetingMinutesModule() {
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         <input
+                          data-field="responsible"
+                          data-action-id={actionItem.id}
                           value={actionItem.responsiblePerson}
                           onChange={(event) =>
                             updateActionItem(group.id, actionItem.id, {
@@ -2171,6 +2208,8 @@ export default function MeetingMinutesModule() {
                           placeholder="Responsible person"
                         />
                         <input
+                          data-field="deadline"
+                          data-action-id={actionItem.id}
                           type="date"
                           value={actionItem.deadline}
                           onChange={(event) =>
@@ -2181,6 +2220,8 @@ export default function MeetingMinutesModule() {
                           className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent [color-scheme:dark]"
                         />
                         <select
+                          data-field="status"
+                          data-action-id={actionItem.id}
                           value={actionItem.status}
                           onChange={(event) =>
                             updateActionItem(group.id, actionItem.id, {
@@ -2200,7 +2241,7 @@ export default function MeetingMinutesModule() {
                     </div>
                   ))}
                 </div>
-                <div className="hidden overflow-x-auto lg:block">
+                <div className="hidden overflow-x-auto lg:block" data-variant="desktop" data-action-registry={group.id}>
                   <table className="w-full min-w-[860px] border-collapse">
                     <thead>
                       <tr className="text-left text-[11px] uppercase tracking-[0.16em] text-txt-dim">
@@ -2219,6 +2260,8 @@ export default function MeetingMinutesModule() {
                           <td className="px-3 py-1.5 align-middle">
                             <div className="space-y-1.5">
                               <textarea
+                                data-field="description"
+                                data-action-id={actionItem.id}
                                 ref={(element) => {
                                   if (element) resizeMeetingTextarea(element);
                                 }}
@@ -2240,6 +2283,8 @@ export default function MeetingMinutesModule() {
                           </td>
                           <td className="px-3 py-1.5 align-middle">
                             <input
+                              data-field="responsible"
+                              data-action-id={actionItem.id}
                               value={actionItem.responsiblePerson}
                               onChange={(event) =>
                                 updateActionItem(group.id, actionItem.id, {
@@ -2252,6 +2297,8 @@ export default function MeetingMinutesModule() {
                           </td>
                           <td className="px-3 py-1.5 align-middle">
                             <input
+                              data-field="deadline"
+                              data-action-id={actionItem.id}
                               type="date"
                               value={actionItem.deadline}
                               onChange={(event) =>
@@ -2264,6 +2311,8 @@ export default function MeetingMinutesModule() {
                           </td>
                           <td className="px-3 py-1.5 align-middle">
                             <select
+                              data-field="status"
+                              data-action-id={actionItem.id}
                               value={actionItem.status}
                               onChange={(event) =>
                                 updateActionItem(group.id, actionItem.id, {
@@ -2343,6 +2392,43 @@ export default function MeetingMinutesModule() {
 
       <AttendeeGroupsModal open={showGroupsModal} onClose={() => setShowGroupsModal(false)} />
       <MeetingSeriesModal open={showSeriesModal} onClose={() => setShowSeriesModal(false)} />
+
+      {rowMenu &&
+        (() => {
+          const menuMinute = sortedMinutes.find((minute) => minute.id === rowMenu.id);
+          if (!menuMinute) return null;
+          return (
+            <ContextMenu
+              x={rowMenu.x}
+              y={rowMenu.y}
+              onClose={() => setRowMenu(null)}
+              items={[
+                {
+                  label: "Open",
+                  icon: <Pencil size={14} />,
+                  action: () => openEditor(menuMinute),
+                },
+                {
+                  label: "Export PDF",
+                  icon: <Printer size={14} />,
+                  action: () => openMeetingMinutePdf(menuMinute, projects),
+                },
+                {
+                  label: "Duplicate",
+                  icon: <Copy size={14} />,
+                  action: () => duplicateMeetingMinute(menuMinute.id),
+                },
+                { divider: true },
+                {
+                  label: "Delete",
+                  icon: <Trash2 size={14} />,
+                  danger: true,
+                  action: () => setShowDeleteConfirm(menuMinute.id),
+                },
+              ]}
+            />
+          );
+        })()}
     </div>
   );
 }

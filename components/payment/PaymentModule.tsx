@@ -761,7 +761,7 @@ export default function PaymentModule() {
             const sheet = activeCert.sheets[activeSheetIdx];
             return (
               <>
-                <div className="space-y-3 xl:hidden">
+                <div className="space-y-3 xl:hidden" data-variant="mobile" data-cert-sheet={sheet.id}>
                   {sheet.items.map((item, index) => {
                     const line = paymentLineState(item);
                     return (
@@ -793,6 +793,9 @@ export default function PaymentModule() {
                             <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Cumulative Qty to date <span className="text-accent">(enter — "This period" is derived)</span></span>
                             {isEditMode && !activeLocked ? (
                               <input
+                                data-field="cumulative-qty"
+                                data-variant="mobile"
+                                data-item-id={item.id}
                                 value={
                                   item.totalQty ||
                                   (parsePaymentNumber(item.previousQty) + line.currentQty).toFixed(2)
@@ -842,7 +845,7 @@ export default function PaymentModule() {
                   })()}
                 </div>
 
-                <div className="hidden data-table-shell overflow-auto xl:block" style={{ maxHeight: "calc(100vh - 425px)" }}>
+                <div className="hidden data-table-shell overflow-auto xl:block" data-variant="desktop" data-cert-sheet={sheet.id} style={{ maxHeight: "calc(100vh - 425px)" }}>
                   <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: 1500 }}>
                     <thead>
                       <tr>
@@ -883,6 +886,9 @@ export default function PaymentModule() {
                             <td className="data-cell-num bg-accent/5">
                               {isEditMode && !activeLocked ? (
                                 <input
+                                  data-field="cumulative-qty"
+                                  data-variant="desktop"
+                                  data-item-id={item.id}
                                   value={
                                     item.totalQty ||
                                     (parsePaymentNumber(item.previousQty) + line.currentQty).toFixed(2)

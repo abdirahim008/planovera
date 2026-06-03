@@ -131,6 +131,8 @@ export default function RichTextEditor({
           ref={editorRef}
           role="textbox"
           aria-multiline="true"
+          aria-label={placeholder}
+          data-placeholder={placeholder}
           contentEditable
           suppressContentEditableWarning
           onFocus={() => setFocused(true)}
