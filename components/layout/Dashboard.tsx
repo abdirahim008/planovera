@@ -950,11 +950,28 @@ export default function Dashboard() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteProject = (projectToDelete: Project) => {
+  const handleDeleteProject = async (projectToDelete: Project) => {
     const confirmed = window.confirm(
       `Delete "${projectToDelete.name}"?\n\nThis permanently removes the project and all of its BOQs, certificates, reports, documents, checklist items, and site notes. This cannot be undone.`,
     );
     if (!confirmed) return;
+
+    // In auth mode the project is a real Supabase row; delete it there first so
+    // it doesn't get re-fetched on the next refresh. The projects FK cascade
+    // (on delete cascade) cleans up all project-scoped tables server-side.
+    if (authConfigured) {
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
+        window.alert("Supabase environment variables are missing — cannot delete the project.");
+        return;
+      }
+      const { error } = await supabase.from("projects").delete().eq("id", projectToDelete.id);
+      if (error) {
+        window.alert(`Could not delete the project: ${error.message}`);
+        return;
+      }
+    }
+
     deleteProject(projectToDelete.id);
   };
 
