@@ -802,7 +802,11 @@ export default function ProgressModule() {
     const weightedContribution = (toNumber(item.weightPercent) * toNumber(item.actualPercent)) / 100;
 
     if (column === "description") {
-      return <td className="data-cell-wrap min-w-[260px]">{item.description}</td>;
+      return (
+        <td className="data-cell-wrap data-sticky-col left-10 data-sticky-edge min-w-[150px] sm:min-w-[260px]">
+          {item.description}
+        </td>
+      );
     }
     if (column === "billNo") {
       return <td className="font-mono text-txt-muted">{item.billNo || "-"}</td>;
@@ -1019,52 +1023,16 @@ export default function ProgressModule() {
       </div>
 
       {activeSheetIdx === -1 ? (
-        <>
-        <div className="space-y-3 lg:hidden">
-          {activeReport.sheets.length === 0 ? (
-            <div className="rounded-2xl border border-border bg-bg-surface p-8 text-center text-sm text-txt-muted">
-              No progress sections yet.
-            </div>
-          ) : (
-            activeReport.sheets.map((sheet) => {
-              const sheetReport: ProgressReport = { ...activeReport, sheets: [sheet] };
-              const sheetMetrics = reportMetrics(sheetReport);
-              return (
-                <button
-                  key={`${sheet.id}-compact`}
-                  type="button"
-                  onClick={() => setActiveSheetIdx(activeReport.sheets.findIndex((item) => item.id === sheet.id))}
-                  className="w-full rounded-2xl border border-border bg-bg-surface p-4 text-left transition hover:border-accent/50"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-txt">{sheet.name}</div>
-                      <div className="mt-1 text-xs text-txt-muted">{sheet.items.length} activities</div>
-                    </div>
-                    <Badge color={sheetMetrics.variance >= 0 ? "ok" : "err"}>
-                      {sheetMetrics.variance.toFixed(1)}%
-                    </Badge>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Planned</div>
-                      <div className="mt-1 font-mono font-semibold text-txt">{sheetMetrics.planned.toFixed(1)}%</div>
-                    </div>
-                    <div className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Actual</div>
-                      <div className="mt-1 font-mono font-semibold text-accent">{sheetMetrics.actual.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-        <div className="hidden data-table-shell overflow-auto lg:block">
-          <table className="data-table" style={{ minWidth: 880 }}>
+        activeReport.sheets.length === 0 ? (
+          <div className="rounded-2xl border border-border bg-bg-surface p-8 text-center text-sm text-txt-muted">
+            No progress sections yet.
+          </div>
+        ) : (
+        <div className="data-table-shell overflow-auto">
+          <table className="data-table data-table-sticky min-w-[640px] sm:min-w-[880px]">
             <thead>
               <tr>
-                <th>Section</th>
+                <th className="data-sticky-col left-0 data-sticky-edge min-w-[150px] sm:min-w-[220px]">Section</th>
                 <th>Items</th>
                 <th className="text-right">Earned Value</th>
                 <th className="text-right">Planned</th>
@@ -1079,7 +1047,17 @@ export default function ProgressModule() {
                 const sheetMetrics = reportMetrics(sheetReport);
                 return (
                   <tr key={sheet.id}>
-                    <td className="text-sm font-medium">{sheet.name}</td>
+                    <td className="data-cell-wrap data-sticky-col left-0 data-sticky-edge min-w-[150px] sm:min-w-[220px] text-sm font-medium">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveSheetIdx(activeReport.sheets.findIndex((item) => item.id === sheet.id))
+                        }
+                        className="cursor-pointer bg-transparent p-0 text-left text-accent hover:underline"
+                      >
+                        {sheet.name}
+                      </button>
+                    </td>
                     <td className="text-sm text-txt-muted">{sheet.items.length}</td>
                     <td className="data-cell-num text-sm">
                       {project?.currency || "USD"} {currency(sheetMetrics.earned)}
@@ -1098,7 +1076,7 @@ export default function ProgressModule() {
             </tbody>
           </table>
         </div>
-        </>
+        )
       ) : (
         <div>
           <div className="mb-2 flex flex-col gap-2 rounded-xl border border-border bg-bg-surface p-2 lg:flex-row lg:items-center lg:justify-between">
@@ -1260,84 +1238,29 @@ export default function ProgressModule() {
           {progressViewMode === "visual" ? (
             <ProgressVisualRows rows={visualRows} />
           ) : (
-          <>
-          <div className="space-y-3 xl:hidden">
-            {activeReport.sheets[activeSheetIdx]?.items.map((item, index) => {
-              const sheetId = activeReport.sheets[activeSheetIdx].id;
-              const updateItem = (key: keyof ProgressItem, value: string) =>
-                updateProgressItem(activeReport.id, sheetId, item.id, key, value);
-              return (
-                <div key={`${item.id}-compact`} className="rounded-2xl border border-border bg-bg-surface p-4">
-                  <div className="mb-3 min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                      Activity {index + 1} {item.billNo ? `• ${item.billNo}` : ""}
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-txt">{item.description}</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {activeInputMode === "quantity" && (
-                      <>
-                        <div className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">BOQ Qty</div>
-                          <div className="mt-1 font-mono font-semibold text-txt">{item.boqQty || "0"}</div>
-                        </div>
-                        <label className="rounded-xl border border-accent/30 bg-accent/5 p-3">
-                          <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Current Qty</span>
-                          {isEditMode ? (
-                            <input
-                              value={item.currentQty}
-                              onChange={(e) => updateItem("currentQty", e.target.value)}
-                              className="mt-1 w-full rounded-lg border border-border bg-bg-input px-2 py-1 text-right font-mono text-sm text-txt outline-none focus:border-accent"
-                            />
-                          ) : (
-                            <div className="mt-1 font-mono font-semibold text-accent">{item.currentQty || "0"}</div>
-                          )}
-                        </label>
-                      </>
-                    )}
-                    <label className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                      <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Planned %</span>
-                      {isEditMode ? (
-                        <input
-                          value={item.plannedPercent}
-                          onChange={(e) => updateItem("plannedPercent", e.target.value)}
-                          className="mt-1 w-full rounded-lg border border-border bg-bg-input px-2 py-1 text-right font-mono text-sm text-txt outline-none focus:border-accent"
-                        />
-                      ) : (
-                        <div className="mt-1 font-mono font-semibold text-txt">{item.plannedPercent}%</div>
-                      )}
-                    </label>
-                    <label className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                      <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Actual %</span>
-                      {isEditMode && activeInputMode === "percent" ? (
-                        <input
-                          value={item.actualPercent}
-                          onChange={(e) => updateItem("actualPercent", e.target.value)}
-                          className="mt-1 w-full rounded-lg border border-accent/30 bg-accent/5 px-2 py-1 text-right font-mono text-sm text-txt outline-none focus:border-accent"
-                        />
-                      ) : (
-                        <div className="mt-1 font-mono font-semibold text-accent">{item.actualPercent}%</div>
-                      )}
-                    </label>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="hidden data-table-shell overflow-auto xl:block" style={{ maxHeight: "calc(100vh - 450px)" }}>
-            <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: Math.max(880, displayColumns.length * 132) }}>
+          <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 450px)" }}>
+            <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: Math.max(680, displayColumns.length * 132) }}>
               <thead>
                 <tr>
-                  <th style={{ width: 36 }} className="text-center">#</th>
+                  <th style={{ width: 40 }} className="data-sticky-col left-0 text-center">#</th>
                   {displayColumns.map((column) => (
-                    <th key={column}>{columnLabels[column]}</th>
+                    <th
+                      key={column}
+                      className={
+                        column === "description"
+                          ? "data-sticky-col left-10 data-sticky-edge min-w-[150px] sm:min-w-[260px]"
+                          : ""
+                      }
+                    >
+                      {columnLabels[column]}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {activeReport.sheets[activeSheetIdx]?.items.map((item, index) => (
                   <tr key={item.id}>
-                    <td className="data-cell-index">{index + 1}</td>
+                    <td className="data-cell-index data-sticky-col left-0">{index + 1}</td>
                     {displayColumns.map((column) => (
                       <Fragment key={column}>{renderProgressCell(item, column)}</Fragment>
                     ))}
@@ -1346,7 +1269,6 @@ export default function ProgressModule() {
               </tbody>
             </table>
           </div>
-          </>
           )}
         </div>
       )}
