@@ -114,6 +114,17 @@ export const noteRow = (desc = "Note"): BOQRow => ({
   amount: "",
 });
 
+export const specificationRow = (desc = "Specification"): BOQRow => ({
+  id: uuid(),
+  type: "specification",
+  itemNo: "",
+  description: desc,
+  unit: "",
+  qty: "",
+  rate: "",
+  amount: "",
+});
+
 const evalArithmetic = (expr: string): number => {
   const cleaned = expr.trim();
   if (!cleaned) return 0;

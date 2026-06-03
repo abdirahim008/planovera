@@ -25,7 +25,7 @@ import {
   StickyNote,
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
-import { useAppStore, emptyRow, headerRow, subtotalRow, grandtotalRow, noteRow, recalcRows, currency, resolveCellValue } from "@/lib/store";
+import { useAppStore, emptyRow, headerRow, subtotalRow, grandtotalRow, noteRow, specificationRow, recalcRows, currency, resolveCellValue } from "@/lib/store";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { mapBOQLibraryItemRecord } from "@/lib/supabase";
 import type { BOQRow, BOQLibraryItem, BOQLibraryItemRecord, BOQSheet } from "@/lib/supabase";
@@ -454,7 +454,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
 
   const insertRowAt = (type: BOQRow["type"], anchorId: string, position: "above" | "below" = "below") => {
     const idx = rows.findIndex((r) => r.id === anchorId);
-    const fn = type === "header" ? headerRow : type === "subtotal" ? subtotalRow : type === "grandtotal" ? grandtotalRow : type === "notes" ? noteRow : emptyRow;
+    const fn = type === "header" ? headerRow : type === "subtotal" ? subtotalRow : type === "grandtotal" ? grandtotalRow : type === "notes" ? noteRow : type === "specification" ? specificationRow : emptyRow;
     const newRows = [...rows];
     newRows.splice(position === "above" ? idx : idx + 1, 0, fn());
     setRows(newRows);
@@ -469,6 +469,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
         if (type === "subtotal") return { ...r, type: "subtotal", description: r.description || "Sub Total", unit: "", qty: "", rate: "" };
         if (type === "grandtotal") return { ...r, type: "grandtotal", description: r.description || "Grand Total", unit: "", qty: "", rate: "" };
         if (type === "notes") return { ...r, type: "notes", itemNo: "", description: r.description || "Note", unit: "", qty: "", rate: "", amount: "" };
+        if (type === "specification") return { ...r, type: "specification", itemNo: "", description: r.description || "Specification", unit: "", qty: "", rate: "", amount: "" };
         return { ...r, type: "item" };
       })
     );
@@ -520,6 +521,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
       ? [
           { label: "Convert to Section Header", icon: <Heading size={14} />, action: () => convertRowTo("header"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "header") },
           { label: "Convert to Notes", icon: <StickyNote size={14} />, action: () => convertRowTo("notes"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "notes") },
+          { label: "Convert to Specification", icon: <StickyNote size={14} />, action: () => convertRowTo("specification"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "specification") },
           { label: "Convert to Sub Total", icon: <Sigma size={14} />, action: () => convertRowTo("subtotal"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "subtotal") },
           { label: "Convert to Grand Total", icon: <Sigma size={14} />, action: () => convertRowTo("grandtotal"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "grandtotal") },
           { label: "Convert to Regular Item", icon: <FileSpreadsheet size={14} />, action: () => convertRowTo("item"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "item") },
@@ -577,6 +579,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
   const getRowClass = (row: BOQRow) => {
     if (row.type === "header") return "row-header";
     if (row.type === "notes") return "row-notes";
+    if (row.type === "specification") return "row-specification";
     if (row.type === "subtotal") return "row-subtotal";
     if (row.type === "grandtotal") return "row-grandtotal";
     return "";
@@ -632,10 +635,10 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
             return (
               <tr key={row.id} className={`${getRowClass(row)} ${isSelected ? "row-selected" : ""} transition-colors duration-75`} onContextMenu={(e) => handleContextMenu(e, row.id)}>
                 <td className={`row-gutter boq-sticky-col left-0 ${isSelected ? "selected" : ""}`} onClick={(e) => handleRowSelect(e, row.id)}>{ri + 1}</td>
-                {row.type === "notes" ? (
+                {row.type === "notes" || row.type === "specification" ? (
                   <td
                     colSpan={BOQ_COLS.length}
-                    className={`relative border-b border-b-border px-3 py-2 text-left text-[13px] transition-colors ${isInSelection(ri, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                    className={`relative border-b border-b-border px-3 py-2 text-left text-[13px] transition-colors ${row.type === "specification" ? "italic" : ""} ${isInSelection(ri, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={(e) => {
                       if (e.button === 0) {
                         e.preventDefault();
@@ -664,10 +667,10 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                       />
                     ) : (
                       <div className="flex gap-3 whitespace-pre-wrap break-words leading-6 text-txt-muted">
-                        <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full border border-accent/25 bg-accent/10 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
-                          Note
+                        <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full border border-accent/25 bg-accent/10 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent not-italic">
+                          {row.type === "specification" ? "Spec" : "Note"}
                         </span>
-                        <span>{row.description || "Double-click to add a note"}</span>
+                        <span>{row.description || (row.type === "specification" ? "Double-click to add a specification" : "Double-click to add a note")}</span>
                       </div>
                     )}
                   </td>
@@ -986,6 +989,8 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
                       <span className="font-bold text-txt">{r.description}</span>
                     ) : r.type === "notes" ? (
                       <span className="italic text-txt-dim">Note: {r.description}</span>
+                    ) : r.type === "specification" ? (
+                      <span className="italic text-txt-dim">Spec: {r.description}</span>
                     ) : r.type === "subtotal" || r.type === "grandtotal" ? (
                       <span className="font-semibold italic">{r.description}</span>
                     ) : (
@@ -1449,6 +1454,12 @@ export default function BOQModule() {
           styleRow(excelRow, {
             font: { ...baseFont, bold: true, color: { rgb: "FFFFFF" } },
             fill: { patternType: "solid", fgColor: { rgb: "065F46" } },
+            border,
+          });
+        } else if (row.type === "specification") {
+          styleRow(excelRow, {
+            font: { ...baseFont, italic: true, color: { rgb: "5B4B8A" } },
+            fill: { patternType: "solid", fgColor: { rgb: "F1EEF9" } },
             border,
           });
         }

@@ -191,6 +191,20 @@ body {
   font-style: normal;
 }
 
+.boq-table-shell tr.row-specification td,
+.boq-table-shell tr.row-specification .row-gutter {
+  background: #1a1726 !important;
+  color: #d8cdf0 !important;
+  border-color: #2e2740 !important;
+  font-style: italic;
+}
+
+.boq-table-shell tr.row-specification td:first-child,
+.boq-table-shell tr.row-specification .row-gutter {
+  box-shadow: inset 4px 0 0 #a78bfa;
+  font-style: normal;
+}
+
 .boq-table-shell tr.row-subtotal td,
 .boq-table-shell tr.row-subtotal .row-gutter {
   background: #182233 !important;

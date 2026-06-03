@@ -25,6 +25,7 @@ const ROW_TYPES: { value: BOQRow["type"]; label: string }[] = [
   { value: "subtotal", label: "Subtotal" },
   { value: "grandtotal", label: "Grand total" },
   { value: "notes", label: "Notes" },
+  { value: "specification", label: "Specification" },
 ];
 
 const blankRow = (): BOQRow => ({
@@ -378,11 +379,11 @@ export default function TemplateEditorModal({
                               onChange={(e) => patchRow(row.id, { itemNo: e.target.value })}
                             />
                           </td>
-                          <td className="data-cell-wrap" style={{ verticalAlign: "top" }}>
+                          <td className="data-cell-wrap" style={{ verticalAlign: "top", fontStyle: row.type === "specification" ? "italic" : undefined }}>
                             <CellTextarea
                               value={row.description}
                               onChange={(next) => patchRow(row.id, { description: next })}
-                              placeholder="Description"
+                              placeholder={row.type === "specification" ? "Specification" : "Description"}
                             />
                           </td>
                           <td>
