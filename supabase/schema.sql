@@ -318,6 +318,7 @@ create table if not exists public.boq_library_items (
   name text not null,
   description text not null default '',
   category text not null default 'General',
+  subcategory text not null default '',
   sheets jsonb not null default '[]'::jsonb,
   author_id uuid references public.profiles(id) on delete set null,
   author_name text,
@@ -668,6 +669,9 @@ on public.project_presence (project_id, last_seen_at desc);
 
 create index if not exists boq_library_items_category_idx
 on public.boq_library_items (category);
+
+create index if not exists boq_library_items_subcategory_idx
+on public.boq_library_items (category, subcategory);
 
 create index if not exists project_boq_documents_project_idx
 on public.project_boq_documents (project_id, updated_at desc);

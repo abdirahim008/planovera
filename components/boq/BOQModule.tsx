@@ -28,7 +28,7 @@ import * as XLSX from "xlsx-js-style";
 import { useAppStore, emptyRow, headerRow, subtotalRow, grandtotalRow, noteRow, recalcRows, currency, resolveCellValue } from "@/lib/store";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { mapBOQLibraryItemRecord } from "@/lib/supabase";
-import type { BOQRow, BOQLibraryItemRecord, BOQSheet } from "@/lib/supabase";
+import type { BOQRow, BOQLibraryItem, BOQLibraryItemRecord, BOQSheet } from "@/lib/supabase";
 import {
   parsePastedText,
   parseExcelToRawSheets,
@@ -41,7 +41,7 @@ import {
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
-import Badge from "@/components/ui/Badge";
+import ExcelImportPreviewModal from "@/components/boq/ExcelImportPreviewModal";
 
 const BOQ_COLS = [
   { key: "itemNo" as const, label: "Item No.", width: "w-[80px]", align: "text-center" },
@@ -50,16 +50,6 @@ const BOQ_COLS = [
   { key: "qty" as const, label: "Quantity", width: "w-[100px]", align: "text-right", mono: true },
   { key: "rate" as const, label: "Rate", width: "w-[110px]", align: "text-right", mono: true },
   { key: "amount" as const, label: "Amount", width: "w-[130px]", align: "text-right", mono: true },
-];
-
-const BOQ_IMPORT_TARGET_OPTIONS: Array<{ value: BOQMappedColumnKey; label: string }> = [
-  { value: "itemNo", label: "Item No." },
-  { value: "description", label: "Description" },
-  { value: "unit", label: "Unit" },
-  { value: "qty", label: "Quantity" },
-  { value: "rate", label: "Rate" },
-  { value: "amount", label: "Amount" },
-  { value: "ignore", label: "Ignore Column" },
 ];
 
 const numberValue = (value: string | number | null | undefined) => {
@@ -891,6 +881,26 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
   const { boqLibrary, loadBOQFromLibrary } = useAppStore();
   const [selected, setSelected] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    boqLibrary.forEach((b) => set.add(b.category?.trim() || "Uncategorized"));
+    return Array.from(set).sort();
+  }, [boqLibrary]);
+
+  const groups = useMemo(() => {
+    const filtered = categoryFilter
+      ? boqLibrary.filter((b) => (b.category?.trim() || "Uncategorized") === categoryFilter)
+      : boqLibrary;
+    const map = new Map<string, BOQLibraryItem[]>();
+    for (const item of filtered) {
+      const key = `${item.category?.trim() || "Uncategorized"} › ${item.subcategory?.trim() || "General"}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return Array.from(map.entries());
+  }, [boqLibrary, categoryFilter]);
 
   const handleLoad = () => {
     const item = boqLibrary.find((b) => b.id === selected);
@@ -902,8 +912,42 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
 
   return (
     <Modal open={open} onClose={onClose} title="BOQ Library" width={600}>
-      <div className="flex flex-col gap-2 max-h-[400px] overflow-auto">
-        {boqLibrary.map((item) => (
+      {categories.length > 1 ? (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            className={`px-2.5 py-1 text-xs rounded-md border cursor-pointer ${
+              categoryFilter === ""
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-border text-txt-muted hover:bg-bg-hover"
+            }`}
+            onClick={() => setCategoryFilter("")}
+          >
+            All
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              className={`px-2.5 py-1 text-xs rounded-md border cursor-pointer ${
+                categoryFilter === cat
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border text-txt-muted hover:bg-bg-hover"
+              }`}
+              onClick={() => setCategoryFilter(cat)}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-4 max-h-[400px] overflow-auto">
+        {groups.map(([groupKey, items]) => (
+          <div key={groupKey} className="flex flex-col gap-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim sticky top-0 bg-bg-surface py-1">
+              {groupKey}
+            </div>
+            {items.map((item) => (
           <div key={item.id}>
             <div
               className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
@@ -923,7 +967,6 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
                 <div className="font-semibold text-sm">{item.name}</div>
                 <div className="text-xs text-txt-muted mt-0.5 truncate">{item.description}</div>
               </div>
-              <Badge color="accent">{item.category}</Badge>
               <ChevronRight
                 size={16}
                 className={`text-txt-dim transition-transform ${expandedId === item.id ? "rotate-90" : ""}`}
@@ -960,6 +1003,8 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
               </div>
             )}
           </div>
+            ))}
+          </div>
         ))}
       </div>
       <div className="mt-5 flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
@@ -981,6 +1026,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [subcategory, setSubcategory] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -988,11 +1034,12 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
     if (!name.trim()) return;
 
     if (!authConfigured) {
-      addToLibrary(name, description, category || "General");
+      addToLibrary(name, description, category || "General", subcategory.trim());
       onClose();
       setName("");
       setDescription("");
       setCategory("");
+      setSubcategory("");
       setNotice(null);
       return;
     }
@@ -1023,6 +1070,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
         name: name.trim(),
         description: description.trim(),
         category: category.trim() || "General",
+        subcategory: subcategory.trim(),
         sheets: boqSheets,
         author_id: user.id,
       })
@@ -1042,6 +1090,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
     setName("");
     setDescription("");
     setCategory("");
+    setSubcategory("");
     setNotice(null);
   };
 
@@ -1066,14 +1115,25 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
             placeholder="Brief description of this BOQ"
           />
         </div>
-        <div>
-          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Category</label>
-          <input
-            className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="e.g. Roads, Buildings, Drainage"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Category</label>
+            <input
+              className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Roads & Highways"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Subcategory</label>
+            <input
+              className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
+              value={subcategory}
+              onChange={(e) => setSubcategory(e.target.value)}
+              placeholder="e.g. Pavement & Surfacing"
+            />
+          </div>
         </div>
         {notice ? (
           <div className="rounded-xl border border-err/30 bg-err/10 px-3 py-2 text-sm text-err">
@@ -1156,237 +1216,6 @@ function DeleteConfirmModal({
         <Button variant="danger" className="flex-1 justify-center" onClick={onConfirm}>
           <Trash2 size={14} /> Delete
         </Button>
-      </div>
-    </Modal>
-  );
-}
-
-function ExcelImportPreviewModal({
-  open,
-  rawSheets,
-  mappings,
-  activeSheetIdx,
-  onSheetChange,
-  onMappingChange,
-  onReorderColumns,
-  onConfirm,
-  onClose,
-}: {
-  open: boolean;
-  rawSheets: RawExcelSheet[];
-  mappings: BOQColumnMapping[][];
-  activeSheetIdx: number;
-  onSheetChange: (idx: number) => void;
-  onMappingChange: (sheetIdx: number, colIdx: number, target: BOQMappedColumnKey) => void;
-  onReorderColumns: (sheetIdx: number, fromColIdx: number, toColIdx: number) => void;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  const activeSheet = rawSheets[activeSheetIdx];
-  const activeMapping = mappings[activeSheetIdx] || [];
-
-  const mappedPreviewRows = useMemo(() => {
-    if (!activeSheet) return [];
-    return mapRawSheetToBOQRows(activeSheet, activeMapping).slice(0, 30);
-  }, [activeSheet, activeMapping]);
-
-  const mappingErrors = useMemo(() => {
-    const errors: string[] = [];
-    mappings.forEach((sheetMapping, idx) => {
-      const mappedTargets = sheetMapping
-        .map((m) => m.target)
-        .filter((target) => target !== "ignore");
-      const hasDescription = mappedTargets.includes("description");
-      if (!hasDescription) {
-        errors.push(`Sheet "${rawSheets[idx]?.name || idx + 1}" needs a Description column mapping.`);
-      }
-      const uniqueTargets = new Set(mappedTargets);
-      if (uniqueTargets.size !== mappedTargets.length) {
-        errors.push(`Sheet "${rawSheets[idx]?.name || idx + 1}" has duplicate target mappings.`);
-      }
-    });
-    return errors;
-  }, [mappings, rawSheets]);
-
-  const canConfirm = rawSheets.length > 0 && mappingErrors.length === 0;
-  const previewColumnCount = activeSheet?.rows.reduce((max, r) => Math.max(max, r.length), 0) || 0;
-  const totalSheets = rawSheets.length;
-  const sheetRowCount = activeSheet?.rows.length || 0;
-  const sheetColCount = activeSheet?.rows.reduce((max, r) => Math.max(max, r.length), 0) || 0;
-  const [draggingColIdx, setDraggingColIdx] = useState<number | null>(null);
-  const [dragOverColIdx, setDragOverColIdx] = useState<number | null>(null);
-
-  return (
-    <Modal open={open} onClose={onClose} title="Import Excel Preview" width={1100}>
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          {rawSheets.map((sheet, idx) => {
-            const sheetColCount = sheet.rows.reduce((max, r) => Math.max(max, r.length), 0);
-            return (
-              <button
-                key={sheet.name + idx}
-                type="button"
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border cursor-pointer ${
-                  idx === activeSheetIdx
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border text-txt-muted bg-transparent hover:bg-bg-hover"
-                }`}
-                onClick={() => onSheetChange(idx)}
-              >
-                <span className="font-medium truncate max-w-[140px]">{sheet.name}</span>
-                <span className="rounded-full bg-bg-input px-2 py-0.5 text-[10px] text-txt-dim">
-                  {sheet.rows.length}r × {sheetColCount}c
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-bg-surface/70 px-3 py-2 text-[11px] text-txt-dim">
-          <div>
-            Showing sheet <strong>{activeSheetIdx + 1}</strong> of <strong>{totalSheets}</strong> — <strong>{activeSheet?.name || `Sheet ${activeSheetIdx + 1}`}</strong>
-          </div>
-          <div>
-            {sheetRowCount} rows, {sheetColCount} columns
-          </div>
-        </div>
-
-        <div className="overflow-auto border border-border rounded-lg max-h-[58vh]">
-          <table className="w-full border-collapse text-xs" style={{ minWidth: 920 }}>
-            <thead>
-              <tr className="bg-bg-raised/50">
-                <th className="sticky top-0 z-20 w-12 p-2 border border-border text-center bg-bg-raised/50">#</th>
-                {Array.from({ length: previewColumnCount }, (_, colIdx) => (
-                  <th
-                    key={colIdx}
-                    className={`sticky top-0 z-20 min-w-[140px] p-2 border border-border align-top bg-bg-raised/50 ${dragOverColIdx === colIdx ? "bg-accent/10" : ""}`}
-                    draggable
-                    onDragStart={(e) => {
-                      setDraggingColIdx(colIdx);
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", String(colIdx));
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      if (dragOverColIdx !== colIdx) setDragOverColIdx(colIdx);
-                      e.dataTransfer.dropEffect = "move";
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverColIdx === colIdx) setDragOverColIdx(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const fromRaw = e.dataTransfer.getData("text/plain");
-                      const fromColIdx = Number(fromRaw);
-                      if (!Number.isNaN(fromColIdx) && fromColIdx !== colIdx) {
-                        onReorderColumns(activeSheetIdx, fromColIdx, colIdx);
-                      }
-                      setDraggingColIdx(null);
-                      setDragOverColIdx(null);
-                    }}
-                    onDragEnd={() => {
-                      setDraggingColIdx(null);
-                      setDragOverColIdx(null);
-                    }}
-                  >
-                    <div className="flex flex-col gap-1.5">
-                      <div className="text-[10px] text-txt-dim">
-                        Excel Col {colIdx + 1}
-                        {draggingColIdx === colIdx ? " (moving)" : ""}
-                      </div>
-                      <select
-                        className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt outline-none"
-                        value={activeMapping[colIdx]?.target || "ignore"}
-                        onChange={(e) =>
-                          onMappingChange(activeSheetIdx, colIdx, e.target.value as BOQMappedColumnKey)
-                        }
-                      >
-                        {BOQ_IMPORT_TARGET_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="text-[10px] px-1.5 py-1 rounded border border-border bg-transparent text-txt-dim hover:text-txt hover:bg-bg-hover cursor-pointer"
-                        onClick={() => onMappingChange(activeSheetIdx, colIdx, "ignore")}
-                      >
-                        Delete/Ignore
-                      </button>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(activeSheet?.rows || []).slice(0, 25).map((row, rowIdx) => (
-                <tr key={rowIdx}>
-                  <td className="p-2 border border-border text-center text-txt-dim">{rowIdx + 1}</td>
-                  {Array.from({ length: previewColumnCount }, (_, colIdx) => (
-                    <td key={colIdx} className="p-2 border border-border text-txt-muted">
-                      {row[colIdx] || ""}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="border border-border rounded-lg p-3 bg-bg-raised/30">
-          <div className="text-xs font-semibold mb-2">Mapped BOQ Preview (first 30 rows)</div>
-          <div className="overflow-auto max-h-[220px]">
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr className="bg-bg-raised/60">
-                  <th className="sticky top-0 z-20 border border-border px-2 py-1 text-left bg-bg-raised/60">Item No.</th>
-                  <th className="sticky top-0 z-20 border border-border px-2 py-1 text-left bg-bg-raised/60">Description</th>
-                  <th className="sticky top-0 z-20 border border-border px-2 py-1 text-left bg-bg-raised/60">Unit</th>
-                  <th className="sticky top-0 z-20 border border-border px-2 py-1 text-right bg-bg-raised/60">Qty</th>
-                  <th className="sticky top-0 z-20 border border-border px-2 py-1 text-right bg-bg-raised/60">Rate</th>
-                  <th className="sticky top-0 z-20 border border-border px-2 py-1 text-right bg-bg-raised/60">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mappedPreviewRows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="border border-border px-2 py-1">{r.itemNo}</td>
-                    <td className="border border-border px-2 py-1">{r.description}</td>
-                    <td className="border border-border px-2 py-1">{r.unit}</td>
-                    <td className="border border-border px-2 py-1 text-right">{r.qty}</td>
-                    <td className="border border-border px-2 py-1 text-right">{r.rate}</td>
-                    <td className="border border-border px-2 py-1 text-right">{r.amount}</td>
-                  </tr>
-                ))}
-                {mappedPreviewRows.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="border border-border px-2 py-3 text-center text-txt-dim">
-                      No preview rows after mapping.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {mappingErrors.length > 0 && (
-          <div className="rounded-md border border-err/40 bg-err/10 px-3 py-2 text-xs text-err">
-            {mappingErrors.map((err) => (
-              <div key={err}>{err}</div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-3 pt-1">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={onConfirm} disabled={!canConfirm}>
-            Import Confirmed Mapping
-          </Button>
-        </div>
       </div>
     </Modal>
   );

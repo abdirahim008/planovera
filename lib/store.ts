@@ -47,6 +47,7 @@ import { SURP2_IMPORT_ID } from "./surp2ImportTypes";
 import type { FinalCertificateImportPayload } from "./finalCertificateImportTypes";
 import { FINAL_CERTIFICATE_IMPORT_ID, FINAL_CERTIFICATE_ID_PREFIX } from "./finalCertificateImportTypes";
 import type { AdoptableWorkspace } from "./sampleData";
+import { buildSeedLibraryItems } from "./boqLibrary";
 import { calculateBOQLineAmount, isPercentageUnit } from "./boq-calculations";
 import {
   inverseBOQLineAmount,
@@ -1944,7 +1945,7 @@ interface AppState {
   // ─── BOQ Library ─────────────────────────────────────────────────
   boqLibrary: BOQLibraryItem[];
   setBOQLibrary: (items: BOQLibraryItem[]) => void;
-  addToLibrary: (name: string, description: string, category: string) => void;
+  addToLibrary: (name: string, description: string, category: string, subcategory?: string) => void;
   deleteFromLibrary: (id: string) => void;
 
   sidebarCollapsed: boolean;
@@ -3857,43 +3858,13 @@ export const useAppStore = create<AppState>()(
       // ═══════════════════════════════════════════════════════════════
       // ─── BOQ Library ───────────────────────────────────────────────
       // ═══════════════════════════════════════════════════════════════
-      boqLibrary: [
-        {
-          id: uuid(), name: "Standard Road Works BOQ",
-          description: "Typical road construction BOQ with earthworks, base, sub-base, and asphalt items",
-          category: "Roads", created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-          sheets: [{
-            id: uuid(), project_id: "", name: "Road Works", sort_order: 0,
-            rows: [
-              { id: uuid(), type: "header", itemNo: "", description: "A. PRELIMINARY & GENERAL", unit: "", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "A.1", description: "Mobilization and demobilization", unit: "LS", qty: "1", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "A.2", description: "Site establishment and clearance", unit: "LS", qty: "1", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "A.3", description: "Traffic management", unit: "LS", qty: "1", rate: "", amount: "" },
-              { id: uuid(), type: "subtotal", itemNo: "", description: "Sub Total - Preliminaries", unit: "", qty: "", rate: "", amount: "0.00" },
-              { id: uuid(), type: "header", itemNo: "", description: "B. EARTHWORKS", unit: "", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "B.1", description: "Excavation to spoil in soft material", unit: "m³", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "B.2", description: "Excavation to spoil in hard material", unit: "m³", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "B.3", description: "Fill with approved material and compact", unit: "m³", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "B.4", description: "Grading and shaping of formation", unit: "m²", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "subtotal", itemNo: "", description: "Sub Total - Earthworks", unit: "", qty: "", rate: "", amount: "0.00" },
-              { id: uuid(), type: "header", itemNo: "", description: "C. PAVEMENT LAYERS", unit: "", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "C.1", description: "Sub-base course (150mm compacted gravel)", unit: "m³", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "C.2", description: "Base course (200mm crushed stone)", unit: "m³", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "C.3", description: "Prime coat (MC-30 cutback bitumen)", unit: "m²", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "C.4", description: "Tack coat (SS-1 emulsion)", unit: "m²", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "item", itemNo: "C.5", description: "Asphalt concrete wearing course (50mm)", unit: "m²", qty: "", rate: "", amount: "" },
-              { id: uuid(), type: "subtotal", itemNo: "", description: "Sub Total - Pavement", unit: "", qty: "", rate: "", amount: "0.00" },
-              { id: uuid(), type: "grandtotal", itemNo: "", description: "GRAND TOTAL", unit: "", qty: "", rate: "", amount: "0.00" },
-            ],
-          }],
-        },
-      ],
+      boqLibrary: buildSeedLibraryItems(),
       setBOQLibrary: (items) => set({ boqLibrary: items }),
-      addToLibrary: (name, description, category) =>
+      addToLibrary: (name, description, category, subcategory = "") =>
         set((s) => ({
           boqLibrary: [
             ...s.boqLibrary,
-            { id: uuid(), name, description, category, sheets: s.boqSheets.map((sh) => ({ ...sh, rows: sh.rows.map((r) => ({ ...r })) })), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+            { id: uuid(), name, description, category, subcategory, sheets: s.boqSheets.map((sh) => ({ ...sh, rows: sh.rows.map((r) => ({ ...r })) })), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
           ],
         })),
       deleteFromLibrary: (id) => set((s) => ({ boqLibrary: s.boqLibrary.filter((item) => item.id !== id) })),
@@ -3903,7 +3874,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "probuild-storage",
-        version: 13,
+        version: 14,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, any>;
         if (version < 2) {
@@ -4070,6 +4041,19 @@ export const useAppStore = create<AppState>()(
           if (!Array.isArray(state.actionPoints) || state.actionPoints.length === 0) {
             state.actionPoints = seedActionPointsFromMeetings(state.meetingMinutes ?? []);
           }
+        }
+
+        if (version < 14) {
+          // Expanded curated BOQ library + subcategory field. Backfill the
+          // missing subcategory on any existing items, and merge in the new
+          // curated starter templates without clobbering user-added ones.
+          const existing: any[] = Array.isArray(state.boqLibrary) ? state.boqLibrary : [];
+          existing.forEach((item) => {
+            if (item && typeof item.subcategory !== "string") item.subcategory = "";
+          });
+          const existingNames = new Set(existing.map((i) => i?.name));
+          const seeded = buildSeedLibraryItems().filter((i) => !existingNames.has(i.name));
+          state.boqLibrary = [...seeded, ...existing];
         }
 
         return state as AppState;

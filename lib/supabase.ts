@@ -200,6 +200,7 @@ export interface BOQLibraryItem {
   name: string;
   description: string;
   category: string;
+  subcategory: string;
   sheets: BOQSheet[];
   created_at: string;
   updated_at: string;
@@ -648,6 +649,7 @@ export interface BOQLibraryItemRecord {
   name: string;
   description: string;
   category: string;
+  subcategory?: string | null;
   sheets: BOQSheet[];
   created_at: string;
   updated_at: string;
@@ -997,6 +999,7 @@ export const mapBOQLibraryItemRecord = (
   name: record.name,
   description: record.description,
   category: record.category,
+  subcategory: record.subcategory ?? "",
   sheets: record.sheets ?? [],
   created_at: record.created_at,
   updated_at: record.updated_at,

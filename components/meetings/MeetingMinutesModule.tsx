@@ -1664,7 +1664,7 @@ export default function MeetingMinutesModule() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-border bg-bg-surface p-5">
+          <div className="hidden rounded-2xl border border-border bg-bg-surface p-5 xl:block">
             <div className="mb-4">
               <h3 className="text-base font-semibold text-white">Live Action Register</h3>
             </div>
