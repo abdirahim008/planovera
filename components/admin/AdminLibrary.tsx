@@ -23,84 +23,18 @@ import {
   subcategoriesForCategory,
 } from "@/lib/boqLibrary";
 import ExcelImportPreviewModal from "@/components/boq/ExcelImportPreviewModal";
-import { FileSpreadsheet, Trash2, Plus, ArrowLeft, Download, Upload } from "lucide-react";
-
-const CUSTOM = "__custom__";
-
-/** Dropdown of curated options that falls back to a free-text input when "Custom…" is picked. */
-function TaxonomySelect({
-  label,
-  value,
-  options,
-  placeholder,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  placeholder: string;
-  onChange: (next: string) => void;
-  disabled?: boolean;
-}) {
-  // Treat a value not in the curated list (and non-empty) as "custom".
-  const isCustom = value !== "" && !options.includes(value);
-  const [customMode, setCustomMode] = useState(isCustom);
-
-  return (
-    <div>
-      <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">
-        {label}
-      </label>
-      {customMode || isCustom ? (
-        <div className="flex gap-2">
-          <input
-            className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
-            value={value}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            autoFocus
-          />
-          {options.length > 0 ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-border px-2.5 text-xs text-txt-muted hover:text-txt hover:bg-bg-hover"
-              onClick={() => {
-                setCustomMode(false);
-                onChange("");
-              }}
-            >
-              List
-            </button>
-          ) : null}
-        </div>
-      ) : (
-        <select
-          className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
-          value={options.includes(value) ? value : ""}
-          disabled={disabled}
-          onChange={(e) => {
-            if (e.target.value === CUSTOM) {
-              setCustomMode(true);
-              onChange("");
-            } else {
-              onChange(e.target.value);
-            }
-          }}
-        >
-          <option value="">{placeholder}</option>
-          {options.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-          <option value={CUSTOM}>+ Custom…</option>
-        </select>
-      )}
-    </div>
-  );
-}
+import TaxonomySelect from "@/components/admin/TaxonomySelect";
+import TemplateEditorModal, { type TemplatePayload } from "@/components/admin/TemplateEditorModal";
+import {
+  FileSpreadsheet,
+  Trash2,
+  Plus,
+  ArrowLeft,
+  Download,
+  Upload,
+  Pencil,
+  ChevronRight,
+} from "lucide-react";
 
 export default function AdminLibrary({ embedded = false }: { embedded?: boolean }) {
   const authConfigured = isSupabaseConfigured();
@@ -125,6 +59,17 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
   const [mappings, setMappings] = useState<BOQColumnMapping[][]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
+
+  // Edit-template flow
+  const [editItem, setEditItem] = useState<BOQLibraryItem | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editNotice, setEditNotice] = useState<string | null>(null);
+
+  // Collapsible category sections (compact UI) — collapsed by default.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const toggleCat = (cat: string) =>
+    setCollapsed((prev) => ({ ...prev, [cat]: !(prev[cat] ?? true) }));
+  const isCollapsed = (cat: string) => collapsed[cat] ?? true;
 
   const pendingItemCount = useMemo(
     () => pendingSheets.reduce((s, sh) => s + sh.rows.filter((r) => r.type === "item").length, 0),
@@ -360,6 +305,59 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
     resetAddForm();
   };
 
+  const handleSaveEdit = async (payload: TemplatePayload) => {
+    if (!editItem) return;
+
+    if (!authConfigured) {
+      const updated: BOQLibraryItem = {
+        ...editItem,
+        name: payload.name,
+        description: payload.description,
+        category: payload.category,
+        subcategory: payload.subcategory,
+        sheets: payload.sheets,
+        updated_at: new Date().toISOString(),
+      };
+      setBOQLibrary(boqLibrary.map((it) => (it.id === editItem.id ? updated : it)));
+      setEditItem(null);
+      setEditNotice(null);
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setEditNotice("Supabase environment variables are missing.");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditNotice(null);
+
+    const { data, error } = await supabase
+      .from("boq_library_items")
+      .update({
+        name: payload.name,
+        description: payload.description,
+        category: payload.category,
+        subcategory: payload.subcategory,
+        sheets: payload.sheets,
+      })
+      .eq("id", editItem.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      setEditSaving(false);
+      setEditNotice(error.message);
+      return;
+    }
+
+    const nextItem = mapBOQLibraryItemRecord(data as BOQLibraryItemRecord);
+    setBOQLibrary(boqLibrary.map((it) => (it.id === editItem.id ? nextItem : it)));
+    setEditSaving(false);
+    setEditItem(null);
+  };
+
   const content = (
     <>
       {!embedded ? (
@@ -404,67 +402,98 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
           No templates yet. Click <strong>Add Template</strong> to import one from Excel.
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
-          {Array.from(grouped.entries()).map(([cat, subMap]) => (
-            <div key={cat}>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-sm font-semibold text-txt">{cat}</h3>
-                <span className="text-[11px] text-txt-dim">
-                  {Array.from(subMap.values()).reduce((s, arr) => s + arr.length, 0)} template(s)
-                </span>
+        <div className="flex flex-col gap-2.5">
+          {Array.from(grouped.entries()).map(([cat, subMap]) => {
+            const catTotal = Array.from(subMap.values()).reduce((s, arr) => s + arr.length, 0);
+            const open = !isCollapsed(cat);
+            return (
+              <div key={cat} className="rounded-xl border border-border bg-bg-surface overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleCat(cat)}
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-bg-hover transition-colors"
+                  aria-expanded={open}
+                >
+                  <ChevronRight
+                    size={16}
+                    className={`text-txt-muted transition-transform ${open ? "rotate-90" : ""}`}
+                  />
+                  <h3 className="text-sm font-semibold text-txt">{cat}</h3>
+                  <span className="text-[11px] text-txt-dim">
+                    {catTotal} template{catTotal !== 1 ? "s" : ""}
+                  </span>
+                </button>
+
+                {open ? (
+                  <div className="px-4 pb-4 pt-1 flex flex-col gap-3">
+                    {Array.from(subMap.entries()).map(([sub, items]) => (
+                      <div key={sub}>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-1.5">
+                          {sub}
+                        </div>
+                        <div className="data-table-shell">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th style={{ width: 36 }} aria-label="" />
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Sheets</th>
+                                <th>Items</th>
+                                <th style={{ width: 72 }} aria-label="Actions" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.map((item) => {
+                                const itemCount = item.sheets.reduce(
+                                  (s, sh) => s + sh.rows.filter((r) => r.type === "item").length,
+                                  0
+                                );
+                                return (
+                                  <tr key={item.id}>
+                                    <td>
+                                      <FileSpreadsheet size={16} className="text-accent" />
+                                    </td>
+                                    <td className="data-cell-wrap font-semibold">{item.name}</td>
+                                    <td className="data-cell-wrap text-txt-muted">{item.description}</td>
+                                    <td className="data-cell-num">{item.sheets.length}</td>
+                                    <td className="data-cell-num">{itemCount}</td>
+                                    <td className="data-cell-action">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          className="data-row-action"
+                                          onClick={() => {
+                                            setEditNotice(null);
+                                            setEditItem(item);
+                                          }}
+                                          aria-label="Edit template"
+                                        >
+                                          <Pencil size={14} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="data-row-action danger"
+                                          onClick={() => setConfirmDelete(item.id)}
+                                          aria-label="Delete template"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-              {Array.from(subMap.entries()).map(([sub, items]) => (
-                <div key={sub} className="mb-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-1.5">
-                    {sub}
-                  </div>
-                  <div className="data-table-shell">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 36 }} aria-label="" />
-                          <th>Name</th>
-                          <th>Description</th>
-                          <th>Sheets</th>
-                          <th>Items</th>
-                          <th style={{ width: 36 }} aria-label="Actions" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item) => {
-                          const itemCount = item.sheets.reduce(
-                            (s, sh) => s + sh.rows.filter((r) => r.type === "item").length,
-                            0
-                          );
-                          return (
-                            <tr key={item.id}>
-                              <td>
-                                <FileSpreadsheet size={16} className="text-accent" />
-                              </td>
-                              <td className="data-cell-wrap font-semibold">{item.name}</td>
-                              <td className="data-cell-wrap text-txt-muted">{item.description}</td>
-                              <td className="data-cell-num">{item.sheets.length}</td>
-                              <td className="data-cell-num">{itemCount}</td>
-                              <td className="data-cell-action">
-                                <button
-                                  type="button"
-                                  className="data-row-action danger"
-                                  onClick={() => setConfirmDelete(item.id)}
-                                  aria-label="Delete template"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -572,6 +601,18 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
           </div>
         </div>
       </Modal>
+
+      <TemplateEditorModal
+        open={!!editItem}
+        item={editItem}
+        saving={editSaving}
+        notice={editNotice}
+        onSave={handleSaveEdit}
+        onClose={() => {
+          setEditItem(null);
+          setEditNotice(null);
+        }}
+      />
 
       <ExcelImportPreviewModal
         open={showPreview}
