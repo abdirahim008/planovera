@@ -452,99 +452,12 @@ function WorkPlanTable({
 
   return (
     <>
-      <div className="space-y-3 lg:hidden">
-        <div className="rounded-2xl border border-border bg-bg-raised/50 p-3 text-xs leading-5 text-txt-muted">
-          Compact schedule view. Use desktop/tablet landscape for spreadsheet paste and larger programme editing.
-        </div>
-        {visibleActivities.map((act, i) => {
-          const rowType = act.rowType || "activity";
-          const isSection = rowType === "section";
-          const activityOrdinal =
-            1 + activities.slice(0, i).filter((a) => (a.rowType || "activity") !== "section").length;
-          return (
-            <div
-              key={`${act.id}-compact`}
-              className={`rounded-2xl border p-4 ${isSection ? "border-accent/30 bg-accent/10" : "border-border bg-bg-surface"}`}
-              onContextMenu={(e) => handleContextMenu(e, act.id)}
-              onClick={(e) => handleRowClick(e, act.id)}
-            >
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                    {isSection ? "Section header" : `Activity ${activityOrdinal}`}
-                  </div>
-                  {readOnly ? (
-                    <div className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-5 text-txt">{act.description || "—"}</div>
-                  ) : (
-                    <textarea
-                      rows={2}
-                      className="mt-2 min-h-[72px] w-full resize-y rounded-xl border border-border bg-bg-input px-3 py-2 text-sm font-semibold leading-5 text-txt outline-none focus:border-accent"
-                      value={act.description}
-                      onChange={(e) => updateActivity(act.id, "description", e.target.value)}
-                      placeholder={isSection ? "Section title" : "Activity description"}
-                    />
-                  )}
-                </div>
-                {isSection && (
-                  <span className="rounded-full border border-border bg-bg-surface px-2 py-1 text-[10px] font-bold text-txt-dim">
-                    Section
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <label className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                  <span className="block text-[10px] uppercase tracking-[0.14em] text-txt-dim">Duration</span>
-                  {readOnly || isSection ? (
-                    <div className="mt-1 font-mono font-bold text-txt">{act.duration || "—"}</div>
-                  ) : (
-                    <input
-                      type="number"
-                      className="mt-1 w-full rounded-lg border border-border bg-bg-input px-2 py-1 text-right font-mono text-sm text-txt outline-none focus:border-accent"
-                      value={act.duration}
-                      onChange={(e) => updateActivity(act.id, "duration", e.target.value)}
-                    />
-                  )}
-                </label>
-                <label className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                  <span className="block text-[10px] uppercase tracking-[0.14em] text-txt-dim">Start</span>
-                  {readOnly || isSection ? (
-                    <div className="mt-1 font-mono font-bold text-txt">{act.startDate || "—"}</div>
-                  ) : (
-                    <input
-                      type="date"
-                      className="mt-1 w-full rounded-lg border border-border bg-bg-input px-2 py-1 text-sm text-txt outline-none focus:border-accent [color-scheme:dark]"
-                      value={act.startDate}
-                      onChange={(e) => updateActivity(act.id, "startDate", e.target.value)}
-                    />
-                  )}
-                </label>
-                <div className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">End</div>
-                  <div className="mt-1 font-mono font-bold text-txt">{act.endDate || "—"}</div>
-                </div>
-              </div>
-              {!readOnly && !isSection && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteActivity(act.id);
-                  }}
-                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-err/25 bg-err/10 px-3 py-2 text-sm font-semibold text-err"
-                >
-                  <Trash2 size={14} /> Delete activity
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="hidden data-table-shell overflow-auto lg:block" style={{ maxHeight: "calc(100vh - 365px)" }}>
-        <table className="data-table data-table-sticky" style={{ minWidth: 780 }}>
+      <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 365px)" }}>
+        <table className="data-table data-table-sticky min-w-[560px] sm:min-w-[780px]">
           <thead>
             <tr>
-              <th style={{ width: 40 }} className="text-center">#</th>
-              <th className="min-w-[420px] w-[58%]">Description</th>
+              <th style={{ width: 40 }} className="data-sticky-col left-0 text-center">#</th>
+              <th className="data-sticky-col left-10 data-sticky-edge min-w-[150px] sm:min-w-[420px] w-[58%]">Description</th>
               <th style={{ width: 110 }} className="text-center">Duration (days)</th>
               <th style={{ width: 130 }} className="text-center">Start Date</th>
               <th style={{ width: 130 }} className="text-center">End Date</th>
@@ -564,8 +477,8 @@ function WorkPlanTable({
                 onContextMenu={(e) => handleContextMenu(e, act.id)}
                 onClick={(e) => handleRowClick(e, act.id)}
               >
-                <td className="data-cell-index">{isSection ? "" : activityOrdinal}</td>
-                <td className={`data-cell-wrap transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className="data-cell-index data-sticky-col left-0">{isSection ? "" : activityOrdinal}</td>
+                <td className={`data-cell-wrap data-sticky-col left-10 data-sticky-edge transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "description")} onMouseEnter={() => handleMouseEnter(i, "description")}>
                   {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
                     : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}

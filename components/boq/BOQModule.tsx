@@ -45,7 +45,7 @@ import ExcelImportPreviewModal from "@/components/boq/ExcelImportPreviewModal";
 
 const BOQ_COLS = [
   { key: "itemNo" as const, label: "Item No.", width: "w-[80px]", align: "text-center" },
-  { key: "description" as const, label: "Description", width: "min-w-[200px] w-full", align: "text-left" },
+  { key: "description" as const, label: "Description", width: "min-w-[140px] sm:min-w-[200px] w-full", align: "text-left" },
   { key: "unit" as const, label: "Unit", width: "w-[70px]", align: "text-center" },
   { key: "qty" as const, label: "Quantity", width: "w-[100px]", align: "text-right", mono: true },
   { key: "rate" as const, label: "Rate", width: "w-[110px]", align: "text-right", mono: true },
@@ -610,7 +610,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
           <p className="text-accent text-sm font-medium">Paste your data here (Ctrl+V / ⌘V)</p>
         </div>
       )}
-      <table className="boq-reference-table w-full select-none table-fixed border-collapse" style={{ minWidth: 760 }}>
+      <table className="boq-reference-table w-full select-none table-fixed border-collapse min-w-[660px] sm:min-w-[760px]">
         <thead>
           <tr>
             <th className="w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 left-0 z-30 text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">#</th>
@@ -754,7 +754,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                           />
                         )
                       ) : (
-                        <span className={`block ${col.key === "description" ? "whitespace-pre-wrap break-words leading-snug min-w-[280px]" : "truncate"}`}>
+                        <span className={`block ${col.key === "description" ? "whitespace-pre-wrap break-words leading-snug min-w-[140px] sm:min-w-[280px]" : "truncate"}`}>
                           {formatBOQCellDisplay(row, col.key, boqSheets)}
                         </span>
                       )}

@@ -435,6 +435,21 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Sticky left columns for horizontally-scrolling data-tables (work plan, IPC
+   mobile). The row-# gutter and Description stay pinned while the numeric /
+   section columns scroll, mirroring the BOQ reference table on narrow screens. */
+.data-table .data-sticky-col {
+  position: sticky;
+  background: var(--color-surface);
+  z-index: 5;
+}
+.data-table thead th.data-sticky-col {
+  z-index: 8;
+}
+.data-table .data-sticky-edge {
+  box-shadow: 6px 0 8px -6px rgba(0, 0, 0, 0.45);
+}
+
 /* Context menu */
 .ctx-menu {
   position: fixed;

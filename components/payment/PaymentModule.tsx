@@ -184,6 +184,9 @@ export default function PaymentModule() {
   const [newCertType, setNewCertType] = useState<"interim" | "final">("interim");
   const [selectedBOQId, setSelectedBOQId] = useState("");
   const [selectedPrevCertId, setSelectedPrevCertId] = useState("");
+  // Which section's columns the narrow (mobile) IPC table shows; Description +
+  // BOQ Qty + Rate stay pinned, this toggles the trailing numeric columns.
+  const [mobileCertSection, setMobileCertSection] = useState<"previous" | "current" | "cumulative">("current");
 
   const projectCerts = useMemo(
     () =>
@@ -761,88 +764,156 @@ export default function PaymentModule() {
             const sheet = activeCert.sheets[activeSheetIdx];
             return (
               <>
-                <div className="space-y-3 xl:hidden" data-variant="mobile" data-cert-sheet={sheet.id}>
-                  {sheet.items.map((item, index) => {
-                    const line = paymentLineState(item);
-                    return (
-                      <div key={`${item.id}-card`} className={`rounded-2xl border p-4 ${line.warningStatus === "over-certified" ? "border-warn/50 bg-warn/5" : "border-border bg-bg-surface"}`}>
-                        <div className="mb-3 flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                              Item {index + 1} {item.billNo ? `• ${item.billNo}` : ""}
-                            </div>
-                            <div className="mt-1 text-sm font-semibold text-txt">{item.description}</div>
-                          </div>
-                          {line.warningStatus !== "ok" && <AlertTriangle size={16} className="text-warn" />}
+                <div className="xl:hidden" data-variant="mobile" data-cert-sheet={sheet.id}>
+                  <div className="mb-3 flex items-center gap-1 rounded-xl border border-border bg-bg-raised/50 p-1 text-[11px] font-semibold">
+                    {([
+                      ["previous", "Previous"],
+                      ["current", "This Cert"],
+                      ["cumulative", "Cumulative"],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setMobileCertSection(key)}
+                        className={`flex-1 rounded-lg px-2 py-1.5 uppercase tracking-[0.1em] transition-colors ${mobileCertSection === key ? "bg-accent text-white" : "text-txt-dim"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 470px)" }}>
+                    <table className="data-table data-table-sticky text-[11px] min-w-[520px]">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 40 }} className="data-sticky-col left-0">#</th>
+                          <th className="data-sticky-col left-10 data-sticky-edge min-w-[150px]">Description</th>
+                          <th className="text-right">BOQ Qty</th>
+                          <th className="text-right">Rate</th>
+                          {mobileCertSection === "previous" && (
+                            <>
+                              <th className="text-right">Prev Qty</th>
+                              <th className="text-right">Prev Amount</th>
+                            </>
+                          )}
+                          {mobileCertSection === "current" && (
+                            <>
+                              <th className="text-right">Current Qty <span className="font-normal text-txt-dim">(auto)</span></th>
+                              <th className="text-right">Current Amount</th>
+                              <th className="text-right">Cum Qty <span className="font-normal text-accent">(enter)</span></th>
+                            </>
+                          )}
+                          {mobileCertSection === "cumulative" && (
+                            <>
+                              <th className="text-right">Cum Qty</th>
+                              <th className="text-right">Balance Qty</th>
+                              <th className="text-right">Cum Amount</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sheet.items.map((item, index) => {
+                          const line = paymentLineState(item);
+                          const warn = line.warningStatus === "over-certified";
+                          return (
+                            <tr key={`${item.id}-m`} className={warn ? "bg-warn/5" : ""}>
+                              <td className="data-cell-index data-sticky-col left-0">{index + 1}</td>
+                              <td className="data-cell-wrap data-sticky-col left-10 data-sticky-edge min-w-[150px]">
+                                <div className="font-medium text-txt">{item.description}</div>
+                                <div className="mt-0.5 text-[10px] uppercase tracking-[0.08em] text-txt-dim">{[item.billNo, item.unit].filter(Boolean).join(" · ")}</div>
+                              </td>
+                              <td className="data-cell-num">{currency(line.boqQty)}</td>
+                              <td className="data-cell-num">{currency(line.rate)}</td>
+                              {mobileCertSection === "previous" && (
+                                <>
+                                  <td className="data-cell-num">{currency(line.previousQty)}</td>
+                                  <td className="data-cell-num">$ {currency(line.previousAmount)}</td>
+                                </>
+                              )}
+                              {mobileCertSection === "current" && (
+                                <>
+                                  <td className="data-cell-num text-txt-muted">{currency(line.currentQty)}</td>
+                                  <td className="data-cell-num">$ {currency(line.currentAmount)}</td>
+                                  <td className="data-cell-num bg-accent/5">
+                                    {isEditMode && !activeLocked ? (
+                                      <input
+                                        data-field="cumulative-qty"
+                                        data-variant="mobile"
+                                        data-item-id={item.id}
+                                        value={
+                                          item.totalQty ||
+                                          (parsePaymentNumber(item.previousQty) + line.currentQty).toFixed(2)
+                                        }
+                                        onChange={(e) => updateCertItem(activeCert.id, sheet.id, item.id, "totalQty", e.target.value)}
+                                        className="data-cell-input text-right font-mono"
+                                        placeholder="0.00"
+                                      />
+                                    ) : (
+                                      <span className="font-bold text-accent">{currency(line.totalQty)}</span>
+                                    )}
+                                  </td>
+                                </>
+                              )}
+                              {mobileCertSection === "cumulative" && (
+                                <>
+                                  <td className="data-cell-num font-bold text-accent">{currency(line.totalQty)}</td>
+                                  <td className={`data-cell-num ${line.balanceQty < 0 ? "text-warn" : "text-txt-muted"}`}>{currency(line.balanceQty)}</td>
+                                  <td className="data-cell-num font-bold text-ok">$ {currency(line.totalAmount)}</td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })}
+                        {(() => {
+                          const totals = sheetTotals(sheet);
+                          return (
+                            <tr className="bg-accent/10 font-bold">
+                              <td className="data-sticky-col left-0 border-t-2 border-t-accent" />
+                              <td className="data-sticky-col left-10 data-sticky-edge border-t-2 border-t-accent">Sheet total</td>
+                              <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.boq)}</td>
+                              <td className="border-t-2 border-t-accent" />
+                              {mobileCertSection === "previous" && (
+                                <>
+                                  <td className="border-t-2 border-t-accent" />
+                                  <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.previous)}</td>
+                                </>
+                              )}
+                              {mobileCertSection === "current" && (
+                                <>
+                                  <td className="border-t-2 border-t-accent" />
+                                  <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.current)}</td>
+                                  <td className="border-t-2 border-t-accent" />
+                                </>
+                              )}
+                              {mobileCertSection === "cumulative" && (
+                                <>
+                                  <td className="border-t-2 border-t-accent" />
+                                  <td className="border-t-2 border-t-accent" />
+                                  <td className="data-cell-num border-t-2 border-t-accent text-ok">$ {currency(totals.total)}</td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                  {sheet.items
+                    .filter((it) => paymentLineState(it).warningStatus !== "ok" || it.overrideNote)
+                    .map((it) => (
+                      <div key={`${it.id}-note`} className="mt-2 rounded-xl border border-warn/30 bg-warn/5 p-3">
+                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-warn">
+                          <AlertTriangle size={12} /> Override note · {it.billNo || it.description.slice(0, 30)}
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          {[
-                            ["BOQ Qty", `${currency(line.boqQty)} ${item.unit}`],
-                            ["Previous Qty", currency(line.previousQty)],
-                            ["This period (qty)", currency(line.currentQty)],
-                            ["Balance Qty", currency(line.balanceQty)],
-                            ["Current Amount", `$ ${currency(line.currentAmount)}`],
-                            ["Cumulative Amount", `$ ${currency(line.totalAmount)}`],
-                          ].map(([label, value]) => (
-                            <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
-                              <div className="mt-1 font-mono font-semibold text-txt">{value}</div>
-                            </div>
-                          ))}
-                          <label className="col-span-2 rounded-xl border border-accent/30 bg-accent/5 p-3">
-                            <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Cumulative Qty to date <span className="text-accent">(enter — "This period" is derived)</span></span>
-                            {isEditMode && !activeLocked ? (
-                              <input
-                                data-field="cumulative-qty"
-                                data-variant="mobile"
-                                data-item-id={item.id}
-                                value={
-                                  item.totalQty ||
-                                  (parsePaymentNumber(item.previousQty) + line.currentQty).toFixed(2)
-                                }
-                                onChange={(e) => updateCertItem(activeCert.id, sheet.id, item.id, "totalQty", e.target.value)}
-                                className="mt-1 w-full rounded-lg border border-border bg-bg-input px-2 py-1 text-right font-mono text-sm text-txt outline-none focus:border-accent"
-                              />
-                            ) : (
-                              <div className="mt-1 font-mono font-semibold text-accent">{currency(line.totalQty)}</div>
-                            )}
-                          </label>
-                        </div>
-                        {line.warningStatus !== "ok" && (
-                          <input
-                            value={item.overrideNote || ""}
-                            disabled={!isEditMode || activeLocked}
-                            onChange={(e) => updateCertItem(activeCert.id, sheet.id, item.id, "overrideNote", e.target.value)}
-                            placeholder="Required note for over-certification override"
-                            className="mt-3 w-full rounded-lg border border-warn/30 bg-bg-input px-3 py-2 text-sm"
-                          />
-                        )}
+                        <input
+                          value={it.overrideNote || ""}
+                          disabled={!isEditMode || activeLocked}
+                          onChange={(e) => updateCertItem(activeCert.id, sheet.id, it.id, "overrideNote", e.target.value)}
+                          placeholder="Required note for over-certification override"
+                          className="mt-1.5 w-full rounded-lg border border-warn/30 bg-bg-input px-3 py-2 text-sm"
+                        />
                       </div>
-                    );
-                  })}
-                  {(() => {
-                    const totals = sheetTotals(sheet);
-                    return (
-                      <div className="rounded-2xl border border-accent/40 bg-accent/10 p-4">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          Sheet total — {sheet.name}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          {[
-                            ["BOQ Amount", `$ ${currency(totals.boq)}`],
-                            ["Previous Amount", `$ ${currency(totals.previous)}`],
-                            ["Current Amount", `$ ${currency(totals.current)}`],
-                            ["Cumulative Amount", `$ ${currency(totals.total)}`],
-                          ].map(([label, value]) => (
-                            <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
-                              <div className="mt-1 font-mono font-semibold text-txt">{value}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
+                    ))}
                 </div>
 
                 <div className="hidden data-table-shell overflow-auto xl:block" data-variant="desktop" data-cert-sheet={sheet.id} style={{ maxHeight: "calc(100vh - 425px)" }}>
