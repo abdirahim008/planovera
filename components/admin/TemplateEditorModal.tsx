@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 import Modal from "@/components/ui/Modal";
@@ -41,6 +41,41 @@ const blankRow = (): BOQRow => ({
 /** Deep-clone sheets so edits never mutate the live store object. */
 const cloneSheets = (sheets: BOQSheet[]): BOQSheet[] =>
   sheets.map((sh) => ({ ...sh, rows: sh.rows.map((r) => ({ ...r })) }));
+
+/** Borderless, auto-growing cell textarea so long descriptions wrap to multiple lines. */
+function CellTextarea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  const resize = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    resize();
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      className="data-cell-textarea"
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
 
 export default function TemplateEditorModal({
   open,
@@ -179,7 +214,7 @@ export default function TemplateEditorModal({
   const shownNotice = notice ?? localNotice;
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit BOQ Template" width={920}>
+    <Modal open={open} onClose={onClose} title="Edit BOQ Template" width={1120}>
       <div className="flex flex-col gap-4">
         <div>
           <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">
@@ -285,14 +320,14 @@ export default function TemplateEditorModal({
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 64 }} aria-label="Order" />
-                      <th style={{ width: 120 }}>Type</th>
-                      <th style={{ width: 90 }}>Item No</th>
-                      <th>Description</th>
-                      <th style={{ width: 70 }}>Unit</th>
-                      <th style={{ width: 80 }}>Qty</th>
-                      <th style={{ width: 90 }}>Rate</th>
-                      <th style={{ width: 110 }}>Amount</th>
+                      <th style={{ width: 56 }} aria-label="Order" />
+                      <th style={{ width: 110 }}>Type</th>
+                      <th style={{ width: 80 }}>Item No</th>
+                      <th style={{ minWidth: 320 }}>Description</th>
+                      <th style={{ width: 64 }}>Unit</th>
+                      <th style={{ width: 72 }}>Qty</th>
+                      <th style={{ width: 84 }}>Rate</th>
+                      <th style={{ width: 104 }}>Amount</th>
                       <th style={{ width: 36 }} aria-label="Delete" />
                     </tr>
                   </thead>
@@ -325,7 +360,7 @@ export default function TemplateEditorModal({
                           </td>
                           <td>
                             <select
-                              className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt outline-none focus:border-accent"
+                              className="data-cell-select"
                               value={row.type}
                               onChange={(e) => patchRow(row.id, { type: e.target.value as BOQRow["type"] })}
                             >
@@ -338,21 +373,21 @@ export default function TemplateEditorModal({
                           </td>
                           <td>
                             <input
-                              className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt outline-none focus:border-accent"
+                              className="data-cell-input"
                               value={row.itemNo}
                               onChange={(e) => patchRow(row.id, { itemNo: e.target.value })}
                             />
                           </td>
-                          <td>
-                            <input
-                              className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt outline-none focus:border-accent"
+                          <td className="data-cell-wrap" style={{ verticalAlign: "top" }}>
+                            <CellTextarea
                               value={row.description}
-                              onChange={(e) => patchRow(row.id, { description: e.target.value })}
+                              onChange={(next) => patchRow(row.id, { description: next })}
+                              placeholder="Description"
                             />
                           </td>
                           <td>
                             <input
-                              className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt outline-none focus:border-accent disabled:opacity-40"
+                              className="data-cell-input disabled:opacity-40"
                               value={row.unit}
                               disabled={!isItem}
                               onChange={(e) => patchRow(row.id, { unit: e.target.value })}
@@ -360,7 +395,8 @@ export default function TemplateEditorModal({
                           </td>
                           <td>
                             <input
-                              className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt text-right outline-none focus:border-accent disabled:opacity-40"
+                              className="data-cell-input disabled:opacity-40"
+                              style={{ textAlign: "right" }}
                               value={row.qty}
                               disabled={!isItem}
                               onChange={(e) => patchRow(row.id, { qty: e.target.value })}
@@ -368,7 +404,8 @@ export default function TemplateEditorModal({
                           </td>
                           <td>
                             <input
-                              className="w-full bg-bg-input border border-border rounded px-1.5 py-1 text-xs text-txt text-right outline-none focus:border-accent disabled:opacity-40"
+                              className="data-cell-input disabled:opacity-40"
+                              style={{ textAlign: "right" }}
                               value={row.rate}
                               disabled={!isItem}
                               onChange={(e) => patchRow(row.id, { rate: e.target.value })}
