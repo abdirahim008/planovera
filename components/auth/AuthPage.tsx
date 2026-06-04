@@ -129,6 +129,43 @@ export default function AuthPage() {
     setBusy(false);
   };
 
+  const handleForgot = async ({ email }: { email: string }) => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setNotice("Supabase environment variables are missing.");
+      return;
+    }
+
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setNotice("Enter your account email to receive a reset link.");
+      return;
+    }
+
+    setBusy(true);
+    setNotice(null);
+
+    // The recovery email links back through /auth/callback, which exchanges the
+    // one-time code for a session and forwards to /auth/reset where the user sets
+    // a new password.
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+      "/auth/reset",
+    )}`;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, { redirectTo });
+
+    if (error) {
+      setNotice(formatAuthError(error.message));
+    } else {
+      // Always confirm without revealing whether the address has an account.
+      setNotice(
+        "If an account exists for that email, a password reset link is on its way. Check your inbox.",
+      );
+    }
+
+    setBusy(false);
+  };
+
   const handleSignUp = async ({
     name,
     company,
@@ -186,6 +223,7 @@ export default function AuthPage() {
       initialMode={initialMode}
       onSignIn={handleSignIn}
       onSignUp={handleSignUp}
+      onForgot={handleForgot}
       onGoogle={googleEnabled ? handleGoogle : undefined}
     />
   );

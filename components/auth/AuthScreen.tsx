@@ -12,6 +12,7 @@ export default function AuthScreen({
   initialMode = "signin",
   onSignIn,
   onSignUp,
+  onForgot,
   onGoogle,
 }: {
   configured: boolean;
@@ -27,9 +28,10 @@ export default function AuthScreen({
     email: string;
     password: string;
   }) => Promise<void>;
+  onForgot: (payload: { email: string }) => Promise<void>;
   onGoogle?: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">(initialMode);
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState(inviteEmail || "");
@@ -51,8 +53,18 @@ export default function AuthScreen({
       return;
     }
 
+    if (mode === "forgot") {
+      await onForgot({ email });
+      return;
+    }
+
     await onSignUp({ name, company, email, password });
   };
+
+  const heading =
+    mode === "signin" ? "Sign in" : mode === "forgot" ? "Reset password" : "Create account";
+  const submitLabel =
+    mode === "signin" ? "Sign in" : mode === "forgot" ? "Send reset link" : "Create account";
 
   return (
     <main className="relative min-h-screen bg-[#0b0e14] text-[#e2e8f4]">
@@ -69,9 +81,13 @@ export default function AuthScreen({
         </a>
 
         <section className="rounded-2xl border border-white/10 bg-[#12161f] p-6">
-          <h1 className="text-xl font-semibold text-white">
-            {mode === "signin" ? "Sign in" : "Create account"}
-          </h1>
+          <h1 className="text-xl font-semibold text-white">{heading}</h1>
+
+          {mode === "forgot" ? (
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Enter the email for your account and we&apos;ll send a link to set a new password.
+            </p>
+          ) : null}
 
           {!configured ? (
             <div className="mt-5 rounded-lg border border-amber-400/25 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
@@ -84,7 +100,7 @@ export default function AuthScreen({
             </div>
           ) : (
             <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-              {onGoogle ? (
+              {onGoogle && mode !== "forgot" ? (
                 <>
                   <button
                     type="button"
@@ -174,19 +190,32 @@ export default function AuthScreen({
                 </div>
               ) : null}
 
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Password
-                </label>
-                <input
-                  className="w-full rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-500/20"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter your password"
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                />
-              </div>
+              {mode !== "forgot" ? (
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Password
+                    </label>
+                    {mode === "signin" ? (
+                      <button
+                        type="button"
+                        className="text-[11px] font-semibold text-blue-300 hover:text-blue-200"
+                        onClick={() => setMode("forgot")}
+                      >
+                        Forgot password?
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    className="w-full rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-500/20"
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Enter your password"
+                    autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  />
+                </div>
+              ) : null}
 
               {notice ? (
                 <div className="rounded-lg border border-blue-400/25 bg-blue-400/10 px-4 py-2.5 text-sm leading-6 text-blue-100">
@@ -198,7 +227,7 @@ export default function AuthScreen({
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={busy}
               >
-                {busy ? "Working..." : mode === "signin" ? "Sign in" : "Create account"}
+                {busy ? "Working..." : submitLabel}
                 <ArrowRight size={16} />
               </button>
 
@@ -212,6 +241,17 @@ export default function AuthScreen({
                       onClick={() => setMode("signup")}
                     >
                       Create one
+                    </button>
+                  </>
+                ) : mode === "forgot" ? (
+                  <>
+                    Remembered it?{" "}
+                    <button
+                      type="button"
+                      className="font-semibold text-blue-300 hover:text-blue-200"
+                      onClick={() => setMode("signin")}
+                    >
+                      Back to sign in
                     </button>
                   </>
                 ) : (
