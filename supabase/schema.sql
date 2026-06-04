@@ -2285,6 +2285,20 @@ begin
     where id = target_project_id;
   end if;
 
+  -- When the referenced parent row is being deleted (e.g. a project delete that
+  -- cascades to its child rows), that parent is already gone by the time this
+  -- AFTER trigger fires. Inserting the audit row with a dangling foreign key
+  -- would violate audit_logs_project_id_fkey / audit_logs_organization_id_fkey,
+  -- so null out the reference and rely on entity_id + details for traceability.
+  if target_project_id is not null
+     and not exists (select 1 from public.projects where id = target_project_id) then
+    target_project_id := null;
+  end if;
+  if target_organization_id is not null
+     and not exists (select 1 from public.organizations where id = target_organization_id) then
+    target_organization_id := null;
+  end if;
+
   target_entity_id := coalesce(row_data ->> 'id', row_data ->> 'user_id', 'unknown');
 
   insert into public.audit_logs (
