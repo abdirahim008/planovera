@@ -2334,13 +2334,13 @@ function ProjectOverviewDashboard({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             {project.contractNumber || project.code ? (
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-txt-dim">
+              <div className="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-txt-dim sm:block">
                 {[project.contractNumber, project.code].filter(Boolean).join(" · ")}
               </div>
             ) : null}
-            <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-white">{project.name}</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-white sm:mt-1.5">{project.name}</h2>
             {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).length > 0 ? (
-              <p className="mt-1 text-[13px] text-txt-muted">
+              <p className="mt-1 hidden text-[13px] text-txt-muted sm:block">
                 {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).join(" · ")}
               </p>
             ) : null}
