@@ -463,29 +463,36 @@ function computePhysicalProgress(projectId: string, savedWorkPlans: SavedWorkPla
 
 function computeCommercialSnapshot(projectId: string, certificates: PaymentCertificate[]): CommercialSnapshot {
   const projectCertificates = certificates.filter((certificate) => certificate.project_id === projectId);
+  if (projectCertificates.length === 0) {
+    return { approved: 0, submitted: 0, paid: 0, retentionHeld: 0 };
+  }
 
-  return projectCertificates.reduce<CommercialSnapshot>(
-    (totals, certificate) => {
-      const allItems = certificate.sheets.flatMap((sheet) => sheet.items);
-      const subTotal = allItems.reduce((sum, item) => sum + parseAmount(item.totalAmount), 0);
-      const contingencies = (subTotal * certificate.contingenciesPercent) / 100;
-      const afterCont = subTotal + contingencies;
-      const govTax = (afterCont * certificate.governmentTaxPercent) / 100;
-      const gross = afterCont + govTax;
-      const net =
-        gross -
-        (gross * certificate.retentionPercent) / 100 -
-        (gross * certificate.advancePaymentPercent) / 100 -
-        (gross * certificate.withholdingTaxPercent) / 100;
+  // Interim certificates are cumulative — each IPC's totals already include the
+  // earlier ones. So the to-date figure for a status is the furthest-along
+  // certificate of that status (max cumulative net), NOT the sum, which would
+  // double-count earlier IPCs. Use the shared FIDIC math for accuracy.
+  const calcs = projectCertificates.map((certificate) => ({
+    status: certificate.status,
+    ...paymentCertificateCalcs(certificate),
+  }));
 
-      if (certificate.status === "approved") totals.approved += net;
-      if (certificate.status === "submitted") totals.submitted += net;
-      if (certificate.status === "paid") totals.paid += net;
-      totals.retentionHeld += (gross * certificate.retentionPercent) / 100;
-      return totals;
-    },
-    { approved: 0, submitted: 0, paid: 0, retentionHeld: 0 }
+  const maxNetForStatus = (status: PaymentCertificate["status"]) =>
+    calcs
+      .filter((entry) => entry.status === status)
+      .reduce((max, entry) => Math.max(max, entry.total.net), 0);
+
+  // Retention held to date is whatever the furthest-along certificate overall
+  // (the one covering the most cumulative work) currently holds back.
+  const latest = calcs.reduce((furthest, entry) =>
+    entry.totalSubTotal > furthest.totalSubTotal ? entry : furthest
   );
+
+  return {
+    approved: maxNetForStatus("approved"),
+    submitted: maxNetForStatus("submitted"),
+    paid: maxNetForStatus("paid"),
+    retentionHeld: Math.max(0, latest.total.retentionHeld),
+  };
 }
 
 function computeFinancialProgress(
