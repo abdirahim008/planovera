@@ -377,7 +377,11 @@ const normalizePaymentItemState = (item: PaymentItem): PaymentItem => {
     currentQty: line.currentQty.toFixed(2),
     previousAmount: line.previousAmount.toFixed(2),
     currentAmount: line.currentAmount.toFixed(2),
-    totalQty: line.totalQty.toFixed(2),
+    // totalQty is the only user-editable numeric cell. Preserve the raw input
+    // verbatim so blank cells stay blank and decimal entry (e.g. "0.5", "0.55")
+    // is never truncated/reformatted on every keystroke. paymentLineState
+    // already treats an empty totalQty as "derive from previous + current".
+    totalQty: item.totalQty ?? "",
     totalAmount: line.totalAmount.toFixed(2),
     balanceQty: line.balanceQty.toFixed(2),
     warningStatus: line.warningStatus,
@@ -539,8 +543,12 @@ const recalcProgressSheets = (
         ...item,
         totalQty: totalQty.toFixed(2),
         earnedAmount: earnedAmount.toFixed(2),
-        weightPercent: weightPercent.toFixed(2),
-        actualPercent: actualPercent.toFixed(2),
+        // weightPercent (custom mode) and actualPercent (percent mode) are
+        // user-editable cells. Preserve their raw input so blanks stay blank
+        // and decimals aren't truncated/reformatted on every keystroke. When
+        // they're derived (not user-driven) we format the computed value.
+        weightPercent: resolvedWeightMode === "custom" ? (item.weightPercent ?? "") : weightPercent.toFixed(2),
+        actualPercent: isPercentMode ? (item.actualPercent ?? "") : actualPercent.toFixed(2),
         variancePercent: variancePercent.toFixed(2),
         status: normalizeProgressStatus(item.status, actualPercent),
       };
@@ -2825,10 +2833,12 @@ export const useAppStore = create<AppState>()(
                   boqRate: rate.toFixed(2),
                   boqAmount: boqAmountValue.toFixed(2),
                   previousQty: prevQty.toFixed(2),
-                  currentQty: "0.00",
+                  currentQty: "",
                   previousAmount: prevAmount.toFixed(2),
-                  currentAmount: "0.00",
-                  totalQty: prevQty.toFixed(2),
+                  currentAmount: "",
+                  // Leave the editable cumulative-qty cell blank when there is
+                  // nothing carried forward, so the user types straight into it.
+                  totalQty: prevQty > 0 ? prevQty.toFixed(2) : "",
                   totalAmount: prevAmount.toFixed(2),
                 });
               });
@@ -3025,12 +3035,14 @@ export const useAppStore = create<AppState>()(
               boqRate: boqRate.toFixed(2),
               boqAmount: boqAmount.toFixed(2),
               previousQty: previousQty.toFixed(2),
-              currentQty: "0.00",
-              totalQty: previousQty.toFixed(2),
+              // Leave editable cells blank when there's no carry-forward so the
+              // user types straight in (recalc derives the read-only columns).
+              currentQty: "",
+              totalQty: previousQty > 0 ? previousQty.toFixed(2) : "",
               earnedAmount: calculateBOQLineAmount(previousQty, boqRate, unit).toFixed(2),
-              weightPercent: "0.00",
-              plannedPercent: plannedPercent.toFixed(2),
-              actualPercent: boqQty > 0 ? ((previousQty / boqQty) * 100).toFixed(2) : "0.00",
+              weightPercent: "",
+              plannedPercent: plannedPercent > 0 ? plannedPercent.toFixed(2) : "",
+              actualPercent: previousQty > 0 && boqQty > 0 ? ((previousQty / boqQty) * 100).toFixed(2) : "",
               variancePercent: boqQty > 0 ? (((previousQty / boqQty) * 100) - plannedPercent).toFixed(2) : (0 - plannedPercent).toFixed(2),
               status: prevItem?.status || "not-started",
               remarks: "",

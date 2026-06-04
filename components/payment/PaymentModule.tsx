@@ -840,10 +840,7 @@ export default function PaymentModule() {
                                         data-field="cumulative-qty"
                                         data-variant="mobile"
                                         data-item-id={item.id}
-                                        value={
-                                          item.totalQty ||
-                                          (parsePaymentNumber(item.previousQty) + line.currentQty).toFixed(2)
-                                        }
+                                        value={item.totalQty ?? ""}
                                         onChange={(e) => updateCertItem(activeCert.id, sheet.id, item.id, "totalQty", e.target.value)}
                                         className="data-cell-input text-right font-mono"
                                         placeholder="0.00"
@@ -960,10 +957,7 @@ export default function PaymentModule() {
                                   data-field="cumulative-qty"
                                   data-variant="desktop"
                                   data-item-id={item.id}
-                                  value={
-                                    item.totalQty ||
-                                    (parsePaymentNumber(item.previousQty) + line.currentQty).toFixed(2)
-                                  }
+                                  value={item.totalQty ?? ""}
                                   onChange={(e) => updateCertItem(activeCert.id, sheet.id, item.id, "totalQty", e.target.value)}
                                   className="data-cell-input text-right font-mono"
                                   placeholder="0.00"

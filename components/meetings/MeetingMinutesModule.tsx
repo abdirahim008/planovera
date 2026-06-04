@@ -1354,6 +1354,28 @@ export default function MeetingMinutesModule() {
     [actionPoints]
   );
 
+  // When the minute belongs to a meeting series, the action registry must be
+  // confined to the projects the series was created for — not every project in
+  // the workspace. Ad-hoc minutes (no series) fall back to all projects.
+  const scopedProjects = useMemo(() => {
+    const seriesId = draftMinute?.meetingSeriesId;
+    const series = seriesId ? seriesById[seriesId] : null;
+    if (series && series.projectIds.length > 0) {
+      const allowed = new Set(series.projectIds);
+      return projects.filter((project) => allowed.has(project.id));
+    }
+    return projects;
+  }, [draftMinute?.meetingSeriesId, seriesById, projects]);
+
+  // Options for a group's project picker. Normally the series-scoped list, but
+  // if a group is somehow assigned to an out-of-scope project we still surface
+  // it so the select doesn't render blank (and the user can reassign it).
+  const projectOptionsForGroup = (groupProjectId: string) => {
+    if (scopedProjects.some((project) => project.id === groupProjectId)) return scopedProjects;
+    const current = projects.find((project) => project.id === groupProjectId);
+    return current ? [...scopedProjects, current] : scopedProjects;
+  };
+
   // Distinct projects that currently have an action group in the draft, used to
   // populate (and validate) the action-register project filter.
   const actionFilterProjectIds = useMemo(
@@ -1479,11 +1501,15 @@ export default function MeetingMinutesModule() {
 
   const addProjectActionGroup = () => {
     if (!draftMinute) return;
-    if (projects.length === 0) {
+    // Confine new groups to the series scope (falls back to all projects for
+    // ad-hoc minutes). Guard against an empty scope just like the global case.
+    const assignableProjects = scopedProjects.length > 0 ? scopedProjects : projects;
+    if (assignableProjects.length === 0) {
       setShowNoProjectHint(true);
       return;
     }
     setShowNoProjectHint(false);
+    const defaultProjectId = assignableProjects[0].id;
     // Make sure the newly added group is visible even if a project filter is active.
     setActionProjectFilter("all");
     setDraftMinute((current) =>
@@ -1494,8 +1520,8 @@ export default function MeetingMinutesModule() {
               ...current.actionGroups,
               {
                 id: uuid(),
-                project_id: projects[0].id,
-                actionItems: [createEmptyActionItem(projects[0].id)],
+                project_id: defaultProjectId,
+                actionItems: [createEmptyActionItem(defaultProjectId)],
               },
             ],
           }
@@ -2117,7 +2143,7 @@ export default function MeetingMinutesModule() {
                       }
                       className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm text-txt outline-none transition focus:border-accent"
                     >
-                      {projects.map((project) => (
+                      {projectOptionsForGroup(group.project_id).map((project) => (
                         <option key={project.id} value={project.id}>
                           {project.name}
                         </option>
