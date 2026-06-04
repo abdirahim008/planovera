@@ -25,6 +25,7 @@ import {
   StickyNote,
   Search,
   ListPlus,
+  AlertTriangle,
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { useAppStore, emptyRow, headerRow, subtotalRow, grandtotalRow, noteRow, specificationRow, recalcRows, currency, resolveCellValue } from "@/lib/store";
@@ -883,8 +884,23 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
 
 // ─── Library Browser Modal ────────────────────────────────────────
 function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { boqLibrary, loadBOQFromLibrary, appendBOQFromLibrary } = useAppStore();
+  const { boqLibrary, boqSheets, loadBOQFromLibrary, appendBOQFromLibrary } = useAppStore();
   const [selected, setSelected] = useState<string | null>(null);
+
+  // True when the current BOQ already holds meaningful content. Used to guard the
+  // destructive "replace" action so an import never silently wipes existing work.
+  const hasExistingContent = useMemo(
+    () =>
+      boqSheets.some((sheet) =>
+        sheet.rows.some(
+          (r) =>
+            (r.description && r.description.trim()) ||
+            (r.qty && r.qty.trim()) ||
+            (r.rate && r.rate.trim())
+        )
+      ),
+    [boqSheets]
+  );
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [search, setSearch] = useState("");
@@ -923,10 +939,17 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
 
   const handleLoad = () => {
     const item = boqLibrary.find((b) => b.id === selected);
-    if (item) {
-      loadBOQFromLibrary(item.sheets);
-      onClose();
+    if (!item) return;
+    if (
+      hasExistingContent &&
+      !window.confirm(
+        `Replace the current BOQ with “${item.name}”?\n\nThis discards all existing sheets and rows. To keep them, use “Add as sheet(s)” instead.`
+      )
+    ) {
+      return;
     }
+    loadBOQFromLibrary(item.sheets);
+    onClose();
   };
 
   const handleAppend = () => {
@@ -1065,19 +1088,30 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
         ))}
       </div>
+      {hasExistingContent && selected ? (
+        <div className="mt-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+          <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-amber-400" />
+          <span>
+            This project already has a BOQ. <strong>Replace current BOQ</strong> will permanently
+            discard all existing sheets and rows. Choose <strong>Add as sheet(s)</strong> to keep
+            them and append the template as new tab(s).
+          </span>
+        </div>
+      ) : null}
       <div className="mt-5 flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[11px] text-txt-dim sm:max-w-[260px]">
-          <strong className="text-txt-muted">Load</strong> replaces the current BOQ. <strong className="text-txt-muted">Add as sheet(s)</strong> appends it as new tab(s) you can reorder.
+          <strong className="text-txt-muted">Add as sheet(s)</strong> appends it as new tab(s) you can reorder — your existing BOQ is kept.{" "}
+          <strong className="text-txt-muted">Replace</strong> discards the current BOQ.
         </p>
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="ghost" disabled={!selected} onClick={handleAppend}>
-            Add as sheet(s)
+          <Button variant="ghost" disabled={!selected} onClick={handleLoad}>
+            {hasExistingContent ? "Replace current BOQ" : "Load BOQ"}
           </Button>
-          <Button variant="primary" disabled={!selected} onClick={handleLoad}>
-            Load BOQ
+          <Button variant="primary" disabled={!selected} onClick={handleAppend}>
+            Add as sheet(s)
           </Button>
         </div>
       </div>

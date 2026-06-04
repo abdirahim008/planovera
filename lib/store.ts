@@ -3859,34 +3859,68 @@ export const useAppStore = create<AppState>()(
           }),
         })),
 
-      fetchActivitiesFromBOQ: (boqId) =>
+      // Pull activities from a saved source list. Construction projects fetch
+      // from a saved BOQ (one work-plan sheet per BOQ sheet, headers → sections,
+      // items → activities). Non-construction projects fetch from a saved
+      // Deliverables/Items list, which is a flat list with no sheets or section
+      // headers — so it produces a single work-plan sheet of activities.
+      fetchActivitiesFromBOQ: (sourceId) =>
         set((s) => {
-          // Create one work plan sheet per BOQ sheet
           const newSheets: WorkPlanSheet[] = [];
-          const selectedBOQ = s.savedBOQs.find((b) => b.id === boqId);
-          if (!selectedBOQ) return s;
-          selectedBOQ.sheets.forEach((boqSheet) => {
-            const activities: WorkPlanActivity[] = [];
-            boqSheet.rows.forEach((r) => {
-              if (r.type === "header" && r.description) {
-                activities.push({
+
+          const selectedBOQ = s.savedBOQs.find((b) => b.id === sourceId);
+          if (selectedBOQ) {
+            selectedBOQ.sheets.forEach((boqSheet) => {
+              const activities: WorkPlanActivity[] = [];
+              boqSheet.rows.forEach((r) => {
+                if (r.type === "header" && r.description) {
+                  activities.push({
+                    id: uuid(),
+                    project_id: s.project?.id || "",
+                    rowType: "section",
+                    description: r.description,
+                    duration: "",
+                    startDate: "",
+                    endDate: "",
+                    status: "pending" as const,
+                  });
+                  return;
+                }
+                if (r.type === "item" && r.description) {
+                  activities.push({
+                    id: uuid(),
+                    project_id: s.project?.id || "",
+                    rowType: "activity",
+                    description: r.description,
+                    duration: "",
+                    startDate: "",
+                    endDate: "",
+                    status: "pending" as const,
+                  });
+                }
+              });
+              if (activities.length > 0) {
+                newSheets.push({
                   id: uuid(),
-                  project_id: s.project?.id || "",
-                  rowType: "section",
-                  description: r.description,
-                  duration: "",
-                  startDate: "",
-                  endDate: "",
-                  status: "pending" as const,
+                  name: boqSheet.name,
+                  sort_order: s.workPlanSheets.length + newSheets.length,
+                  activities: recalcWorkPlanSections(activities),
                 });
-                return;
               }
-              if (r.type === "item" && r.description) {
+            });
+            return { workPlanSheets: [...s.workPlanSheets, ...newSheets] };
+          }
+
+          const selectedSet = s.savedSimpleItemSets.find((x) => x.id === sourceId);
+          if (selectedSet) {
+            const activities: WorkPlanActivity[] = [];
+            selectedSet.items.forEach((it) => {
+              if (it.description && it.description.trim()) {
                 activities.push({
                   id: uuid(),
                   project_id: s.project?.id || "",
                   rowType: "activity",
-                  description: r.description,
+                  description: it.description,
                   duration: "",
                   startDate: "",
                   endDate: "",
@@ -3897,13 +3931,15 @@ export const useAppStore = create<AppState>()(
             if (activities.length > 0) {
               newSheets.push({
                 id: uuid(),
-                name: boqSheet.name,
-                sort_order: s.workPlanSheets.length + newSheets.length,
+                name: selectedSet.name,
+                sort_order: s.workPlanSheets.length,
                 activities: recalcWorkPlanSections(activities),
               });
             }
-          });
-          return { workPlanSheets: [...s.workPlanSheets, ...newSheets] };
+            return { workPlanSheets: [...s.workPlanSheets, ...newSheets] };
+          }
+
+          return s;
         }),
 
       pasteWorkPlanRows: (startRowIdx, startColKey, rawData) => {

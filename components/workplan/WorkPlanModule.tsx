@@ -23,6 +23,7 @@ import {
   CalendarRange,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { labelsForType } from "@/lib/project-labels";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
@@ -425,7 +426,7 @@ function WorkPlanTable({
         <Calendar size={40} className="mx-auto mb-3 opacity-40" />
         <p>{isSectionSummary ? "No section headers yet" : "No activities yet"}</p>
         <p className="text-xs mt-1">
-          {isSectionSummary ? "Switch to All rows to add section headers and activities." : "Add activities manually or fetch from BOQ"}
+          {isSectionSummary ? "Switch to All rows to add section headers and activities." : `Add activities manually or fetch from ${labelsForType(project).nav.boqOrItems}`}
         </p>
       </div>
     );
@@ -869,6 +870,7 @@ export default function WorkPlanModule() {
     fetchActivitiesFromBOQ,
     project,
     savedBOQs,
+    savedSimpleItemSets,
     workPlanSheets,
   } = useAppStore();
 
@@ -883,15 +885,23 @@ export default function WorkPlanModule() {
   const projectBOQs = savedBOQs.filter((b) => b.project_id === project?.id);
   const activeWpName = projectWorkPlans.find((w) => w.id === activeWorkPlanId)?.name || "Work Plan";
   const isConstruction = project?.type === "construction";
-  const hasBOQItems = isConstruction && projectBOQs.some((b) => b.sheets.some((s) => s.rows.some((r) => r.type === "item" && r.description)));
-  const boqOptions = projectBOQs.filter((b) => b.sheets.some((s) => s.rows.some((r) => r.type === "item" && r.description)));
+
+  // The work plan can pull activities from whatever item source the project type
+  // uses: a saved BOQ (construction) or a saved Deliverables/Items list
+  // (non-construction). Both expose { id, name } so the picker is uniform.
+  const sourceLabel = labelsForType(project).nav.boqOrItems; // "BOQ" or "Deliverables"
+  const projectSimpleItemSets = savedSimpleItemSets.filter((s) => s.project_id === project?.id);
+  const sourceOptions: { id: string; name: string }[] = isConstruction
+    ? projectBOQs.filter((b) => b.sheets.some((s) => s.rows.some((r) => r.type === "item" && r.description)))
+    : projectSimpleItemSets.filter((s) => s.items.some((it) => it.description && it.description.trim()));
+  const hasSourceItems = sourceOptions.length > 0;
 
   useEffect(() => {
     if (!showFetchBOQModal) return;
-    if (!selectedBOQId && boqOptions.length > 0) {
-      setSelectedBOQId(boqOptions[0].id);
+    if (!selectedBOQId && sourceOptions.length > 0) {
+      setSelectedBOQId(sourceOptions[0].id);
     }
-  }, [showFetchBOQModal, selectedBOQId, boqOptions]);
+  }, [showFetchBOQModal, selectedBOQId, sourceOptions]);
 
   useEffect(() => {
     if (activeWorkPlanId && mode === "list") {
@@ -1008,8 +1018,8 @@ export default function WorkPlanModule() {
                 <Button size="sm" variant="primary" onClick={handleEdit}><Pencil size={14} /> Edit</Button>
               ) : (
                 <>
-                  {hasBOQItems && (
-                    <Button size="sm" onClick={() => setShowFetchBOQModal(true)}><RefreshCw size={14} /> Fetch from BOQ</Button>
+                  {hasSourceItems && (
+                    <Button size="sm" onClick={() => setShowFetchBOQModal(true)}><RefreshCw size={14} /> Fetch from {sourceLabel}</Button>
                   )}
                   <Button size="sm" onClick={addActivity}><Plus size={14} /> Add Activity</Button>
                   <Button size="sm" variant="primary" onClick={handleSave}><Save size={14} /> Save</Button>
@@ -1027,10 +1037,10 @@ export default function WorkPlanModule() {
       )}
       {workPlanSheets.length > 0 && <WorkPlanSheetTabs readOnly={isViewMode} />}
 
-      <Modal open={showFetchBOQModal} onClose={() => setShowFetchBOQModal(false)} title="Fetch Activities from BOQ" width={520}>
+      <Modal open={showFetchBOQModal} onClose={() => setShowFetchBOQModal(false)} title={`Fetch Activities from ${sourceLabel}`} width={520}>
         <div className="space-y-3">
           <label className="text-xs font-semibold text-txt-muted uppercase tracking-wider block">
-            BOQ Source
+            {sourceLabel} Source
           </label>
           <div className="relative">
             <select
@@ -1038,8 +1048,8 @@ export default function WorkPlanModule() {
               onChange={(e) => setSelectedBOQId(e.target.value)}
               className="w-full h-10 px-3 py-2 bg-bg-surface border border-border rounded-lg text-sm appearance-none outline-none focus:ring-2 focus:ring-accent/50 transition-all font-medium cursor-pointer"
             >
-              <option value="" disabled>Select BOQ</option>
-              {boqOptions.map((b) => (
+              <option value="" disabled>Select {sourceLabel}</option>
+              {sourceOptions.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
