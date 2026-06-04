@@ -1815,6 +1815,7 @@ interface AppState {
   toggleSheetSummary: (idx: number) => void;
   updateSheetSummaryLabel: (idx: number, label: string) => void;
   loadBOQFromLibrary: (sheets: BOQSheet[]) => void;
+  appendBOQFromLibrary: (sheets: BOQSheet[], itemName?: string) => void;
   pasteBOQRows: (sheetIndex: number, startRowIndex: number, startColKey: string, rawData: string) => void;
   clearBOQRange: (sheetIndex: number, r1: number, r2: number, c1: string, c2: string) => void;
   // Formula Linking
@@ -2562,6 +2563,23 @@ export const useAppStore = create<AppState>()(
         set({
           boqSheets: sheets.map((s, i) => ({ ...s, id: uuid(), sort_order: i, rows: s.rows.map((r) => ({ ...r, id: uuid() })) })),
           activeSheetIndex: 0,
+        }),
+      appendBOQFromLibrary: (sheets, itemName) =>
+        set((s) => {
+          if (sheets.length === 0) return s;
+          const projectId = s.project?.id || "";
+          // A single-sheet library item carries a generic sheet name; label the
+          // appended tab after the item so stacked imports stay distinguishable.
+          const renameSingle = sheets.length === 1 && !!itemName?.trim();
+          const incoming = sheets.map((sheet) => ({
+            ...sheet,
+            id: uuid(),
+            project_id: projectId,
+            name: renameSingle ? itemName!.trim() : sheet.name,
+            rows: sheet.rows.map((r) => ({ ...r, id: uuid() })),
+          }));
+          const combined = [...s.boqSheets, ...incoming].map((sheet, index) => ({ ...sheet, sort_order: index }));
+          return { boqSheets: combined, activeSheetIndex: s.boqSheets.length };
         }),
       pasteBOQRows: (sheetIdx, startRowIdx, startColKey, rawData) => {
         const lines = rawData.split(/\r?\n/).filter((l) => l.trim());

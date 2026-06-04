@@ -881,7 +881,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
 
 // ─── Library Browser Modal ────────────────────────────────────────
 function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { boqLibrary, loadBOQFromLibrary } = useAppStore();
+  const { boqLibrary, loadBOQFromLibrary, appendBOQFromLibrary } = useAppStore();
   const [selected, setSelected] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
@@ -909,6 +909,14 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
     const item = boqLibrary.find((b) => b.id === selected);
     if (item) {
       loadBOQFromLibrary(item.sheets);
+      onClose();
+    }
+  };
+
+  const handleAppend = () => {
+    const item = boqLibrary.find((b) => b.id === selected);
+    if (item) {
+      appendBOQFromLibrary(item.sheets, item.name);
       onClose();
     }
   };
@@ -1012,13 +1020,21 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
         ))}
       </div>
-      <div className="mt-5 flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button variant="primary" disabled={!selected} onClick={handleLoad}>
-          Load BOQ
-        </Button>
+      <div className="mt-5 flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[11px] text-txt-dim sm:max-w-[260px]">
+          <strong className="text-txt-muted">Load</strong> replaces the current BOQ. <strong className="text-txt-muted">Add as sheet(s)</strong> appends it as new tab(s) you can reorder.
+        </p>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="ghost" disabled={!selected} onClick={handleAppend}>
+            Add as sheet(s)
+          </Button>
+          <Button variant="primary" disabled={!selected} onClick={handleLoad}>
+            Load BOQ
+          </Button>
+        </div>
       </div>
     </Modal>
   );
