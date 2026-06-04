@@ -19,6 +19,7 @@ import type { ChecklistItem, ChecklistStatus } from "@/lib/supabase";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
+import CompactKpiList from "@/components/ui/CompactKpiList";
 
 type ChecklistFilter = "all" | ChecklistStatus | "overdue";
 type ChecklistOptionalField =
@@ -303,7 +304,18 @@ export default function ChecklistModule() {
         </div>
       </div>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-5 sm:hidden">
+        <CompactKpiList
+          rows={[
+            { label: "Required", value: metrics.total, tone: "neutral" },
+            { label: "Pending", value: metrics.pending, tone: "warn" },
+            { label: "Submitted", value: metrics.submitted, tone: "accent" },
+            { label: "Verified", value: metrics.verified, tone: "ok" },
+            { label: "Overdue", value: metrics.overdue, tone: "err" },
+          ]}
+        />
+      </div>
+      <div className="mb-5 hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: "Required", value: metrics.total, tone: "text-white" },
           { label: "Pending", value: metrics.pending, tone: "text-warn" },

@@ -17,12 +17,10 @@ import {
   Layers,
   BarChart3,
   Table2,
-  CheckCircle2,
-  AlertTriangle,
-  Clock3,
   Download,
   FileText,
   FileSpreadsheet,
+  CalendarRange,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import Button from "@/components/ui/Button";
@@ -30,16 +28,6 @@ import Modal from "@/components/ui/Modal";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import type { WorkPlanActivity } from "@/lib/supabase";
 import { exportWorkPlanAsPdf, exportWorkPlanAsExcel } from "@/lib/work-plan-export";
-
-const statusColors: Record<string, string> = {
-  pending: "text-txt-dim bg-txt-dim/10 border-txt-dim/20",
-  "in-progress": "text-accent bg-accent/10 border-accent/25",
-  completed: "text-ok bg-ok/10 border-ok/25",
-  delayed: "text-err bg-err/10 border-err/25",
-};
-
-const statusLabel = (status: WorkPlanActivity["status"]) =>
-  status === "in-progress" ? "Active" : status === "completed" ? "Done" : status === "delayed" ? "Critical" : "Pending";
 
 type ScheduleView = "table" | "gantt";
 type WorkPlanSummaryMode = "all" | "sections";
@@ -69,13 +57,6 @@ const getActivityEndDate = (activity: WorkPlanActivity) => {
   const start = parseDate(activity.startDate);
   const duration = Math.max(1, Number(activity.duration) || 1);
   return start ? new Date(start.getTime() + (duration - 1) * DAY_MS) : null;
-};
-
-const getActivityProgress = (activity: WorkPlanActivity) => {
-  if (activity.status === "completed") return 100;
-  if (activity.status === "in-progress") return 55;
-  if (activity.status === "delayed") return 30;
-  return 0;
 };
 
 // ─── Create Work Plan Modal ───────────────────────────────────────
@@ -456,9 +437,12 @@ function WorkPlanTable({
         <table className="data-table data-table-sticky min-w-[560px] sm:min-w-[780px]">
           <thead>
             <tr>
-              <th style={{ width: 40 }} className="data-sticky-col left-0 text-center">#</th>
-              <th className="data-sticky-col left-10 data-sticky-edge min-w-[150px] sm:min-w-[420px] w-[58%]">Description</th>
-              <th style={{ width: 110 }} className="text-center">Duration (days)</th>
+              <th style={{ width: 40 }} className="data-sticky-col left-0 text-center hidden sm:table-cell">#</th>
+              <th className="data-sticky-col left-0 sm:left-10 data-sticky-edge min-w-[150px] sm:min-w-[420px] w-[58%]">Description</th>
+              <th className="text-center w-[64px] sm:w-[110px]">
+                <span className="sm:hidden">Days</span>
+                <span className="hidden sm:inline">Duration (days)</span>
+              </th>
               <th style={{ width: 130 }} className="text-center">Start Date</th>
               <th style={{ width: 130 }} className="text-center">End Date</th>
               {!readOnly && <th style={{ width: 40 }} aria-label="Actions" />}
@@ -477,8 +461,8 @@ function WorkPlanTable({
                 onContextMenu={(e) => handleContextMenu(e, act.id)}
                 onClick={(e) => handleRowClick(e, act.id)}
               >
-                <td className="data-cell-index data-sticky-col left-0">{isSection ? "" : activityOrdinal}</td>
-                <td className={`data-cell-wrap data-sticky-col left-10 data-sticky-edge transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className="data-cell-index data-sticky-col left-0 hidden sm:table-cell">{isSection ? "" : activityOrdinal}</td>
+                <td className={`data-cell-wrap data-sticky-col left-0 sm:left-10 data-sticky-edge transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "description")} onMouseEnter={() => handleMouseEnter(i, "description")}>
                   {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
                     : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
@@ -586,24 +570,6 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
     Math.max(1.5, clamp((((end.getTime() - start.getTime()) / DAY_MS + 1) / totalDays) * 100));
   const todayPosition =
     today >= timelineStart && today <= timelineEnd ? leftPercent(today) : null;
-  const completed = datedActivities.filter((item) => item.activity.status === "completed").length;
-  const delayed = datedActivities.filter((item) => item.activity.status === "delayed").length;
-  const active = datedActivities.filter((item) => item.activity.status === "in-progress").length;
-
-  const barTone: Record<WorkPlanActivity["status"], string> = {
-    pending: "bg-txt-dim",
-    "in-progress": "bg-accent",
-    completed: "bg-ok",
-    delayed: "bg-err",
-  };
-
-  const barSoftTone: Record<WorkPlanActivity["status"], string> = {
-    pending: "bg-txt-dim/10 border-txt-dim/25",
-    "in-progress": "bg-accent/10 border-accent/30",
-    completed: "bg-ok/10 border-ok/30",
-    delayed: "bg-err/10 border-err/30",
-  };
-
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-bg-surface">
       <div className="flex flex-col gap-4 border-b border-border bg-bg-raised/40 p-4 xl:flex-row xl:items-center xl:justify-between">
@@ -611,21 +577,8 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Programme Gantt</div>
             <div className="mt-1 text-sm font-semibold text-txt">
-              Rev 1 - {completed} of {datedActivities.length} activities complete - {delayed} critical
+              Rev 1 - {datedActivities.length} activities
             </div>
-          </div>
-          <div className="flex flex-wrap gap-3 text-[10px] text-txt-muted">
-            {[
-              { label: "Completed", color: "bg-ok" },
-              { label: "In Progress", color: "bg-accent" },
-              { label: "Critical", color: "bg-err" },
-              { label: "Pending", color: "bg-txt-dim" },
-            ].map((item) => (
-              <span key={item.label} className="inline-flex items-center gap-1.5">
-                <span className={`h-2 w-2 rounded-full ${item.color}`} />
-                {item.label}
-              </span>
-            ))}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -683,7 +636,6 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
               const start = parseDate(activity.startDate);
               const end = getActivityEndDate(activity);
               const overdue = end && end < new Date() && activity.status !== "completed";
-              const progress = getActivityProgress(activity);
               const rowNumber =
                 1 + activities.slice(0, index).filter((item) => (item.rowType || "activity") !== "section").length;
 
@@ -709,9 +661,6 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                             {overdue && <span className="font-bold text-err">Overdue</span>}
                           </div>
                         </div>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusColors[activity.status]}`}>
-                          {statusLabel(activity.status)}
-                        </span>
                       </>
                     )}
                   </div>
@@ -737,21 +686,11 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                       <div className="absolute left-4 right-4 top-1/2 h-px bg-border" />
                     ) : start && end ? (
                       <div
-                        className={`absolute top-1/2 h-4 -translate-y-1/2 rounded-full border ${barSoftTone[activity.status]} ${
-                          overdue ? "ring-2 ring-err/30" : ""
+                        className={`absolute top-1/2 h-4 -translate-y-1/2 rounded-full bg-accent shadow-lg shadow-black/10 ${
+                          overdue ? "ring-2 ring-err/40" : ""
                         }`}
                         style={{ left: `${leftPercent(start)}%`, width: `${widthPercent(start, end)}%` }}
-                      >
-                        {progress > 0 && (
-                          <div
-                            className={`h-full rounded-full ${barTone[activity.status]} shadow-lg shadow-black/10`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        )}
-                        <span className="absolute -top-5 left-1 whitespace-nowrap text-[9px] font-bold text-txt-muted">
-                          {progress}%
-                        </span>
-                      </div>
+                      />
                     ) : (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-txt-dim">Add a start date</div>
                     )}
@@ -764,9 +703,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
       </div>
 
       <div className="flex flex-wrap items-center gap-4 border-t border-border bg-bg-raised/40 px-4 py-3 text-[11px] text-txt-muted">
-        <span className="inline-flex items-center gap-1.5 font-semibold text-txt"><CheckCircle2 size={13} className="text-ok" /> {completed} completed</span>
-        <span className="inline-flex items-center gap-1.5"><Clock3 size={13} className="text-accent" /> {active} active</span>
-        <span className="inline-flex items-center gap-1.5"><AlertTriangle size={13} className="text-err" /> {delayed} critical</span>
+        <span className="inline-flex items-center gap-1.5 font-semibold text-txt"><CalendarRange size={13} className="text-accent" /> {datedActivities.length} activities</span>
         <span className="ml-auto text-txt-dim">Edit dates and durations from the table view.</span>
       </div>
     </div>
@@ -998,10 +935,6 @@ export default function WorkPlanModule() {
   }
 
   const isViewMode = mode === "view";
-  const activeActivities = workPlanSheets.flatMap((sheet) => sheet.activities).filter((activity) => (activity.rowType || "activity") !== "section");
-  const completedActivities = activeActivities.filter((activity) => activity.status === "completed").length;
-  const delayedActivities = activeActivities.filter((activity) => activity.status === "delayed").length;
-  const activeActivitiesCount = activeActivities.filter((activity) => activity.status === "in-progress").length;
 
   return (
     <div className="animate-fade-in">
@@ -1017,11 +950,6 @@ export default function WorkPlanModule() {
             <h2 className="mt-3 text-lg font-semibold tracking-tight text-txt">{activeWpName}</h2>
           </div>
           <div className="flex flex-col gap-3 xl:items-end">
-            <div className="flex flex-wrap gap-2 text-[11px] text-txt-muted">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/10 px-2.5 py-1"><CheckCircle2 size={12} className="text-ok" /> {completedActivities} complete</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/10 px-2.5 py-1"><Clock3 size={12} className="text-accent" /> {activeActivitiesCount} active</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/10 px-2.5 py-1"><AlertTriangle size={12} className="text-err" /> {delayedActivities} critical</span>
-            </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex rounded-xl border border-border bg-bg p-1">
                 {([

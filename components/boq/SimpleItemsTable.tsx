@@ -417,30 +417,30 @@ export default function SimpleItemsTable() {
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={handleBack}>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <Button size="sm" variant="ghost" onClick={handleBack} className="shrink-0">
             <ArrowLeft size={14} /> Back
           </Button>
-          <div className="h-5 w-px bg-border" />
-          <div>
-            <h2 className="text-lg font-semibold">{activeName}</h2>
+          <div className="hidden h-5 w-px bg-border sm:block" />
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold sm:text-lg">{activeName}</h2>
             {!isViewMode && (
-              <p className="text-xs text-txt-muted mt-0.5">Right-click rows for options</p>
+              <p className="hidden text-xs text-txt-muted mt-0.5 sm:block">Right-click rows for options</p>
             )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           {isViewMode ? (
-            <Button size="sm" variant="primary" onClick={handleEdit}>
+            <Button size="sm" variant="primary" onClick={handleEdit} className="whitespace-nowrap">
               <Pencil size={14} /> Edit
             </Button>
           ) : (
             <>
-              <Button size="sm" onClick={addRow}>
+              <Button size="sm" onClick={addRow} className="whitespace-nowrap">
                 <Plus size={14} /> Add Row
               </Button>
-              <Button size="sm" variant="primary" onClick={handleSave}>
+              <Button size="sm" variant="primary" onClick={handleSave} className="whitespace-nowrap">
                 <Save size={14} /> Save
               </Button>
             </>
