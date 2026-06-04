@@ -69,6 +69,7 @@ import {
 } from "@/lib/sampleData";
 import { DEFAULT_PROJECT_CATEGORIES, categorySlug } from "@/lib/projectCategories";
 import { PROJECT_PRESETS, getProjectPreset } from "@/lib/project-presets";
+import { paymentCertificateCalcs } from "@/lib/payment-calculations";
 
 type Tone = "accent" | "ok" | "warn" | "err";
 
@@ -493,6 +494,9 @@ function computeFinancialProgress(
   certificates: PaymentCertificate[],
   project: Project
 ) {
+  // Denominator: the total contract amount. Fall back to the BOQ total only
+  // when no contract amount has been entered for the project.
+  const contractAmount = parseAmount(project.contractAmount);
   const boqAmount = savedBOQs
     .filter((boq) => boq.project_id === projectId)
     .flatMap((boq) => boq.sheets)
@@ -505,12 +509,17 @@ function computeFinancialProgress(
       0
     );
 
-  const baselineAmount = boqAmount > 0 ? boqAmount : parseAmount(project.contractAmount);
+  const baselineAmount = contractAmount > 0 ? contractAmount : boqAmount;
   if (baselineAmount <= 0) return 0;
 
-  const commercial = computeCommercialSnapshot(projectId, certificates);
-  const certified = Math.max(commercial.approved, commercial.paid, commercial.submitted);
-  return clamp(Math.round((certified / baselineAmount) * 100));
+  // Amount paid to date = the cumulative net of the furthest-along *paid*
+  // certificate. Interim certificates are cumulative, so we take the maximum
+  // cumulative net rather than summing (summing would double-count earlier IPCs).
+  const paidToDate = certificates
+    .filter((certificate) => certificate.project_id === projectId && certificate.status === "paid")
+    .reduce((max, certificate) => Math.max(max, paymentCertificateCalcs(certificate).total.net), 0);
+
+  return clamp(Math.round((paidToDate / baselineAmount) * 100));
 }
 
 function buildProjectSummary(
@@ -2263,6 +2272,11 @@ function ProjectOverviewDashboard({
     project.type === "construction" &&
     (project.role === "supervision" || project.role === "employer");
 
+  // Use elapsed-time percentage as the planned baseline (linear plan), then
+  // compare it against the actual physical progress for the variance badge.
+  const timePercent = timeline?.percent ?? 0;
+  const timeVariance = progress.actual - timePercent;
+
   const metricCards = [
     {
       title: "Contract Value",
@@ -2364,23 +2378,22 @@ function ProjectOverviewDashboard({
             <h3 className="text-sm font-semibold text-white">Progress</h3>
             <span
               className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
-                progress.variance >= 0
+                timeVariance >= 0
                   ? "border-ok/25 bg-ok/10 text-ok"
                   : "border-warn/25 bg-warn/10 text-warn"
               }`}
             >
-              {progress.variance >= 0 ? "+" : ""}
-              {progress.variance.toFixed(1)}% variance
+              {timeVariance >= 0 ? "+" : ""}
+              {timeVariance.toFixed(1)}% variance
             </span>
           </div>
 
           <div className="space-y-5">
             <div className="space-y-3">
-              <ProgressStrip label="Planned" value={progress.planned} tone="accent" />
-              <ProgressStrip label="Actual" value={progress.actual} tone={progress.variance >= 0 ? "ok" : "warn"} />
+              <ProgressStrip label="Planned (time)" value={timePercent} tone="accent" />
+              <ProgressStrip label="Actual" value={progress.actual} tone={timeVariance >= 0 ? "ok" : "warn"} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <CompactGauge value={timeline?.percent ?? 0} label="Time Elapsed" tone="warn" />
+            <div className="grid grid-cols-1 gap-3">
               <CompactGauge value={financial} label="Financial" tone="accent" />
             </div>
           </div>
