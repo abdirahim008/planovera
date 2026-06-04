@@ -201,6 +201,8 @@ export interface BOQLibraryItem {
   description: string;
   category: string;
   subcategory: string;
+  /** Free-text keywords for searching the library (e.g. "borehole", "uPVC", "water tank"). */
+  tags: string[];
   sheets: BOQSheet[];
   created_at: string;
   updated_at: string;
@@ -650,6 +652,7 @@ export interface BOQLibraryItemRecord {
   description: string;
   category: string;
   subcategory?: string | null;
+  tags?: string[] | null;
   sheets: BOQSheet[];
   created_at: string;
   updated_at: string;
@@ -1000,6 +1003,7 @@ export const mapBOQLibraryItemRecord = (
   description: record.description,
   category: record.category,
   subcategory: record.subcategory ?? "",
+  tags: Array.isArray(record.tags) ? record.tags : [],
   sheets: record.sheets ?? [],
   created_at: record.created_at,
   updated_at: record.updated_at,

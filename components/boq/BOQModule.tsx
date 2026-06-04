@@ -23,6 +23,8 @@ import {
   LayoutGrid,
   LayoutList,
   StickyNote,
+  Search,
+  ListPlus,
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { useAppStore, emptyRow, headerRow, subtotalRow, grandtotalRow, noteRow, specificationRow, recalcRows, currency, resolveCellValue } from "@/lib/store";
@@ -885,6 +887,7 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
   const [selected, setSelected] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [search, setSearch] = useState("");
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -893,9 +896,22 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
   }, [boqLibrary]);
 
   const groups = useMemo(() => {
-    const filtered = categoryFilter
-      ? boqLibrary.filter((b) => (b.category?.trim() || "Uncategorized") === categoryFilter)
-      : boqLibrary;
+    const query = search.trim().toLowerCase();
+    const terms = query ? query.split(/\s+/) : [];
+    const filtered = boqLibrary.filter((b) => {
+      if (categoryFilter && (b.category?.trim() || "Uncategorized") !== categoryFilter) return false;
+      if (terms.length === 0) return true;
+      const haystack = [
+        b.name,
+        b.description,
+        b.category,
+        b.subcategory,
+        ...(b.tags ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return terms.every((t) => haystack.includes(t));
+    });
     const map = new Map<string, BOQLibraryItem[]>();
     for (const item of filtered) {
       const key = `${item.category?.trim() || "Uncategorized"} › ${item.subcategory?.trim() || "General"}`;
@@ -903,7 +919,7 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
       map.get(key)!.push(item);
     }
     return Array.from(map.entries());
-  }, [boqLibrary, categoryFilter]);
+  }, [boqLibrary, categoryFilter, search]);
 
   const handleLoad = () => {
     const item = boqLibrary.find((b) => b.id === selected);
@@ -923,6 +939,16 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
 
   return (
     <Modal open={open} onClose={onClose} title="BOQ Library" width={600}>
+      <div className="mb-3 relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-txt-dim pointer-events-none" />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, keyword or tag (e.g. borehole, water tank, uPVC)"
+          className="w-full pl-9 pr-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
+        />
+      </div>
       {categories.length > 1 ? (
         <div className="mb-3 flex flex-wrap gap-1.5">
           <button
@@ -953,6 +979,13 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
       ) : null}
       <div className="flex flex-col gap-4 max-h-[400px] overflow-auto">
+        {groups.length === 0 ? (
+          <div className="py-10 text-center text-sm text-txt-muted">
+            {search.trim()
+              ? `No templates match “${search.trim()}”.`
+              : "No templates in the library yet."}
+          </div>
+        ) : null}
         {groups.map(([groupKey, items]) => (
           <div key={groupKey} className="flex flex-col gap-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim sticky top-0 bg-bg-surface py-1">
@@ -977,6 +1010,18 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-sm">{item.name}</div>
                 <div className="text-xs text-txt-muted mt-0.5 truncate">{item.description}</div>
+                {item.tags && item.tags.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {item.tags.slice(0, 5).map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-1.5 py-0.5 rounded text-[10px] bg-bg-raised text-txt-dim border border-border"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <ChevronRight
                 size={16}
@@ -1048,19 +1093,35 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [subcategory, setSubcategory] = useState("");
+  const [tags, setTags] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const tagList = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const part of tags.split(/[,\n]/)) {
+      const t = part.trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+    return out;
+  }, [tags]);
 
   const handleSave = async () => {
     if (!name.trim()) return;
 
     if (!authConfigured) {
-      addToLibrary(name, description, category || "General", subcategory.trim());
+      addToLibrary(name, description, category || "General", subcategory.trim(), tagList);
       onClose();
       setName("");
       setDescription("");
       setCategory("");
       setSubcategory("");
+      setTags("");
       setNotice(null);
       return;
     }
@@ -1092,6 +1153,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
         description: description.trim(),
         category: category.trim() || "General",
         subcategory: subcategory.trim(),
+        tags: tagList,
         sheets: boqSheets,
         author_id: user.id,
       })
@@ -1112,6 +1174,7 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
     setDescription("");
     setCategory("");
     setSubcategory("");
+    setTags("");
     setNotice(null);
   };
 
@@ -1155,6 +1218,16 @@ function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => v
               placeholder="e.g. Pavement & Surfacing"
             />
           </div>
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">Tags</label>
+          <input
+            className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="Comma-separated keywords, e.g. borehole, drilling, water tank"
+          />
+          <p className="mt-1 text-[11px] text-txt-dim">Keywords users can search by. Separate with commas.</p>
         </div>
         {notice ? (
           <div className="rounded-xl border border-err/30 bg-err/10 px-3 py-2 text-sm text-err">
@@ -1370,6 +1443,7 @@ export default function BOQModule() {
     saveBOQ,
     savedBOQs,
     project,
+    generateSummarySheet,
   } = useAppStore();
 
   // mode: 'list' | 'view' | 'edit'
@@ -1758,6 +1832,9 @@ export default function BOQModule() {
               </Button>
               <Button size="sm" onClick={() => fileInputRef.current?.click()}>
                 <Upload size={14} /> Import Excel
+              </Button>
+              <Button size="sm" onClick={generateSummarySheet}>
+                <ListPlus size={14} /> Generate Summary
               </Button>
               <Button size="sm" onClick={openExportModal}>
                 <FileSpreadsheet size={14} /> Export Excel

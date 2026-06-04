@@ -16,8 +16,24 @@ export interface TemplatePayload {
   description: string;
   category: string;
   subcategory: string;
+  tags: string[];
   sheets: BOQSheet[];
 }
+
+/** Parse a comma/newline-separated tag string into a clean, de-duplicated array. */
+export const parseTags = (raw: string): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[,\n]/)) {
+    const t = part.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+};
 
 const ROW_TYPES: { value: BOQRow["type"]; label: string }[] = [
   { value: "item", label: "Item" },
@@ -107,6 +123,7 @@ export default function TemplateEditorModal({
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [subcategory, setSubcategory] = useState("");
+  const [tags, setTags] = useState("");
   const [sheets, setSheets] = useState<BOQSheet[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
@@ -118,6 +135,7 @@ export default function TemplateEditorModal({
     setDescription(item.description);
     setCategory(item.category);
     setSubcategory(item.subcategory);
+    setTags((item.tags ?? []).join(", "));
     const cloned = cloneSheets(item.sheets);
     setSheets(cloned.length ? cloned : [{ id: uuid(), project_id: "", name: "Sheet 1", sort_order: 0, rows: [blankRow()] }]);
     setActiveIdx(0);
@@ -218,6 +236,7 @@ export default function TemplateEditorModal({
       description: description.trim(),
       category: category.trim() || "Uncategorized",
       subcategory: subcategory.trim(),
+      tags: parseTags(tags),
       sheets: sheets.map((sh, i) => ({ ...sh, sort_order: i })),
     });
   };
@@ -269,6 +288,21 @@ export default function TemplateEditorModal({
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of this template"
           />
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">
+            Tags
+          </label>
+          <input
+            className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="Comma-separated keywords, e.g. borehole, drilling, submersible pump"
+          />
+          <p className="mt-1 text-[11px] text-txt-dim">
+            Keywords users can search by. Separate with commas.
+          </p>
         </div>
 
         {/* BOQ content editor */}

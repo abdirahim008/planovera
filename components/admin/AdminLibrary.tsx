@@ -24,7 +24,7 @@ import {
 } from "@/lib/boqLibrary";
 import ExcelImportPreviewModal from "@/components/boq/ExcelImportPreviewModal";
 import TaxonomySelect from "@/components/admin/TaxonomySelect";
-import TemplateEditorModal, { type TemplatePayload } from "@/components/admin/TemplateEditorModal";
+import TemplateEditorModal, { type TemplatePayload, parseTags } from "@/components/admin/TemplateEditorModal";
 import {
   FileSpreadsheet,
   Trash2,
@@ -49,6 +49,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [subcategory, setSubcategory] = useState("");
+  const [tags, setTags] = useState("");
   const [pendingSheets, setPendingSheets] = useState<BOQSheet[]>([]);
   const [addNotice, setAddNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -94,6 +95,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
     setDescription("");
     setCategory("");
     setSubcategory("");
+    setTags("");
     setPendingSheets([]);
     setAddNotice(null);
   };
@@ -240,6 +242,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
 
     const cat = category.trim() || "Uncategorized";
     const sub = subcategory.trim();
+    const tagList = parseTags(tags);
 
     if (!authConfigured) {
       const now = new Date().toISOString();
@@ -249,6 +252,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
         description: description.trim(),
         category: cat,
         subcategory: sub,
+        tags: tagList,
         sheets: pendingSheets,
         created_at: now,
         updated_at: now,
@@ -286,6 +290,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
         description: description.trim(),
         category: cat,
         subcategory: sub,
+        tags: tagList,
         sheets: pendingSheets,
         author_id: user.id,
       })
@@ -315,6 +320,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
         description: payload.description,
         category: payload.category,
         subcategory: payload.subcategory,
+        tags: payload.tags,
         sheets: payload.sheets,
         updated_at: new Date().toISOString(),
       };
@@ -340,6 +346,7 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
         description: payload.description,
         category: payload.category,
         subcategory: payload.subcategory,
+        tags: payload.tags,
         sheets: payload.sheets,
       })
       .eq("id", editItem.id)
@@ -542,6 +549,21 @@ export default function AdminLibrary({ embedded = false }: { embedded?: boolean 
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of this template"
             />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-txt-muted uppercase tracking-[0.16em] block mb-1.5">
+              Tags
+            </label>
+            <input
+              className="w-full px-3 py-2 bg-bg-input border border-border rounded-md text-sm text-txt outline-none focus:border-accent"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="Comma-separated keywords, e.g. borehole, drilling, submersible pump"
+            />
+            <p className="mt-1 text-[11px] text-txt-dim">
+              Keywords users can search by. Separate with commas.
+            </p>
           </div>
 
           <div className="rounded-xl border border-border bg-bg-raised/40 p-3">

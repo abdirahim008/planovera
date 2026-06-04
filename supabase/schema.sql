@@ -319,6 +319,7 @@ create table if not exists public.boq_library_items (
   description text not null default '',
   category text not null default 'General',
   subcategory text not null default '',
+  tags text[] not null default '{}',
   sheets jsonb not null default '[]'::jsonb,
   author_id uuid references public.profiles(id) on delete set null,
   author_name text,
@@ -600,6 +601,9 @@ alter table public.boq_library_items
 
 alter table public.boq_library_items
   add column if not exists author_name text;
+
+alter table public.boq_library_items
+  add column if not exists tags text[] not null default '{}';
 
 alter table public.boq_library_items
   add column if not exists updated_at timestamptz not null default timezone('utc', now());

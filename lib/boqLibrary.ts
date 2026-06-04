@@ -32,6 +32,7 @@ export const BOQ_LIBRARY_TAXONOMY: Record<string, string[]> = {
     "Sewerage & Sanitation",
     "Boreholes & Wells",
     "Storage Tanks",
+    "Ancillary Works",
   ],
   "Drainage & Structures": [
     "Culverts",
@@ -74,6 +75,7 @@ interface TemplateSeed {
   description: string;
   category: string;
   subcategory: string;
+  tags?: string[];
   sheets: { name: string; rows: RowSeed[] }[];
 }
 
@@ -94,6 +96,7 @@ export const buildSeedLibraryItems = (): BOQLibraryItem[] => {
     description: t.description,
     category: t.category,
     subcategory: t.subcategory,
+    tags: t.tags ?? [],
     sheets: t.sheets.map(sheetFromSeed),
     created_at: now,
     updated_at: now,

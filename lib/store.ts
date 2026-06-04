@@ -142,9 +142,33 @@ const evalArithmetic = (expr: string): number => {
 const evaluateFormulaExpression = (expr: string, allSheets: BOQSheet[], depth: number): number => {
   if (depth > 5) return 0;
 
+  // Resolve SHEETTOTAL('Sheet Name') — the sum of every item row's amount on
+  // that sheet (each amount resolved, so item-level formulas count too). Used
+  // by generated Summary sheets to carry each bill's total forward live.
+  let resolvedExpr = expr.replace(
+    /SHEETTOTAL\(\s*'((?:[^']|'')+)'\s*\)/gi,
+    (_full, sheetName) => {
+      const resolvedSheetName = String(sheetName).replace(/''/g, "'");
+      const sheet = allSheets.find((s) => s.name === resolvedSheetName);
+      if (!sheet) return "0";
+      let total = 0;
+      for (const r of sheet.rows) {
+        if (r.type !== "item") continue;
+        if (typeof r.amount === "string" && r.amount.trim().startsWith("=")) {
+          total += resolveCellValue(r.amount, allSheets, depth + 1);
+        } else {
+          const q = resolveCellValue(r.qty, allSheets, depth + 1);
+          const rate = resolveCellValue(r.rate, allSheets, depth + 1);
+          total += calculateBOQLineAmount(q, rate, r.unit);
+        }
+      }
+      return String(total);
+    }
+  );
+
   // Resolve references like 'Sheet 1'!<rowId>.<col>. Row ids can come from
   // imports, so they are not always UUID-shaped.
-  let resolvedExpr = expr.replace(
+  resolvedExpr = resolvedExpr.replace(
     /'((?:[^']|'')+)'!([^.]+)\.(itemNo|description|unit|qty|rate|amount)/gi,
     (_full, sheetName, rowId, colKey) => {
       const resolvedSheetName = String(sheetName).replace(/''/g, "'");
@@ -209,11 +233,20 @@ export const recalcRows = (rows: BOQRow[], allSheets?: BOQSheet[]): BOQRow[] => 
       return { ...r, amount: r.amount.startsWith("=") ? r.amount : (amt ? amt.toFixed(2) : "") };
     }
     if (r.type === "subtotal") {
+      // An explicit formula (e.g. a Summary sheet's cross-sheet total) is kept
+      // verbatim so it resolves live at display time; otherwise sum the section.
+      if (typeof r.amount === "string" && r.amount.startsWith("=")) {
+        sectionTotal = 0;
+        return r;
+      }
       const val = sectionTotal;
       sectionTotal = 0;
       return { ...r, amount: val.toFixed(2) };
     }
     if (r.type === "grandtotal") {
+      if (typeof r.amount === "string" && r.amount.startsWith("=")) {
+        return r;
+      }
       const total = rows
         .filter((x) => x.type === "item")
         .reduce((s, x) => {
@@ -1816,6 +1849,7 @@ interface AppState {
   updateSheetSummaryLabel: (idx: number, label: string) => void;
   loadBOQFromLibrary: (sheets: BOQSheet[]) => void;
   appendBOQFromLibrary: (sheets: BOQSheet[], itemName?: string) => void;
+  generateSummarySheet: () => void;
   pasteBOQRows: (sheetIndex: number, startRowIndex: number, startColKey: string, rawData: string) => void;
   clearBOQRange: (sheetIndex: number, r1: number, r2: number, c1: string, c2: string) => void;
   // Formula Linking
@@ -1957,7 +1991,7 @@ interface AppState {
   // ─── BOQ Library ─────────────────────────────────────────────────
   boqLibrary: BOQLibraryItem[];
   setBOQLibrary: (items: BOQLibraryItem[]) => void;
-  addToLibrary: (name: string, description: string, category: string, subcategory?: string) => void;
+  addToLibrary: (name: string, description: string, category: string, subcategory?: string, tags?: string[]) => void;
   deleteFromLibrary: (id: string) => void;
 
   sidebarCollapsed: boolean;
@@ -2580,6 +2614,104 @@ export const useAppStore = create<AppState>()(
           }));
           const combined = [...s.boqSheets, ...incoming].map((sheet, index) => ({ ...sheet, sort_order: index }));
           return { boqSheets: combined, activeSheetIndex: s.boqSheets.length };
+        }),
+      generateSummarySheet: () =>
+        set((s) => {
+          const projectId = s.project?.id || "";
+          // Carry forward every non-summary sheet (so we never summarize a
+          // previously generated summary).
+          const billSheets = s.boqSheets.filter(
+            (sh) => !sh.name.trim().toLowerCase().startsWith("summary")
+          );
+          if (billSheets.length === 0) return s;
+
+          // Pick a unique name; its references must point at this exact name.
+          let summaryName = "Summary";
+          if (s.boqSheets.some((sh) => sh.name.trim().toLowerCase() === "summary")) {
+            let n = 2;
+            while (s.boqSheets.some((sh) => sh.name.trim().toLowerCase() === `summary ${n}`)) n++;
+            summaryName = `Summary ${n}`;
+          }
+          const sheetRef = (name: string) => name.replace(/'/g, "''");
+          const self = sheetRef(summaryName);
+
+          // One carried-forward line per bill, linked live to that sheet's total.
+          const carried: BOQRow[] = billSheets.map((sh, i) => ({
+            id: uuid(),
+            type: "item",
+            itemNo: String(i + 1),
+            description: sh.name,
+            unit: "",
+            qty: "",
+            rate: "",
+            amount: `=SHEETTOTAL('${sheetRef(sh.name)}')`,
+          }));
+
+          const subId = uuid();
+          const contingencyId = uuid();
+          const taxId = uuid();
+          const grandId = uuid();
+
+          const billsSum = billSheets
+            .map((sh) => `SHEETTOTAL('${sheetRef(sh.name)}')`)
+            .join("+");
+
+          const subTotal: BOQRow = {
+            id: subId,
+            type: "subtotal",
+            itemNo: "",
+            description: "Sub-Total (Bills)",
+            unit: "",
+            qty: "",
+            rate: "",
+            amount: `=${billsSum}`,
+          };
+          // Contingency / Tax: percentage lines. User types the % into Rate;
+          // the amount formula reads that rate back and applies it to the base.
+          const contingency: BOQRow = {
+            id: contingencyId,
+            type: "item",
+            itemNo: "",
+            description: "Contingency",
+            unit: "%",
+            qty: "",
+            rate: "",
+            amount: `='${self}'!${subId}.amount*'${self}'!${contingencyId}.rate/100`,
+          };
+          const tax: BOQRow = {
+            id: taxId,
+            type: "item",
+            itemNo: "",
+            description: "Tax / VAT",
+            unit: "%",
+            qty: "",
+            rate: "",
+            amount: `=('${self}'!${subId}.amount+'${self}'!${contingencyId}.amount)*'${self}'!${taxId}.rate/100`,
+          };
+          const grandTotal: BOQRow = {
+            id: grandId,
+            type: "grandtotal",
+            itemNo: "",
+            description: "GRAND TOTAL",
+            unit: "",
+            qty: "",
+            rate: "",
+            amount: `='${self}'!${subId}.amount+'${self}'!${contingencyId}.amount+'${self}'!${taxId}.amount`,
+          };
+
+          const summarySheet: BOQSheet = {
+            id: uuid(),
+            project_id: projectId,
+            name: summaryName,
+            sort_order: s.boqSheets.length,
+            rows: [...carried, subTotal, contingency, tax, grandTotal],
+          };
+
+          const combined = [...s.boqSheets, summarySheet].map((sheet, index) => ({
+            ...sheet,
+            sort_order: index,
+          }));
+          return { boqSheets: combined, activeSheetIndex: combined.length - 1 };
         }),
       pasteBOQRows: (sheetIdx, startRowIdx, startColKey, rawData) => {
         const lines = rawData.split(/\r?\n/).filter((l) => l.trim());
@@ -3889,11 +4021,11 @@ export const useAppStore = create<AppState>()(
       // ═══════════════════════════════════════════════════════════════
       boqLibrary: buildSeedLibraryItems(),
       setBOQLibrary: (items) => set({ boqLibrary: items }),
-      addToLibrary: (name, description, category, subcategory = "") =>
+      addToLibrary: (name, description, category, subcategory = "", tags = []) =>
         set((s) => ({
           boqLibrary: [
             ...s.boqLibrary,
-            { id: uuid(), name, description, category, subcategory, sheets: s.boqSheets.map((sh) => ({ ...sh, rows: sh.rows.map((r) => ({ ...r })) })), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+            { id: uuid(), name, description, category, subcategory, tags, sheets: s.boqSheets.map((sh) => ({ ...sh, rows: sh.rows.map((r) => ({ ...r })) })), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
           ],
         })),
       deleteFromLibrary: (id) => set((s) => ({ boqLibrary: s.boqLibrary.filter((item) => item.id !== id) })),
@@ -3903,7 +4035,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "probuild-storage",
-        version: 14,
+        version: 15,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, any>;
         if (version < 2) {
@@ -4083,6 +4215,16 @@ export const useAppStore = create<AppState>()(
           const existingNames = new Set(existing.map((i) => i?.name));
           const seeded = buildSeedLibraryItems().filter((i) => !existingNames.has(i.name));
           state.boqLibrary = [...seeded, ...existing];
+        }
+
+        if (version < 15) {
+          // Added searchable `tags` to library items. Backfill an empty array
+          // on any persisted item that predates the field.
+          const existing: any[] = Array.isArray(state.boqLibrary) ? state.boqLibrary : [];
+          existing.forEach((item) => {
+            if (item && !Array.isArray(item.tags)) item.tags = [];
+          });
+          state.boqLibrary = existing;
         }
 
         return state as AppState;
