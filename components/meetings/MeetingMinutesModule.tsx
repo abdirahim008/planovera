@@ -2094,7 +2094,7 @@ export default function MeetingMinutesModule() {
                 onChange={(event) => setActionProjectFilter(event.target.value)}
                 className="w-full rounded-xl border border-border bg-bg-input px-4 py-2.5 text-sm text-txt outline-none transition focus:border-accent"
               >
-                <option value="all">
+                <option value="all" className="bg-bg-surface text-txt">
                   All projects ({draftMinute.actionGroups.reduce((sum, group) => sum + group.actionItems.length, 0)})
                 </option>
                 {actionFilterProjectIds.map((projectId) => {
@@ -2102,7 +2102,7 @@ export default function MeetingMinutesModule() {
                     .filter((group) => group.project_id === projectId)
                     .reduce((sum, group) => sum + group.actionItems.length, 0);
                   return (
-                    <option key={projectId} value={projectId}>
+                    <option key={projectId} value={projectId} className="bg-bg-surface text-txt">
                       {projectNameById[projectId] || "Unassigned project"} ({count})
                     </option>
                   );
@@ -2144,7 +2144,7 @@ export default function MeetingMinutesModule() {
                       className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none transition focus:border-accent"
                     >
                       {projectOptionsForGroup(group.project_id).map((project) => (
-                        <option key={project.id} value={project.id}>
+                        <option key={project.id} value={project.id} className="bg-bg-surface text-txt">
                           {project.name}
                         </option>
                       ))}
@@ -2256,27 +2256,24 @@ export default function MeetingMinutesModule() {
                           }
                           className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent"
                         >
-                          <option value="open">Open</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="closed">Closed</option>
+                          <option value="open" className="bg-bg-surface text-txt">Open</option>
+                          <option value="in-progress" className="bg-bg-surface text-txt">In Progress</option>
+                          <option value="closed" className="bg-bg-surface text-txt">Closed</option>
                         </select>
                       </div>
-                      {actionItem.carriedForwardFromMinuteId && (
-                        <Badge color="accent" className="mt-3">Carried Forward</Badge>
-                      )}
                     </div>
                   ))}
                 </div>
                 <div className="hidden overflow-x-auto lg:block" data-variant="desktop" data-action-registry={group.id}>
-                  <table className="w-full min-w-[860px] border-collapse">
+                  <table className="w-full min-w-[820px] table-fixed border-collapse">
                     <thead>
                       <tr className="text-left text-[10px] uppercase tracking-[0.16em] text-txt-dim">
-                        <th className="px-2.5 py-1.5">#</th>
+                        <th className="w-9 px-2.5 py-1.5">#</th>
                         <th className="px-2.5 py-1.5">Action Item Description</th>
-                        <th className="px-2.5 py-1.5">Responsible Person</th>
-                        <th className="px-2.5 py-1.5">Deadline</th>
-                        <th className="px-2.5 py-1.5">Status</th>
-                        <th className="px-2.5 py-1.5">Action</th>
+                        <th className="w-[18%] px-2.5 py-1.5">Responsible Person</th>
+                        <th className="w-36 px-2.5 py-1.5">Deadline</th>
+                        <th className="w-28 px-2.5 py-1.5">Status</th>
+                        <th className="w-12 px-2.5 py-1.5">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2284,28 +2281,23 @@ export default function MeetingMinutesModule() {
                         <tr key={actionItem.id} className="border-t border-border/70">
                           <td className="data-cell-index px-2.5 py-1 align-middle">{index + 1}</td>
                           <td className="px-2.5 py-1 align-middle">
-                            <div className="space-y-1.5">
-                              <textarea
-                                data-field="description"
-                                data-action-id={actionItem.id}
-                                ref={(element) => {
-                                  if (element) resizeMeetingTextarea(element);
-                                }}
-                                value={actionItem.description}
-                                onChange={(event) => {
-                                  resizeMeetingTextarea(event.currentTarget);
-                                  updateActionItem(group.id, actionItem.id, {
-                                    description: event.target.value,
-                                  });
-                                }}
-                                rows={1}
-                                className="data-cell-textarea"
-                                placeholder="Action item description"
-                              />
-                              {actionItem.carriedForwardFromMinuteId && (
-                                <Badge color="accent">Carried Forward</Badge>
-                              )}
-                            </div>
+                            <textarea
+                              data-field="description"
+                              data-action-id={actionItem.id}
+                              ref={(element) => {
+                                if (element) resizeMeetingTextarea(element);
+                              }}
+                              value={actionItem.description}
+                              onChange={(event) => {
+                                resizeMeetingTextarea(event.currentTarget);
+                                updateActionItem(group.id, actionItem.id, {
+                                  description: event.target.value,
+                                });
+                              }}
+                              rows={1}
+                              className="data-cell-textarea"
+                              placeholder="Action item description"
+                            />
                           </td>
                           <td className="px-2.5 py-1 align-middle">
                             <input
@@ -2347,9 +2339,9 @@ export default function MeetingMinutesModule() {
                               }
                               className="data-cell-select"
                             >
-                              <option value="open">Open</option>
-                              <option value="in-progress">In Progress</option>
-                              <option value="closed">Closed</option>
+                              <option value="open" className="bg-bg-surface text-txt">Open</option>
+                              <option value="in-progress" className="bg-bg-surface text-txt">In Progress</option>
+                              <option value="closed" className="bg-bg-surface text-txt">Closed</option>
                             </select>
                           </td>
                           <td className="data-cell-action px-2.5 py-1 align-middle">
