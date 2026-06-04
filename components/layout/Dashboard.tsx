@@ -14,6 +14,7 @@ import {
   DollarSign,
   FileText,
   LayoutGrid,
+  Lock,
   Mail,
   MapPin,
   Maximize2,
@@ -347,6 +348,13 @@ const programLabel = (programs: Program[], programId?: string) =>
 
 const categoryLabel = (categories: ProjectCategory[], project: Project) =>
   categories.find((category) => category.id === project.categoryId)?.name || project.categoryName || "";
+
+/** Join lock reasons into natural English: ["a BOQ","payment certificates"] → "a BOQ and payment certificates". */
+const formatLockReasons = (reasons: string[]) => {
+  if (reasons.length <= 1) return reasons[0] || "";
+  if (reasons.length === 2) return `${reasons[0]} and ${reasons[1]}`;
+  return `${reasons.slice(0, -1).join(", ")}, and ${reasons[reasons.length - 1]}`;
+};
 
 const categoryFilterValue = (categories: ProjectCategory[], project: Project) => {
   if (project.categoryId) return project.categoryId;
@@ -845,6 +853,7 @@ export default function Dashboard() {
     project,
     projects,
     savedBOQs,
+    savedSimpleItemSets,
     certificates,
     savedWorkPlans,
     progressReports,
@@ -910,6 +919,22 @@ export default function Dashboard() {
     () => projectSummaries.find((summary) => summary.project.id === project?.id) || null,
     [project, projectSummaries]
   );
+
+  // Conditional lock for the project "type" (construction vs non-construction).
+  // The type drives which modules render, and the BOQ / Payments / Items datasets
+  // are mode-specific — switching type would hide whichever the project already
+  // holds. So once a project has any of that mode-specific data, freeze the type
+  // field (the project stays editable, just not its workflow kind). Brand-new and
+  // still-empty projects remain freely switchable so a wrong pick is easy to fix.
+  const editingTypeLock = useMemo(() => {
+    if (!editingProject) return { locked: false, reasons: [] as string[] };
+    const pid = editingProject.id;
+    const reasons: string[] = [];
+    if (savedBOQs.some((b) => b.project_id === pid)) reasons.push("a BOQ");
+    if (certificates.some((c) => c.project_id === pid)) reasons.push("payment certificates");
+    if (savedSimpleItemSets.some((s) => s.project_id === pid)) reasons.push("an items list");
+    return { locked: reasons.length > 0, reasons };
+  }, [editingProject, savedBOQs, certificates, savedSimpleItemSets]);
 
   const filteredProjectSummaries = useMemo(
     () =>
@@ -1357,6 +1382,7 @@ export default function Dashboard() {
           setEditingProject(null);
         }}
         mode={editingProject ? "edit" : "create"}
+        typeLock={editingTypeLock}
         formData={formData}
         setFormData={setFormData}
         programs={programs}
@@ -2682,6 +2708,7 @@ function CreateProjectModal({
   open,
   onClose,
   mode,
+  typeLock,
   formData,
   setFormData,
   programs,
@@ -2698,6 +2725,7 @@ function CreateProjectModal({
   open: boolean;
   onClose: () => void;
   mode: "create" | "edit";
+  typeLock: { locked: boolean; reasons: string[] };
   formData: ProjectFormData;
   setFormData: Dispatch<SetStateAction<ProjectFormData>>;
   programs: Program[];
@@ -2989,9 +3017,11 @@ function CreateProjectModal({
               What kind of project is this?
             </label>
             <select
-              className="w-full appearance-none rounded-xl border border-border bg-bg-input px-3 py-3 text-sm font-semibold text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
+              className="w-full appearance-none rounded-xl border border-border bg-bg-input px-3 py-3 text-sm font-semibold text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
               value={formData.preset}
+              disabled={typeLock.locked}
               onChange={(e) => {
+                if (typeLock.locked) return;
                 const next = getProjectPreset(e.target.value);
                 setFormData((prev) => ({
                   ...prev,
@@ -3012,9 +3042,20 @@ function CreateProjectModal({
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-txt-dim">
-              {getProjectPreset(formData.preset).helper}
-            </p>
+            {typeLock.locked ? (
+              <p className="flex items-start gap-1.5 text-[11px] text-txt-dim">
+                <Lock size={12} className="mt-0.5 shrink-0 text-txt-muted" />
+                <span>
+                  Locked because this project already has {formatLockReasons(typeLock.reasons)}.
+                  Switching the project type would hide that work. To change the type, remove it first
+                  or create a new project.
+                </span>
+              </p>
+            ) : (
+              <p className="text-[11px] text-txt-dim">
+                {getProjectPreset(formData.preset).helper}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
