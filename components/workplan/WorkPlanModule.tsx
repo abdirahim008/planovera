@@ -435,17 +435,17 @@ function WorkPlanTable({
   return (
     <>
       <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 365px)" }}>
-        <table className="data-table data-table-sticky min-w-[560px] sm:min-w-[780px]">
+        <table className="data-table data-table-sticky min-w-[430px] sm:min-w-[780px]">
           <thead>
             <tr>
               <th style={{ width: 40 }} className="data-sticky-col left-0 text-center hidden sm:table-cell">#</th>
-              <th className="data-sticky-col left-0 sm:left-10 data-sticky-edge min-w-[150px] sm:min-w-[420px] w-[58%]">Description</th>
-              <th className="text-center w-[64px] sm:w-[110px]">
+              <th className="data-sticky-col left-0 sm:left-10 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%]">Description</th>
+              <th className="text-center w-[46px] sm:w-[110px]">
                 <span className="sm:hidden">Days</span>
                 <span className="hidden sm:inline">Duration (days)</span>
               </th>
-              <th style={{ width: 130 }} className="text-center">Start Date</th>
-              <th style={{ width: 130 }} className="text-center">End Date</th>
+              <th className="text-center w-[88px] sm:w-[130px]">Start Date</th>
+              <th className="text-center w-[88px] sm:w-[130px]">End Date</th>
               {!readOnly && <th style={{ width: 40 }} aria-label="Actions" />}
             </tr>
           </thead>

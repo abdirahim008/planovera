@@ -813,7 +813,7 @@ export default function ProgressModule() {
 
     if (column === "description") {
       return (
-        <td className="data-cell-wrap data-sticky-col left-10 data-sticky-edge min-w-[150px] sm:min-w-[260px]">
+        <td className="data-cell-wrap data-sticky-col left-0 sm:left-10 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto">
           {item.description}
         </td>
       );
@@ -1249,16 +1249,16 @@ export default function ProgressModule() {
             <ProgressVisualRows rows={visualRows} />
           ) : (
           <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 450px)" }}>
-            <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: Math.max(680, displayColumns.length * 132) }}>
+            <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: Math.max(360, displayColumns.length * 116) }}>
               <thead>
                 <tr>
-                  <th style={{ width: 40 }} className="data-sticky-col left-0 text-center">#</th>
+                  <th style={{ width: 40 }} className="data-sticky-col left-0 text-center hidden sm:table-cell">#</th>
                   {displayColumns.map((column) => (
                     <th
                       key={column}
                       className={
                         column === "description"
-                          ? "data-sticky-col left-10 data-sticky-edge min-w-[150px] sm:min-w-[260px]"
+                          ? "data-sticky-col left-0 sm:left-10 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto"
                           : ""
                       }
                     >
@@ -1270,7 +1270,7 @@ export default function ProgressModule() {
               <tbody>
                 {activeReport.sheets[activeSheetIdx]?.items.map((item, index) => (
                   <tr key={item.id}>
-                    <td className="data-cell-index data-sticky-col left-0">{index + 1}</td>
+                    <td className="data-cell-index data-sticky-col left-0 hidden sm:table-cell">{index + 1}</td>
                     {displayColumns.map((column) => (
                       <Fragment key={column}>{renderProgressCell(item, column)}</Fragment>
                     ))}

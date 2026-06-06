@@ -4359,7 +4359,7 @@ export default function DocumentsModule() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="hidden sm:grid grid-cols-4 gap-3 mb-5">
         <div className="bg-bg-surface border border-border rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wider text-txt-dim mb-2">Layout</div>
           <div className="text-sm font-semibold">{(activeDocument.layoutStyle || "letter").toUpperCase()}</div>
