@@ -999,17 +999,33 @@ export default function WorkspaceShell() {
       );
     };
 
-    void heartbeat();
-    void loadCollaborators();
+    const isHidden = () =>
+      typeof document !== "undefined" && document.visibilityState === "hidden";
 
-    const timer = window.setInterval(() => {
+    // Skip presence traffic while the tab is backgrounded. Idle/background tabs
+    // would otherwise keep upserting and polling every 12s, multiplying database
+    // load by the number of open-but-unwatched sessions. When the tab is hidden
+    // the user is not viewing collaborators anyway, so their presence is allowed
+    // to lapse and is re-announced as soon as they return.
+    const tick = () => {
+      if (isHidden()) return;
       void heartbeat();
       void loadCollaborators();
-    }, 12000);
+    };
+
+    tick();
+
+    const timer = window.setInterval(tick, 12000);
+
+    const handleVisibility = () => {
+      if (!isHidden()) tick();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       active = false;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [activeModule, activeUserId, authConfigured, hasHydrated, project?.id, projectsReady]);
 
