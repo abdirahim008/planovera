@@ -385,11 +385,11 @@ function buildMeetingMinutePrintHtml(minute: MeetingMinute, projects: Project[])
                     <table>
                       <thead>
                         <tr>
-                          <th>#</th>
-                          <th>Action Item</th>
-                          <th>Responsible</th>
-                          <th>Deadline</th>
-                          <th>Status</th>
+                          <th style="width:5%">#</th>
+                          <th style="width:49%">Action Item</th>
+                          <th style="width:20%">Responsible</th>
+                          <th style="width:13%">Deadline</th>
+                          <th style="width:13%">Status</th>
                         </tr>
                       </thead>
                       <tbody>${rows}</tbody>

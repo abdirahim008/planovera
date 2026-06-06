@@ -1213,7 +1213,7 @@ function documentPrintStyles() {
     .certificate-body-copy {
       margin: 12px auto 0;
       max-width: 166mm;
-      text-align: center;
+      text-align: left;
       font-family: Arial, sans-serif;
     }
     .certificate-body-copy .doc-paragraph,
