@@ -348,13 +348,13 @@ function ProgressVisualRows({
                 {row.description || "Untitled activity"}
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-black/25">
+                <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
                   <div
                     className={`h-full rounded-full ${progressBarTone(progress, row.planned)}`}
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                <div className="w-11 text-right font-mono text-[12px] font-semibold text-white tabular-nums">
+                <div className="w-11 text-right font-mono text-[12px] font-semibold text-txt tabular-nums">
                   {progress.toFixed(0)}%
                 </div>
               </div>
@@ -549,7 +549,7 @@ export default function ProgressModule() {
                   { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
                   { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
                   { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
-                  { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "ok" },
+                  { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "accent" },
                 ]}
               />
             </div>
@@ -558,13 +558,23 @@ export default function ProgressModule() {
                 { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
                 { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
                 { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
-                { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "ok" },
-              ].map((card) => (
-                <div key={card.label} className="bg-bg-surface border border-border rounded-xl p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-2">{card.label}</div>
-                  <div className="text-lg font-semibold">{card.value}</div>
-                </div>
-              ))}
+                { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "accent" },
+              ].map((card) => {
+                const toneText =
+                  { accent: "text-accent", ok: "text-ok", warn: "text-warn", err: "text-err" }[card.tone] ?? "text-txt";
+                const toneTop =
+                  { accent: "border-t-accent", ok: "border-t-ok", warn: "border-t-warn", err: "border-t-err" }[card.tone] ??
+                  "border-t-border";
+                return (
+                  <div
+                    key={card.label}
+                    className={`rounded-xl border border-border border-t-2 ${toneTop} bg-bg-surface p-4`}
+                  >
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-2">{card.label}</div>
+                    <div className={`text-lg font-semibold ${toneText}`}>{card.value}</div>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
@@ -1129,7 +1139,7 @@ export default function ProgressModule() {
                       onClick={() => setVisualRowMode(option.mode)}
                       className={`h-8 rounded-md px-3 text-xs font-medium transition ${
                         visualRowMode === option.mode
-                          ? "bg-bg-raised text-white"
+                          ? "bg-bg-raised text-txt"
                           : "text-txt-muted hover:text-txt"
                       }`}
                     >

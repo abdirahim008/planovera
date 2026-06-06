@@ -169,7 +169,7 @@ function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState })
         >
           {headline}
         </div>
-        <h1 className="mt-2 text-xl font-semibold text-white">
+        <h1 className="mt-2 text-xl font-semibold text-txt">
           {block.organizationName}
         </h1>
         <p className="mt-1.5 text-sm text-txt-muted">{body}</p>
@@ -262,7 +262,7 @@ function Workspace({
             <Menu size={18} />
           </button>
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-white">
+            <div className="truncate text-sm font-bold text-txt">
               {project?.name || "Planovera"}
             </div>
             <div className="truncate text-[11px] uppercase tracking-[0.18em] text-txt-dim">

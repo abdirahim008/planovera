@@ -4898,7 +4898,7 @@ export default function DocumentsModule() {
                     onChange={(e) =>
                       updateGeneratedDocument(activeDocument.id, { reportPeriodStart: e.target.value })
                     }
-                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark] disabled:opacity-70"
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:light] disabled:opacity-70"
                   />
                 </div>
                 <div>
@@ -4910,7 +4910,7 @@ export default function DocumentsModule() {
                     onChange={(e) =>
                       updateGeneratedDocument(activeDocument.id, { reportPeriodEnd: e.target.value })
                     }
-                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark] disabled:opacity-70"
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:light] disabled:opacity-70"
                   />
                 </div>
               </div>
@@ -5096,7 +5096,7 @@ export default function DocumentsModule() {
                     onChange={(e) =>
                       updateGeneratedDocument(activeDocument.id, { invoiceDueDate: e.target.value })
                     }
-                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark] disabled:opacity-70"
+                    className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:light] disabled:opacity-70"
                   />
                 </div>
                 <div>

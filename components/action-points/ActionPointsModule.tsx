@@ -130,7 +130,7 @@ export default function ActionPointsModule() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold text-white">Action Points</h2>
+        <h2 className="text-xl font-semibold text-txt">Action Points</h2>
         <p className="text-sm text-txt-muted">
           The single register of action points across every project. Meetings read open items
           from here and write status changes back, so this is the source of truth.
@@ -153,7 +153,7 @@ export default function ActionPointsModule() {
                 {Icon ? <Icon size={13} /> : null}
                 {row.label}
               </div>
-              <div className="mt-1 text-2xl font-semibold text-white tabular-nums">{row.value}</div>
+              <div className="mt-1 text-2xl font-semibold text-txt tabular-nums">{row.value}</div>
             </div>
           );
         })}
@@ -251,7 +251,7 @@ export default function ActionPointsModule() {
                     onChange={(event) =>
                       updateActionPoint(point.id, { description: event.target.value })
                     }
-                    className="min-h-[64px] w-full resize-y rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-sm leading-6 text-txt outline-none transition hover:bg-black/10 focus:border-accent/40 focus:bg-black/10"
+                    className="min-h-[64px] w-full resize-y rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-sm leading-6 text-txt outline-none transition hover:bg-bg focus:border-accent/40 focus:bg-bg"
                     placeholder="Action point description"
                   />
 
@@ -270,7 +270,7 @@ export default function ActionPointsModule() {
                       onChange={(event) =>
                         updateActionPoint(point.id, { deadline: event.target.value })
                       }
-                      className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent [color-scheme:dark]"
+                      className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent [color-scheme:light]"
                     />
                     <select
                       value={point.priority}
@@ -391,7 +391,7 @@ export default function ActionPointsModule() {
                             onChange={(event) =>
                               updateActionPoint(point.id, { deadline: event.target.value })
                             }
-                            className="data-cell-input text-sm [color-scheme:dark]"
+                            className="data-cell-input text-sm [color-scheme:light]"
                             aria-label="Deadline"
                           />
                           {overdue ? (

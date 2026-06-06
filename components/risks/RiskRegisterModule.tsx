@@ -275,7 +275,7 @@ function RiskFormModal({
               type="date"
               value={form.reviewDate}
               onChange={(e) => update("reviewDate", e.target.value)}
-              className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark]"
+              className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:light]"
             />
           </div>
         </div>

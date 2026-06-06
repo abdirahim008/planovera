@@ -459,7 +459,7 @@ function OrganizationLocationMap({
           attributionControl: large,
         }).setView([5.15, 46.2], 5);
 
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
           maxZoom: 19,
           attribution:
             '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -518,23 +518,23 @@ function OrganizationLocationMap({
   }, [large, points]);
 
   return (
-    <div className={`planovera-dark-map relative ${height} overflow-hidden bg-[#181a25]`}>
+    <div className={`relative ${height} overflow-hidden bg-bg-surface`}>
       <div ref={mapContainerRef} className="h-full w-full" />
-      <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-white/10 bg-[#0f172a]/85 px-4 py-3 shadow-soft backdrop-blur">
+      <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-border bg-bg-surface/85 px-4 py-3 shadow-soft backdrop-blur">
         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
           Organization map
         </div>
-        <div className="mt-1 text-sm font-bold text-white">
+        <div className="mt-1 text-sm font-bold text-txt">
           {points.reduce((sum, point) => sum + point.count, 0)} plotted projects
         </div>
       </div>
       {missingCount > 0 ? (
-        <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-warn/30 bg-[#0f172a]/85 px-3 py-1 text-xs font-bold text-warn backdrop-blur">
+        <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-warn/30 bg-bg-surface/85 px-3 py-1 text-xs font-bold text-warn backdrop-blur">
           {missingCount} missing location
         </div>
       ) : null}
       {mapError ? (
-        <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-warn/30 bg-[#0f172a]/90 px-4 py-3 text-sm text-warn shadow-soft backdrop-blur">
+        <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-warn/30 bg-bg-surface/90 px-4 py-3 text-sm text-warn shadow-soft backdrop-blur">
           {mapError}
         </div>
       ) : null}
@@ -566,22 +566,22 @@ function OrganizationMapCard({ cards }: { cards: OrganizationProjectCard[] }) {
                 <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                   <MapPin size={14} className="text-accent" /> Project locations
                 </div>
-                <div className="mt-2 text-xl font-semibold text-white">Portfolio map</div>
+                <div className="mt-2 text-xl font-semibold text-txt">Portfolio map</div>
               </div>
-              <span className="rounded-xl border border-border bg-black/15 p-2 text-txt-muted">
+              <span className="rounded-xl border border-border bg-bg p-2 text-txt-muted">
                 <Maximize2 size={16} />
               </span>
             </div>
             <div className="mt-5 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-border bg-black/10 p-3">
+              <div className="rounded-2xl border border-border bg-bg p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Dots</div>
-                <div className="mt-1 text-2xl font-semibold text-white">{points.length}</div>
+                <div className="mt-1 text-2xl font-semibold text-txt">{points.length}</div>
               </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-3">
+              <div className="rounded-2xl border border-border bg-bg p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Projects</div>
                 <div className="mt-1 text-2xl font-semibold text-ok">{plottedCount}</div>
               </div>
-              <div className="rounded-2xl border border-border bg-black/10 p-3">
+              <div className="rounded-2xl border border-border bg-bg p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Missing</div>
                 <div className="mt-1 text-2xl font-semibold text-warn">{missingCount}</div>
               </div>
@@ -596,15 +596,15 @@ function OrganizationMapCard({ cards }: { cards: OrganizationProjectCard[] }) {
           <OrganizationLocationMap points={points} missingCount={missingCount} large />
           <div className="grid gap-3 md:grid-cols-2">
             {points.length === 0 ? (
-              <div className="rounded-2xl border border-border bg-black/10 p-4 text-sm text-txt-muted">
+              <div className="rounded-2xl border border-border bg-bg p-4 text-sm text-txt-muted">
                 No projects in the current filter have region/town or exact coordinates yet.
               </div>
             ) : (
               points.map((point) => (
-                <div key={point.id} className="rounded-2xl border border-border bg-black/10 p-4">
+                <div key={point.id} className="rounded-2xl border border-border bg-bg p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-bold text-white">{point.label}</div>
+                      <div className="font-bold text-txt">{point.label}</div>
                       <div className="mt-1 text-xs text-txt-muted">{point.subtitle}</div>
                     </div>
                     <Badge color="accent">{point.count}</Badge>
@@ -666,9 +666,9 @@ function ProgressGaugeCard({
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-border bg-black/10 p-3">
+    <div className="rounded-2xl border border-border bg-bg p-3">
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+      <div className="mt-1 text-lg font-semibold text-txt">{value}</div>
     </div>
   );
 }
@@ -1883,7 +1883,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               <ArrowLeft size={16} />
               Back to workspace
             </a>
-            <h1 className="mt-4 text-2xl font-semibold text-white">
+            <h1 className="mt-4 text-2xl font-semibold text-txt">
               Organization
             </h1>
           </div>
@@ -1982,7 +1982,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="font-semibold text-white">{organization.name}</div>
+                            <div className="font-semibold text-txt">{organization.name}</div>
                             <div className="mt-1 text-xs text-txt-muted">
                               {organization.personal ? "Personal workspace" : "Shared organization"}
                             </div>
@@ -2018,7 +2018,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         onClick={() => setActiveOrgTab(tab.id)}
                         className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
                           active
-                            ? "border-accent/40 bg-accent/10 text-white"
+                            ? "border-accent/40 bg-accent/10 text-txt"
                             : "border-transparent text-txt-muted hover:border-border hover:bg-bg-raised hover:text-txt"
                         }`}
                       >
@@ -2051,7 +2051,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           {subscriptionStateLabel(selectedAccessState).toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="mt-4 text-xl font-semibold text-white">
+                      <div className="mt-4 text-xl font-semibold text-txt">
                         {selectedSubscription
                           ? selectedSubscription.plan_code.replace(/-/g, " ")
                           : "No plan configured"}
@@ -2060,7 +2060,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         Access expires: {formatSubscriptionExpiry(selectedSubscription)}
                       </div>
                       {!selectedSubscriptionUsable && (
-                        <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs leading-5 text-red-100">
+                        <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs leading-5 text-red-700">
                           Workspace access is paused.
                         </div>
                       )}
@@ -2071,7 +2071,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         <Users size={14} className="text-accent" />
                         Seats
                       </div>
-                      <div className="mt-4 text-xl font-semibold text-white">
+                      <div className="mt-4 text-xl font-semibold text-txt">
                         {seatsUsed}/{totalSeats}
                       </div>
                       <div className="mt-4 text-xs text-txt-dim">
@@ -2084,7 +2084,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "dashboard" ? (
                   <div className="rounded-2xl border border-border bg-bg-surface p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
-                      <h2 className="text-xl font-semibold text-white">
+                      <h2 className="text-xl font-semibold text-txt">
                         Portfolio
                       </h2>
                       <Badge color={portfolio.variance >= 0 ? "ok" : "warn"}>
@@ -2218,7 +2218,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-txt-muted">
-                        <span className="rounded-full border border-border bg-black/10 px-3 py-1">
+                        <span className="rounded-full border border-border bg-bg px-3 py-1">
                           Showing {filteredProjects.length} of {selectedProjects.length} projects
                         </span>
                         {portfolioFilters.userId ? (
@@ -2270,7 +2270,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           <DollarSign size={14} className="text-accent" />
                           Contract value
                         </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
+                        <div className="mt-3 text-2xl font-semibold text-txt">
                           {formatCurrency(portfolioTotals.contract, portfolioCurrency)}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
@@ -2287,7 +2287,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           <CheckCircle2 size={14} className="text-ok" />
                           Paid to date
                         </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
+                        <div className="mt-3 text-2xl font-semibold text-txt">
                           {formatCurrency(portfolioTotals.paid, portfolioCurrency)}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
@@ -2306,7 +2306,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           <Wallet size={14} className="text-warn" />
                           Outstanding
                         </div>
-                        <div className="mt-3 text-2xl font-semibold text-white">
+                        <div className="mt-3 text-2xl font-semibold text-txt">
                           {formatCurrency(portfolioTotals.outstanding, portfolioCurrency)}
                         </div>
                         <div className="mt-1 text-xs text-txt-muted">
@@ -2334,7 +2334,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                         <div
                           className={`mt-3 text-2xl font-semibold ${
-                            portfolioTotals.delayed.length > 0 ? "text-err" : "text-white"
+                            portfolioTotals.delayed.length > 0 ? "text-err" : "text-txt"
                           }`}
                         >
                           {portfolioTotals.delayed.length}
@@ -2394,7 +2394,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                         <div
                           className={`mt-3 text-2xl font-semibold ${
-                            portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-white"
+                            portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-txt"
                           }`}
                         >
                           {portfolio.overdueChecklistItems.length}
@@ -2418,7 +2418,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         </div>
                         <div
                           className={`mt-3 text-2xl font-semibold ${
-                            portfolio.overdueActions > 0 ? "text-err" : "text-white"
+                            portfolio.overdueActions > 0 ? "text-err" : "text-txt"
                           }`}
                         >
                           {portfolio.overdueActions}
@@ -2459,7 +2459,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         ) : (
                           portfolio.projectCards.slice(0, 8).map((item) => (
                             <div key={`${item.project.id}-compact`} className="rounded-2xl border border-border bg-bg-raised/50 p-4">
-                              <div className="text-sm font-semibold text-white">{item.project.name}</div>
+                              <div className="text-sm font-semibold text-txt">{item.project.name}</div>
                               <div className="mt-1 text-xs text-txt-muted">
                                 {programLabel(selectedPrograms, item.project.program_id)} · {categoryLabel(selectedCategories, item.project.category_id, item.project.category_name)} · {item.project.code || item.project.role} · {item.project.type}
                               </div>
@@ -2517,7 +2517,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             className="grid grid-cols-[minmax(220px,1.4fr)_140px_140px_105px_95px_105px_105px] items-center border-t border-border px-4 py-3 text-sm"
                           >
                             <div>
-                              <div className="font-semibold text-white">{item.project.name}</div>
+                              <div className="font-semibold text-txt">{item.project.name}</div>
                               <div className="mt-1 text-xs text-txt-muted">
                                 {item.project.code || item.project.role} · {item.project.location || "No location"}
                               </div>
@@ -2577,7 +2577,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "programs" ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="text-xl font-semibold text-white">Programs</h2>
+                      <h2 className="text-xl font-semibold text-txt">Programs</h2>
                       {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
@@ -2607,7 +2607,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             return (
                               <tr key={program.id} className={archived ? "opacity-70" : undefined}>
                                 <td className="data-cell-wrap">
-                                  <div className="font-semibold text-white">
+                                  <div className="font-semibold text-txt">
                                     {program.code ? `${program.code} - ${program.name}` : program.name}
                                   </div>
                                   {program.description ? (
@@ -2669,7 +2669,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "categories" ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="text-xl font-semibold text-white">Categories</h2>
+                      <h2 className="text-xl font-semibold text-txt">Categories</h2>
                       {!canManageSelectedOrganization ? <Badge color="warn">READ ONLY</Badge> : null}
                     </div>
 
@@ -2699,11 +2699,11 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                               <tr key={category.id} className={archived ? "opacity-70" : undefined}>
                                 <td>
                                   <span
-                                    className="inline-block h-3 w-3 rounded-full border border-white/20"
+                                    className="inline-block h-3 w-3 rounded-full border border-border"
                                     style={{ backgroundColor: category.color || "#3b82f6" }}
                                   />
                                 </td>
-                                <td className="data-cell-wrap font-semibold text-white">
+                                <td className="data-cell-wrap font-semibold text-txt">
                                   {category.code ? `${category.code} - ${category.name}` : category.name}
                                 </td>
                                 <td className="data-cell-wrap text-txt-muted">
@@ -2755,7 +2755,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   <div className="grid gap-6 xl:grid-cols-2">
                     <div className="rounded-2xl border border-border bg-bg-surface p-6">
                       <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-xl font-semibold text-white">Members</h2>
+                        <h2 className="text-xl font-semibold text-txt">Members</h2>
                         <Badge color="ok">{activeMembers.length} active</Badge>
                       </div>
 
@@ -2783,7 +2783,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                                   >
                                     <div className="flex flex-wrap items-start justify-between gap-2">
                                       <div>
-                                        <div className="font-semibold text-white">
+                                        <div className="font-semibold text-txt">
                                           {member.profiles?.full_name || member.profiles?.email || "User"}
                                         </div>
                                         {member.profiles?.email ? (
@@ -2883,7 +2883,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                                       busyAction === `remove:${member.user_id}`;
                                     return (
                                       <tr key={member.id}>
-                                        <td className="data-cell-wrap font-semibold text-white">
+                                        <td className="data-cell-wrap font-semibold text-txt">
                                           {member.profiles?.full_name || member.profiles?.email || "User"}
                                         </td>
                                         <td className="data-cell-wrap text-txt-muted">
@@ -2952,7 +2952,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
                     <div className="rounded-2xl border border-border bg-bg-surface p-6">
                       <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-xl font-semibold text-white">Pending invites</h2>
+                        <h2 className="text-xl font-semibold text-txt">Pending invites</h2>
                         <Badge color="accent">{selectedInvites.length} pending</Badge>
                       </div>
 
@@ -2977,7 +2977,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                               <tbody>
                                 {selectedInvites.map((invite) => (
                                   <tr key={invite.id}>
-                                    <td className="data-cell-wrap font-semibold text-white">
+                                    <td className="data-cell-wrap font-semibold text-txt">
                                       {invite.full_name || invite.email}
                                     </td>
                                     <td className="data-cell-wrap text-txt-muted">{invite.email}</td>
@@ -3084,7 +3084,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       className="grid grid-cols-[1.35fr_1fr_120px_130px_120px] items-center border-t border-border px-4 py-3 text-sm"
                     >
                       <div className="min-w-0">
-                        <div className="font-semibold text-white">{item.title}</div>
+                        <div className="font-semibold text-txt">{item.title}</div>
                         {item.documentUrl ? (
                           <a
                             href={item.documentUrl}
@@ -3116,7 +3116,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                     <div key={`${item.id}-card`} className="rounded-2xl border border-border bg-bg-raised p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-semibold text-white">{item.title}</div>
+                          <div className="font-semibold text-txt">{item.title}</div>
                           <div className="mt-1 text-xs text-txt-muted">{project?.name || "Unknown project"}</div>
                         </div>
                         <Badge color={checklistStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
@@ -3179,7 +3179,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       className="grid grid-cols-[1.4fr_1fr_130px_120px_1fr] items-start border-t border-border px-4 py-3 text-sm"
                     >
                       <div>
-                        <div className="font-semibold text-white">{item.description}</div>
+                        <div className="font-semibold text-txt">{item.description}</div>
                         <div className="mt-1">
                           <Badge color={actionStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
                         </div>
@@ -3204,7 +3204,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   return (
                     <div key={`${item.meetingMinuteId}-${item.id}-card`} className="rounded-2xl border border-border bg-bg-raised p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="font-semibold text-white">{item.description}</div>
+                        <div className="font-semibold text-txt">{item.description}</div>
                         <Badge color={actionStatusColor(item.status)}>{item.status.toUpperCase()}</Badge>
                       </div>
                       <div className="mt-3 grid gap-2 text-xs text-txt-muted sm:grid-cols-2">
@@ -3834,7 +3834,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         if (drillMode === "delayed") {
                           return (
                             <tr key={item.project.id}>
-                              <td className="data-cell-wrap font-semibold text-white">
+                              <td className="data-cell-wrap font-semibold text-txt">
                                 {item.project.name}
                               </td>
                               <td className="text-txt-muted">{formatDate(item.project.end_date)}</td>
@@ -3853,7 +3853,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         if (drillMode === "contract") {
                           return (
                             <tr key={item.project.id}>
-                              <td className="data-cell-wrap font-semibold text-white">
+                              <td className="data-cell-wrap font-semibold text-txt">
                                 {item.project.name}
                               </td>
                               <td className="text-txt-muted">
@@ -3871,7 +3871,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         if (drillMode === "paid") {
                           return (
                             <tr key={item.project.id}>
-                              <td className="data-cell-wrap font-semibold text-white">
+                              <td className="data-cell-wrap font-semibold text-txt">
                                 {item.project.name}
                               </td>
                               <td className="text-txt-muted">
@@ -3892,7 +3892,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                         // outstanding
                         return (
                           <tr key={item.project.id}>
-                            <td className="data-cell-wrap font-semibold text-white">
+                            <td className="data-cell-wrap font-semibold text-txt">
                               {item.project.name}
                             </td>
                             <td className="text-txt-muted">
@@ -3923,7 +3923,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                 <span className="text-txt-dim">
                   Showing {visibleCards.length} of {portfolio.projectCards.length} projects
                 </span>
-                <span className="font-mono font-semibold text-white">{totalLine}</span>
+                <span className="font-mono font-semibold text-txt">{totalLine}</span>
               </div>
             </div>
           );

@@ -8,34 +8,37 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Light (monday.com-style) theme. Page canvas is a soft off-white,
+        // cards/panels are pure white, text is dark slate. Kept in lockstep
+        // with the --color-* CSS variables in app/globals.css.
         bg: {
-          DEFAULT: "#0B0E14",
-          surface: "#12161F",
-          raised: "#1A1F2E",
-          hover: "#1E2435",
-          input: "#0E1219",
+          DEFAULT: "#f5f6f8",
+          surface: "#ffffff",
+          raised: "#ffffff",
+          hover: "#eef0f4",
+          input: "#f4f5f8",
         },
         border: {
-          DEFAULT: "#232A3B",
-          light: "#2E3650",
+          DEFAULT: "#e3e6ec",
+          light: "#eef0f4",
           focus: "#3B82F6",
         },
         txt: {
-          DEFAULT: "#E2E8F4",
-          muted: "#7C879E",
-          dim: "#4F5872",
+          DEFAULT: "#1f2734",
+          muted: "#5b6577",
+          dim: "#7a8499",
         },
         accent: {
           DEFAULT: "#3B82F6",
           hover: "#2563EB",
           soft: "rgba(59,130,246,0.10)",
         },
-        ok: { DEFAULT: "#22C55E", soft: "rgba(34,197,94,0.10)" },
-        warn: { DEFAULT: "#F59E0B", soft: "rgba(245,158,11,0.10)" },
-        err: { DEFAULT: "#EF4444", soft: "rgba(239,68,68,0.10)" },
+        ok: { DEFAULT: "#16a34a", soft: "rgba(22,163,74,0.10)" },
+        warn: { DEFAULT: "#b45309", soft: "rgba(245,158,11,0.12)" },
+        err: { DEFAULT: "#dc2626", soft: "rgba(239,68,68,0.10)" },
         header: "#0D7C66",
-        subtotal: "#141E2D",
-        grandtotal: "#14142B",
+        subtotal: "#eef1f6",
+        grandtotal: "#e6e9f1",
       },
       fontFamily: {
         sans: ['"DM Sans"', "system-ui", "sans-serif"],

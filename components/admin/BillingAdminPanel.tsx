@@ -421,7 +421,7 @@ export default function BillingAdminPanel() {
             <Building2 size={14} className="text-accent" />
             Organizations
           </div>
-          <div className="mt-3 text-2xl font-semibold text-white">{organizations.length}</div>
+          <div className="mt-3 text-2xl font-semibold text-txt">{organizations.length}</div>
         </div>
         <button
           type="button"
@@ -434,7 +434,7 @@ export default function BillingAdminPanel() {
             <Hourglass size={14} className="text-warn" />
             Pending approval
           </div>
-          <div className="mt-3 text-2xl font-semibold text-white">{totalPending}</div>
+          <div className="mt-3 text-2xl font-semibold text-txt">{totalPending}</div>
           <div className="mt-1 text-xs text-txt-muted">Awaiting activation</div>
         </button>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
@@ -442,14 +442,14 @@ export default function BillingAdminPanel() {
             <CreditCard size={14} className="text-accent" />
             Active
           </div>
-          <div className="mt-3 text-2xl font-semibold text-white">{totalActive}</div>
+          <div className="mt-3 text-2xl font-semibold text-txt">{totalActive}</div>
         </div>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             <CalendarClock size={14} className="text-accent" />
             Trials / expired
           </div>
-          <div className="mt-3 text-2xl font-semibold text-white">{totalTrialing}</div>
+          <div className="mt-3 text-2xl font-semibold text-txt">{totalTrialing}</div>
           <div className="mt-1 text-xs text-txt-muted">{totalExpired} expired</div>
         </div>
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
@@ -457,7 +457,7 @@ export default function BillingAdminPanel() {
             <Users size={14} className="text-accent" />
             Seats sold
           </div>
-          <div className="mt-3 text-2xl font-semibold text-white">
+          <div className="mt-3 text-2xl font-semibold text-txt">
             {subscriptions.reduce((sum, subscription) => sum + subscription.seat_count, 0)}
           </div>
         </div>
@@ -530,7 +530,7 @@ export default function BillingAdminPanel() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-white">{organization.name}</span>
+                        <span className="font-semibold text-txt">{organization.name}</span>
                         <Badge color={organization.personal ? "ok" : "accent"}>
                           {organization.personal ? "INDIVIDUAL" : "ORG"}
                         </Badge>
@@ -617,7 +617,7 @@ export default function BillingAdminPanel() {
                       <tr key={organization.id}>
                         <td className="data-cell-wrap">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-white">{organization.name}</span>
+                            <span className="font-semibold text-txt">{organization.name}</span>
                             <Badge color={organization.personal ? "ok" : "accent"}>
                               {organization.personal ? "INDIVIDUAL" : "ORG"}
                             </Badge>

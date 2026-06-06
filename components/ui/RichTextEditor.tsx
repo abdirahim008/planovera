@@ -111,7 +111,7 @@ export default function RichTextEditor({
                 event.preventDefault();
                 item.action();
               }}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-bg-raised px-2 text-[12px] font-medium text-txt transition hover:border-accent/50 hover:bg-bg-hover hover:text-white"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-bg-raised px-2 text-[12px] font-medium text-txt transition hover:border-accent/50 hover:bg-bg-hover hover:text-txt"
               title={item.label}
               aria-label={item.label}
             >

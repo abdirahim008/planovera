@@ -688,11 +688,11 @@ function RadialGauge({
           </div>
         </div>
         <div className="flex-1">
-          <div className="text-sm font-semibold text-white">
+          <div className="text-sm font-semibold text-txt">
             {clamp(value).toFixed(1)}
             {suffix}
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/5">
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/5">
             <div
               className="h-full rounded-full"
               style={{
@@ -733,11 +733,11 @@ function MetricCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[10px] uppercase tracking-[0.18em] text-txt-dim">{title}</div>
-          <div className="mt-3 text-3xl font-black tracking-tight text-white">{value}</div>
+          <div className="mt-3 text-3xl font-black tracking-tight text-txt">{value}</div>
           <div className="mt-2 text-xs text-txt-muted">{subtitle}</div>
         </div>
         <div
-          className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/5"
+          className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border"
           style={{ background: style.soft, color: style.hex }}
         >
           <Icon size={18} />
@@ -765,7 +765,7 @@ function CompactGauge({
   const dashOffset = circumference * (1 - clamp(value) / 100);
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-[22px] border border-border bg-black/10 p-4 text-center">
+    <div className="flex flex-col items-center justify-center rounded-[22px] border border-border bg-bg p-4 text-center">
       <div className="relative h-[104px] w-[104px]">
         <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
           <circle cx="50" cy="50" r={radius} stroke="rgba(124, 135, 158, 0.14)" strokeWidth="9" fill="none" />
@@ -820,7 +820,7 @@ function ReferenceMetricTile({
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">{title}</div>
-          <div className="mt-0.5 truncate text-base font-semibold leading-tight tracking-tight text-white">
+          <div className="mt-0.5 truncate text-base font-semibold leading-tight tracking-tight text-txt">
             {value}
           </div>
         </div>
@@ -845,9 +845,9 @@ function ProgressStrip({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-txt-dim">
         <span>{label}</span>
-        <span className="text-white">{clamp(value).toFixed(1)}%</span>
+        <span className="text-txt">{clamp(value).toFixed(1)}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/5">
+      <div className="h-2 overflow-hidden rounded-full bg-black/5">
         <div
           className="h-full rounded-full"
           style={{
@@ -1536,7 +1536,7 @@ function PortfolioDashboard({
       <div className="mb-5 border-b border-border pb-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white">Portfolio</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-txt">Portfolio</h2>
             <p className="mt-1 text-[13px] text-txt-muted">
               {totalProjects} {totalProjects === 1 ? "project" : "projects"}
             </p>
@@ -1654,7 +1654,7 @@ function PortfolioDashboard({
           </Button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-txt-muted">
-          <span className="rounded-full border border-border bg-black/10 px-3 py-1">
+          <span className="rounded-full border border-border bg-bg px-3 py-1">
             Showing {summaries.length} of {allSummaries.length} projects
           </span>
           {filters.programId ? (
@@ -1674,7 +1674,7 @@ function PortfolioDashboard({
 
       <div className="rounded-2xl border border-border bg-bg-surface p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-white">Portfolio summary</h3>
+          <h3 className="text-sm font-semibold text-txt">Portfolio summary</h3>
           <span className="text-[11px] text-txt-dim">
             Planned {averagePlanned.toFixed(1)}% · Actual {averageActual.toFixed(1)}%
           </span>
@@ -1703,21 +1703,21 @@ function PortfolioDashboard({
           ]}
         />
         <div className="hidden gap-2 sm:grid sm:grid-cols-3">
-          <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+          <div className="rounded-lg border border-border border-t-2 border-t-accent bg-bg px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Contract value</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-accent">
               USD {currency(filteredProjectValue)}
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+          <div className="rounded-lg border border-border border-t-2 border-t-ok bg-bg px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Balance</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-warn">
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-ok">
               USD {currency(balance)}
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+          <div className="rounded-lg border border-border border-t-2 border-t-warn bg-bg px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Pending approvals</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-warn">
               {totalPendingApprovals}
             </div>
           </div>
@@ -1732,20 +1732,20 @@ function PortfolioDashboard({
 
       <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-bg-surface">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold text-white">Projects</h3>
-          <span className="rounded-full border border-border bg-black/10 px-2.5 py-0.5 text-[11px] text-txt-muted">
+          <h3 className="text-sm font-semibold text-txt">Projects</h3>
+          <span className="rounded-full border border-border bg-bg px-2.5 py-0.5 text-[11px] text-txt-muted">
             {summaries.length}
           </span>
         </div>
 
         <div className="space-y-3 p-4 xl:hidden">
           {summaries.length === 0 ? (
-            <div className="rounded-2xl border border-border bg-black/10 p-8 text-center text-sm text-txt-muted">
+            <div className="rounded-2xl border border-border bg-bg p-8 text-center text-sm text-txt-muted">
               No projects yet. Create a project to begin.
             </div>
           ) : (
             summaries.map((summary) => (
-              <div key={`${summary.project.id}-mobile`} className="rounded-2xl border border-border bg-black/10 p-4">
+              <div key={`${summary.project.id}-mobile`} className="rounded-2xl border border-border bg-bg p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <button
@@ -1781,15 +1781,15 @@ function PortfolioDashboard({
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Physical</div>
-                      <div className="mt-1 text-xl font-black text-white">{summary.physical}%</div>
+                      <div className="mt-1 text-xl font-black text-txt">{summary.physical}%</div>
                     </div>
                     <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Financial</div>
-                      <div className="mt-1 text-xl font-black text-white">{summary.financial}%</div>
+                      <div className="mt-1 text-xl font-black text-txt">{summary.financial}%</div>
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-black/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-muted">
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-muted">
                   <span className="text-[12px] leading-none">{getProjectPreset(summary.project.preset || (summary.project.type === "construction" ? "construction" : "other")).marker}</span>
                   {getProjectPreset(summary.project.preset || (summary.project.type === "construction" ? "construction" : "other")).badgeLabel}
                 </div>
@@ -1845,13 +1845,13 @@ function PortfolioDashboard({
                           </span>
                         </div>
                         <div className="mt-1 space-y-0.5">
-                          <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                          <div className="h-1 overflow-hidden rounded-full bg-black/5">
                             <div
                               className="h-full bg-accent"
                               style={{ width: `${clamp(summary.progress.planned)}%` }}
                             />
                           </div>
-                          <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                          <div className="h-1 overflow-hidden rounded-full bg-black/5">
                             <div
                               className={`h-full ${ahead ? "bg-ok" : "bg-warn"}`}
                               style={{ width: `${clamp(summary.progress.actual)}%` }}
@@ -1861,10 +1861,10 @@ function PortfolioDashboard({
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-white">
+                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-txt">
                             {summary.physical}%
                           </span>
-                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/5">
+                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/5">
                             <div
                               className="h-full bg-ok"
                               style={{ width: `${clamp(summary.physical)}%` }}
@@ -1874,10 +1874,10 @@ function PortfolioDashboard({
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-white">
+                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-txt">
                             {summary.financial}%
                           </span>
-                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/5">
+                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/5">
                             <div
                               className="h-full bg-accent"
                               style={{ width: `${clamp(summary.financial)}%` }}
@@ -2029,9 +2029,9 @@ function ProjectLocationsCard({
                 <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
                   <MapPin size={14} className="text-accent" /> Locations
                 </div>
-                <div className="mt-1.5 text-lg font-semibold text-white">Portfolio map</div>
+                <div className="mt-1.5 text-lg font-semibold text-txt">Portfolio map</div>
               </div>
-              <span className="rounded-xl border border-border bg-black/15 p-2 text-txt-muted">
+              <span className="rounded-xl border border-border bg-bg p-2 text-txt-muted">
                 <Maximize2 size={16} />
               </span>
             </div>
@@ -2054,15 +2054,15 @@ function ProjectLocationsCard({
           <ProjectLocationMap points={points} missingCount={missingCount} large />
           <div className="grid gap-3 md:grid-cols-2">
             {points.length === 0 ? (
-              <div className="rounded-2xl border border-border bg-black/10 p-4 text-sm text-txt-muted">
+              <div className="rounded-2xl border border-border bg-bg p-4 text-sm text-txt-muted">
                 No projects in the current filter have region/town or exact coordinates yet.
               </div>
             ) : (
               points.map((point) => (
-                <div key={point.id} className="rounded-2xl border border-border bg-black/10 p-4">
+                <div key={point.id} className="rounded-2xl border border-border bg-bg p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-bold text-white">{point.label}</div>
+                      <div className="font-bold text-txt">{point.label}</div>
                       <div className="mt-1 text-xs text-txt-muted">{point.subtitle}</div>
                     </div>
                     <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
@@ -2147,7 +2147,7 @@ function ProjectLocationMap({
           attributionControl: large,
         }).setView([5.15, 46.2], 5);
 
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
           maxZoom: 19,
           attribution:
             '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -2208,26 +2208,26 @@ function ProjectLocationMap({
   }, [large, points]);
 
   return (
-    <div className={`planovera-dark-map relative ${height} overflow-hidden bg-[#181a25]`}>
+    <div className={`relative ${height} overflow-hidden bg-bg-surface`}>
       <div ref={mapContainerRef} className="h-full w-full" />
 
-      <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-white/10 bg-[#0f172a]/85 px-4 py-3 shadow-soft backdrop-blur">
+      <div className="pointer-events-none absolute left-5 top-5 rounded-2xl border border-border bg-bg-surface/95 px-4 py-3 shadow-soft backdrop-blur">
         <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-txt-dim">
           Somalia Project Map
         </div>
-        <div className="mt-1 text-sm font-bold text-white">
+        <div className="mt-1 text-sm font-bold text-txt">
           {points.reduce((sum, point) => sum + point.count, 0)} plotted projects
         </div>
       </div>
 
       {missingCount > 0 ? (
-        <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-warn/30 bg-[#0f172a]/85 px-3 py-1 text-xs font-bold text-warn backdrop-blur">
+        <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-warn/30 bg-bg-surface/95 px-3 py-1 text-xs font-bold text-warn backdrop-blur">
           {missingCount} missing location
         </div>
       ) : null}
 
       {mapError ? (
-        <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-warn/30 bg-[#0f172a]/90 px-4 py-3 text-sm text-warn shadow-soft backdrop-blur">
+        <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-warn/30 bg-bg-surface/95 px-4 py-3 text-sm text-warn shadow-soft backdrop-blur">
           {mapError}
         </div>
       ) : null}
@@ -2338,7 +2338,7 @@ function ProjectOverviewDashboard({
                 {[project.contractNumber, project.code].filter(Boolean).join(" · ")}
               </div>
             ) : null}
-            <h2 className="text-2xl font-semibold tracking-tight text-white sm:mt-1.5">{project.name}</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-txt sm:mt-1.5">{project.name}</h2>
             {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).length > 0 ? (
               <p className="mt-1 hidden text-[13px] text-txt-muted sm:block">
                 {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).join(" · ")}
@@ -2382,7 +2382,7 @@ function ProjectOverviewDashboard({
       <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-white">Progress</h3>
+            <h3 className="text-sm font-semibold text-txt">Progress</h3>
             <span
               className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
                 timeVariance >= 0
@@ -2407,23 +2407,23 @@ function ProjectOverviewDashboard({
         </div>
 
         <div className="rounded-2xl border border-border bg-bg-surface p-5">
-          <h3 className="mb-4 text-sm font-semibold text-white">Timeline</h3>
+          <h3 className="mb-4 text-sm font-semibold text-txt">Timeline</h3>
 
           {timeline ? (
             <>
               <ProgressStrip label={`${timeline.elapsedDays} of ${timeline.totalDays} days`} value={timeline.percent} tone="warn" />
               <div className="mt-5 grid gap-2 text-xs sm:grid-cols-3">
-                <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+                <div className="rounded-lg border border-border bg-bg px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Start</div>
-                  <div className="mt-0.5 font-semibold text-white">{project.start_date || "—"}</div>
+                  <div className="mt-0.5 font-semibold text-txt">{project.start_date || "—"}</div>
                 </div>
-                <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+                <div className="rounded-lg border border-border bg-bg px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Remaining</div>
-                  <div className="mt-0.5 font-semibold text-white">{timeline.remainingDays} days</div>
+                  <div className="mt-0.5 font-semibold text-txt">{timeline.remainingDays} days</div>
                 </div>
-                <div className="rounded-lg border border-border bg-black/10 px-3 py-2">
+                <div className="rounded-lg border border-border bg-bg px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Finish</div>
-                  <div className="mt-0.5 font-semibold text-white">{project.end_date || "—"}</div>
+                  <div className="mt-0.5 font-semibold text-txt">{project.end_date || "—"}</div>
                 </div>
               </div>
             </>
@@ -2488,7 +2488,7 @@ function ProjectOverviewDashboard({
 
       <div className="mt-5">
         <div className="rounded-2xl border border-border bg-bg-surface p-5">
-          <h3 className="mb-4 text-sm font-semibold text-white">Commercial</h3>
+          <h3 className="mb-4 text-sm font-semibold text-txt">Commercial</h3>
 
           <div className="space-y-1.5">
             {([
@@ -2499,13 +2499,13 @@ function ProjectOverviewDashboard({
             ] as const).map(([label, amount, dot]) => (
               <div
                 key={label}
-                className="flex items-center justify-between rounded-lg border border-border bg-black/10 px-3 py-2"
+                className="flex items-center justify-between rounded-lg border border-border bg-bg px-3 py-2"
               >
                 <span className="inline-flex items-center gap-2 text-[13px] text-txt-muted">
                   <span className={`h-2 w-2 rounded-full ${dot}`} />
                   {label}
                 </span>
-                <span className="font-mono text-sm font-semibold tabular-nums text-white">
+                <span className="font-mono text-sm font-semibold tabular-nums text-txt">
                   {project.currency || "USD"} {currency(amount)}
                 </span>
               </div>
@@ -2523,8 +2523,8 @@ function ProjectOverviewDashboard({
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-4">
             {[
-              ["Required", checklistMetrics.total, "text-white"],
-              ["Overdue", checklistMetrics.overdue, checklistMetrics.overdue > 0 ? "text-err" : "text-white"],
+              ["Required", checklistMetrics.total, "text-txt"],
+              ["Overdue", checklistMetrics.overdue, checklistMetrics.overdue > 0 ? "text-err" : "text-txt"],
               ["Submitted", checklistMetrics.submitted, "text-accent"],
               ["Verified", checklistMetrics.verified, "text-ok"],
             ].map(([label, value, color]) => (
@@ -2537,7 +2537,7 @@ function ProjectOverviewDashboard({
 
           {sortedChecklistItems.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center">
-              <div className="text-sm font-semibold text-white">No checklist items yet</div>
+              <div className="text-sm font-semibold text-txt">No checklist items yet</div>
               <Button
                 variant="primary"
                 className="mt-4"
@@ -2553,7 +2553,7 @@ function ProjectOverviewDashboard({
             <>
               <div className="hidden overflow-hidden rounded-2xl border border-border md:block">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-white/5 text-[10px] uppercase tracking-[0.16em] text-txt-dim">
+                  <thead className="bg-black/5 text-[10px] uppercase tracking-[0.16em] text-txt-dim">
                     <tr>
                       <th className="px-4 py-3">Item</th>
                       <th className="px-4 py-3">Status</th>
@@ -2569,7 +2569,7 @@ function ProjectOverviewDashboard({
                       return (
                         <tr key={item.id} className={overdue ? "bg-err/5" : undefined}>
                           <td className="px-4 py-3">
-                            <div className="font-bold text-white">{item.title || "Untitled checklist item"}</div>
+                            <div className="font-bold text-txt">{item.title || "Untitled checklist item"}</div>
                             <div className="mt-1 text-xs text-txt-dim">{item.category || "Uncategorized"}</div>
                           </td>
                           <td className="px-4 py-3">
@@ -2615,7 +2615,7 @@ function ProjectOverviewDashboard({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-black text-white">{item.title || "Untitled checklist item"}</div>
+                          <div className="font-black text-txt">{item.title || "Untitled checklist item"}</div>
                           <div className="mt-1 text-xs text-txt-dim">{item.category || "Uncategorized"}</div>
                         </div>
                         <Badge color={overdue ? "err" : checklistStatusTone[item.status]}>
@@ -2625,13 +2625,13 @@ function ProjectOverviewDashboard({
                       <div className="mt-4 grid gap-3 text-sm">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-txt-dim">Due / Expiry</span>
-                          <span className={`font-bold ${overdue ? "text-err" : "text-white"}`}>
+                          <span className={`font-bold ${overdue ? "text-err" : "text-txt"}`}>
                             {item.dueDate || "Not set"}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-txt-dim">Responsible</span>
-                          <span className="text-right font-bold text-white">{item.responsiblePerson || "Not assigned"}</span>
+                          <span className="text-right font-bold text-txt">{item.responsiblePerson || "Not assigned"}</span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-txt-dim">Document</span>
@@ -2675,15 +2675,15 @@ function ProjectOverviewDashboard({
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-border bg-bg-raised p-4">
               <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Meetings</div>
-              <div className="mt-2 text-2xl font-black text-white">{meetingCount}</div>
+              <div className="mt-2 text-2xl font-black text-txt">{meetingCount}</div>
             </div>
             <div className="rounded-2xl border border-border bg-bg-raised p-4">
               <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Open Actions</div>
-              <div className="mt-2 text-2xl font-black text-white">{openActionPoints}</div>
+              <div className="mt-2 text-2xl font-black text-txt">{openActionPoints}</div>
             </div>
             <div className="rounded-2xl border border-border bg-bg-raised p-4">
               <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Overdue</div>
-              <div className={`mt-2 text-2xl font-black ${overdueActionPoints > 0 ? "text-err" : "text-white"}`}>
+              <div className={`mt-2 text-2xl font-black ${overdueActionPoints > 0 ? "text-err" : "text-txt"}`}>
                 {overdueActionPoints}
               </div>
             </div>
@@ -2699,7 +2699,7 @@ function ProjectOverviewDashboard({
                 <div key={action.id} className="rounded-2xl border border-border bg-bg-raised p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <div className="text-sm font-bold text-white">{action.description}</div>
+                      <div className="text-sm font-bold text-txt">{action.description}</div>
                       <div className="mt-2 text-xs text-txt-muted">
                         {action.meetingTitle} - {action.meetingDate}
                       </div>
@@ -3121,7 +3121,7 @@ function CreateProjectModal({
               }
             >
               <div>
-                <div className="text-sm font-bold text-white">Use exact coordinates</div>
+                <div className="text-sm font-bold text-txt">Use exact coordinates</div>
                 <p className="mt-1 text-xs text-txt-dim">
                   Optional for precise site pins. Leave off to use the town’s approximate map position.
                 </p>
@@ -3130,7 +3130,7 @@ function CreateProjectModal({
                 className={`rounded-full border px-3 py-1 text-xs font-bold ${
                   formData.useExactCoordinates
                     ? "border-accent/40 bg-accent/15 text-accent"
-                    : "border-border bg-black/10 text-txt-muted"
+                    : "border-border bg-bg text-txt-muted"
                 }`}
               >
                 {formData.useExactCoordinates ? "On" : "Off"}
@@ -3417,7 +3417,7 @@ function CreateProjectModal({
             {errorMessage}
           </div>
         ) : null}
-        <div className="mt-6 flex flex-col-reverse gap-3 border-t border-white/5 pt-6 sm:flex-row sm:justify-end">
+        <div className="mt-6 flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
           <Button
             variant="ghost"
             className="rounded-xl px-6 font-bold"

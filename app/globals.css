@@ -5,23 +5,25 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 :root {
-  --color-bg: #0b0e14;
-  --color-surface: #12161f;
-  --color-raised: #1a1f2e;
-  --color-hover: #1e2435;
-  --color-border: #232a3b;
-  --color-border-light: #2e3650;
-  --color-text: #e2e8f4;
-  --color-text-muted: #7c879e;
-  --color-text-dim: #4f5872;
+  /* Light (monday.com-style) theme — keep in lockstep with the color tokens
+     in tailwind.config.ts. */
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-raised: #ffffff;
+  --color-hover: #eef0f4;
+  --color-border: #e3e6ec;
+  --color-border-light: #eef0f4;
+  --color-text: #1f2734;
+  --color-text-muted: #5b6577;
+  --color-text-dim: #7a8499;
   --color-accent: #3b82f6;
   --color-accent-soft: rgba(59, 130, 246, 0.1);
-  --color-ok: #22c55e;
-  --color-warn: #f59e0b;
-  --color-err: #ef4444;
+  --color-ok: #16a34a;
+  --color-warn: #b45309;
+  --color-err: #dc2626;
   --color-header: #0d7c66;
-  --color-subtotal: #141e2d;
-  --color-grandtotal: #14142b;
+  --color-subtotal: #eef1f6;
+  --color-grandtotal: #e6e9f1;
 }
 
 * {
@@ -74,28 +76,28 @@ body {
 
 /* Reference-style BOQ table */
 .boq-reference-page {
-  --boq-bg: #0f141f;
-  --boq-surface: #141a27;
-  --boq-surface-2: #171f2f;
-  --boq-border: #263149;
-  --boq-border-soft: #1f293d;
-  --boq-text: #d9e2f1;
-  --boq-muted: #7c8aa5;
-  --boq-dim: #53617e;
-  --boq-blue: #3b82f6;
-  --boq-green: #22c55e;
-  --boq-amber: #f59e0b;
-  --boq-red: #f87171;
+  --boq-bg: #ffffff;
+  --boq-surface: #ffffff;
+  --boq-surface-2: #f5f6f8;
+  --boq-border: #d8dde7;
+  --boq-border-soft: #e8ebf1;
+  --boq-text: #1f2734;
+  --boq-muted: #5b6577;
+  --boq-dim: #97a0b1;
+  --boq-blue: #2563eb;
+  --boq-green: #16a34a;
+  --boq-amber: #b45309;
+  --boq-red: #dc2626;
   color: var(--boq-text);
 }
 
 .boq-summary-strip {
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
 }
 
 .boq-summary-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.015), transparent),
     var(--boq-surface);
 }
 
@@ -127,8 +129,8 @@ body {
 .boq-table-shell {
   background: var(--boq-surface);
   box-shadow:
-    0 22px 56px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    0 18px 44px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .boq-reference-table {
@@ -136,9 +138,9 @@ body {
 }
 
 .boq-reference-table thead th {
-  background: #111827 !important;
+  background: #f0f2f6 !important;
   border-color: var(--boq-border) !important;
-  color: var(--boq-dim) !important;
+  color: var(--boq-muted) !important;
   letter-spacing: 0.18em;
 }
 
@@ -148,7 +150,7 @@ body {
 
 .boq-reference-table tbody tr:hover:not(.row-header):not(.row-notes):not(.row-subtotal):not(.row-grandtotal) td,
 .boq-reference-table tbody tr:hover:not(.row-header):not(.row-notes):not(.row-subtotal):not(.row-grandtotal) .row-gutter {
-  background: #151d2b !important;
+  background: #eef1f6 !important;
 }
 
 .boq-table-shell td {
@@ -157,7 +159,7 @@ body {
 }
 
 .boq-table-shell .row-gutter {
-  background: #101724;
+  background: #f5f6f8;
   border-color: var(--boq-border-soft);
   color: var(--boq-dim);
   font-family: "JetBrains Mono", monospace;
@@ -165,9 +167,9 @@ body {
 
 .boq-table-shell tr.row-header td,
 .boq-table-shell tr.row-header .row-gutter {
-  background: #12352f !important;
-  color: #d7fff0 !important;
-  border-color: #1a4a42 !important;
+  background: #0d7c66 !important;
+  color: #ffffff !important;
+  border-color: #0b6e5a !important;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -179,9 +181,9 @@ body {
 
 .boq-table-shell tr.row-notes td,
 .boq-table-shell tr.row-notes .row-gutter {
-  background: #111c2d !important;
-  color: #bfd0e6 !important;
-  border-color: #253044 !important;
+  background: #eef4fb !important;
+  color: #1f4e79 !important;
+  border-color: #d3e2f2 !important;
   font-style: italic;
 }
 
@@ -193,9 +195,9 @@ body {
 
 .boq-table-shell tr.row-specification td,
 .boq-table-shell tr.row-specification .row-gutter {
-  background: #1a1726 !important;
-  color: #d8cdf0 !important;
-  border-color: #2e2740 !important;
+  background: #f3effb !important;
+  color: #5b3fa0 !important;
+  border-color: #e2d9f4 !important;
   font-style: italic;
 }
 
@@ -207,21 +209,21 @@ body {
 
 .boq-table-shell tr.row-subtotal td,
 .boq-table-shell tr.row-subtotal .row-gutter {
-  background: #182233 !important;
-  color: #e2e8f0 !important;
-  border-color: #263149 !important;
+  background: #eef1f6 !important;
+  color: #1f2734 !important;
+  border-color: #dde2ea !important;
   font-weight: 800;
 }
 
 .boq-table-shell tr.row-subtotal td:last-child {
-  color: #f8fafc !important;
+  color: #0f172a !important;
 }
 
 .boq-table-shell tr.row-grandtotal td,
 .boq-table-shell tr.row-grandtotal .row-gutter {
-  background: #171530 !important;
-  color: #f4f7ff !important;
-  border-color: #30305b !important;
+  background: #e9ebf5 !important;
+  color: #1f2734 !important;
+  border-color: #d6d9ea !important;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -247,7 +249,7 @@ body {
   z-index: 7;
 }
 .boq-table-shell td.boq-sticky-col.left-8 {
-  box-shadow: inset -1px 0 0 var(--boq-border-soft), 6px 0 8px -6px rgba(0, 0, 0, 0.45);
+  box-shadow: inset -1px 0 0 var(--boq-border-soft), 6px 0 8px -6px rgba(15, 23, 42, 0.18);
 }
 
 .boq-summary-table table {
@@ -257,7 +259,7 @@ body {
 }
 
 .boq-summary-table th {
-  background: #111827 !important;
+  background: #f0f2f6 !important;
   border-color: var(--boq-border) !important;
 }
 
@@ -295,7 +297,7 @@ body {
 }
 
 .data-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(15, 23, 42, 0.035);
 }
 
 .data-table td {
@@ -447,7 +449,7 @@ body {
   z-index: 8;
 }
 .data-table .data-sticky-edge {
-  box-shadow: 6px 0 8px -6px rgba(0, 0, 0, 0.45);
+  box-shadow: 6px 0 8px -6px rgba(15, 23, 42, 0.18);
 }
 
 /* Context menu */
@@ -459,7 +461,7 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
   animation: fadeIn 0.15s ease-out;
 }
 .ctx-item {
@@ -611,11 +613,11 @@ body {
 
 /* Premium Dashboard UI */
 .glass-pane {
-  background: rgba(26, 31, 46, 0.4);
+  background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 32px 0 rgba(15, 23, 42, 0.08);
 }
 
 .glow-accent {
@@ -627,7 +629,7 @@ body {
 }
 
 .text-gradient-primary {
-  background: linear-gradient(135deg, #fff 0%, #7c879e 100%);
+  background: linear-gradient(135deg, #1f2734 0%, #5b6577 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -989,10 +991,10 @@ body {
 
 .planovera-map-popup-shell .leaflet-popup-content-wrapper,
 .planovera-map-popup-shell .leaflet-popup-tip {
-  background: #0f172a;
-  color: #e5eefb;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  box-shadow: 0 22px 56px rgba(2, 6, 23, 0.38);
+  background: #ffffff;
+  color: #1f2734;
+  border: 1px solid #e3e6ec;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14);
 }
 
 .planovera-map-popup-shell .leaflet-popup-content {
@@ -1000,7 +1002,7 @@ body {
 }
 
 .planovera-map-popup-label {
-  color: #fff;
+  color: #1f2734;
   font-size: 14px;
   font-weight: 900;
   margin-bottom: 2px;
@@ -1020,7 +1022,7 @@ body {
 }
 
 .planovera-map-project-title {
-  color: #dbeafe;
+  color: #1d4ed8;
   font-size: 12px;
   font-weight: 800;
   margin-bottom: 3px;
@@ -1057,7 +1059,7 @@ body {
 }
 
 .rich-text-editor strong {
-  color: #f8fafc;
+  color: #0f172a;
   font-weight: 900;
 }
 
@@ -1090,4 +1092,34 @@ body {
 
 .site-observation-preview u {
   text-underline-offset: 0.18em;
+}
+
+/* ---------------------------------------------------------------------------
+   Lively light theme — give solid-accent buttons/links a glossy sheen and a
+   soft colored shadow so primary actions pop instead of reading as flat blue.
+   Scoped to <button>/<a> with the solid `bg-accent` utility, so tinted pills
+   (bg-accent/10 etc.) and non-interactive accents are unaffected.
+--------------------------------------------------------------------------- */
+button.bg-accent,
+a.bg-accent {
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  box-shadow: 0 8px 18px -6px rgba(47, 111, 237, 0.5);
+}
+button.bg-accent:hover,
+a.bg-accent:hover {
+  box-shadow: 0 11px 26px -6px rgba(47, 111, 237, 0.62);
+}
+button.bg-accent:active,
+a.bg-accent:active {
+  box-shadow: 0 5px 12px -6px rgba(47, 111, 237, 0.5);
+}
+
+/* Crisp white text on solid colored status buttons (ok/warn/err solids). */
+button.bg-ok,
+a.bg-ok {
+  box-shadow: 0 8px 18px -6px rgba(22, 163, 74, 0.45);
+}
+button.bg-err,
+a.bg-err {
+  box-shadow: 0 8px 18px -6px rgba(220, 38, 38, 0.42);
 }

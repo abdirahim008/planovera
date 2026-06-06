@@ -206,7 +206,7 @@ function RichObservationEditor({
                 event.preventDefault();
                 item.action();
               }}
-              className="inline-flex min-h-10 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-bg-surface px-2 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-white sm:px-3"
+              className="inline-flex min-h-10 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-bg-surface px-2 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-txt sm:px-3"
               title={item.label}
               aria-label={item.label}
             >
@@ -407,7 +407,7 @@ export default function SiteNotesModule() {
             event.stopPropagation();
             setOpenMenuNoteId((current) => (current === note.id ? null : note.id));
           }}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-bg-surface text-txt-muted transition hover:border-accent hover:text-white"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-bg-surface text-txt-muted transition hover:border-accent hover:text-txt"
           aria-label={`Actions for ${note.title || "site note"}`}
           aria-expanded={isOpen}
         >
@@ -421,7 +421,7 @@ export default function SiteNotesModule() {
             <button
               type="button"
               onClick={() => openNote(note.id)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-white"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
             >
               <NotebookPen size={14} /> Open
             </button>
@@ -441,7 +441,7 @@ export default function SiteNotesModule() {
                 duplicateSiteNote(note.id);
                 setOpenMenuNoteId(null);
               }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-white"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
             >
               <Copy size={14} /> Duplicate
             </button>
@@ -464,7 +464,7 @@ export default function SiteNotesModule() {
   return (
     <div className="mx-auto w-full max-w-[1500px] animate-fade-in px-2 sm:px-0">
       <div className="mb-4 flex flex-col gap-3 sm:mb-5 lg:flex-row lg:items-center lg:justify-between">
-        <h2 className="text-lg font-semibold tracking-tight text-white">Site Notes</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-txt">Site Notes</h2>
         <Button size="sm" variant="primary" onClick={addBlankNote} className="w-full justify-center sm:w-auto">
           <Plus size={14} /> Add note
         </Button>
@@ -472,9 +472,9 @@ export default function SiteNotesModule() {
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         {[
-          { label: "Notes", value: metrics.total, tone: "text-white" },
+          { label: "Notes", value: metrics.total, tone: "text-txt" },
           { label: "Photos", value: metrics.photos, tone: "text-accent" },
-          { label: "Latest", value: metrics.latest, tone: "text-white" },
+          { label: "Latest", value: metrics.latest, tone: "text-txt" },
           { label: "Open", value: metrics.openObservations, tone: "text-warn" },
         ].map((card) => (
           <div key={card.label} className="rounded-2xl border border-border bg-bg-surface p-3 sm:p-4">
@@ -489,10 +489,10 @@ export default function SiteNotesModule() {
       {projectNotes.length > 0 ? (
         <section className="mb-4 overflow-visible rounded-2xl border border-border bg-bg-surface p-3 sm:p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-base font-semibold text-white sm:text-lg">Saved notes</h3>
+            <h3 className="text-base font-semibold text-txt sm:text-lg">Saved notes</h3>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="rounded-xl border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted">
-                Showing: <span className="text-white">{filterLabel}</span> · {visibleNotes.length} / {projectNotes.length}
+                Showing: <span className="text-txt">{filterLabel}</span> · {visibleNotes.length} / {projectNotes.length}
               </div>
               <div className="relative">
                 <button
@@ -515,8 +515,8 @@ export default function SiteNotesModule() {
                         }}
                         className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold transition ${
                           filter === item.id
-                            ? "bg-accent/15 text-white"
-                            : "text-txt-muted hover:bg-bg-hover hover:text-white"
+                            ? "bg-accent/15 text-txt"
+                            : "text-txt-muted hover:bg-bg-hover hover:text-txt"
                         }`}
                       >
                         {item.label}
@@ -558,7 +558,7 @@ export default function SiteNotesModule() {
                       <span className="text-xs font-bold text-accent">{categoryLabels[note.category]}</span>
                       <span className="text-xs font-semibold text-txt-muted">{note.noteDate || "No date"}</span>
                     </div>
-                    <div className="mt-1 truncate text-sm font-semibold text-white">{note.title || "Site observation"}</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-txt">{note.title || "Site observation"}</div>
                     <div className="mt-0.5 truncate text-xs leading-5 text-txt-muted">
                       {note.authorName ? `${note.authorName} · ` : ""}
                       {notePreview(note.observationText)}
@@ -614,7 +614,7 @@ export default function SiteNotesModule() {
                       <td className="text-xs font-semibold text-txt-muted">{note.noteDate || "No date"}</td>
                       <td className="text-xs font-bold text-accent">{categoryLabels[note.category]}</td>
                       <td className="data-cell-wrap">
-                        <div className="truncate text-sm font-semibold text-white">{note.title || "Site observation"}</div>
+                        <div className="truncate text-sm font-semibold text-txt">{note.title || "Site observation"}</div>
                         <div className="mt-0.5 truncate text-xs leading-5 text-txt-muted">
                           {note.authorName ? `${note.authorName} · ` : ""}
                           {notePreview(note.observationText)}
@@ -643,7 +643,7 @@ export default function SiteNotesModule() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-bg">
             <NotebookPen size={22} className="text-accent" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold text-white">
+          <h3 className="mt-4 text-lg font-semibold text-txt">
             {projectNotes.length > 0 && filter !== "all" ? `No ${filterLabel} notes` : "No site notes yet"}
           </h3>
           <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
@@ -689,7 +689,7 @@ export default function SiteNotesModule() {
                         {isDirty ? "Unsaved changes" : recentlySaved ? "Saved now" : "Saved"}
                       </span>
                     </div>
-                    <h3 className="mt-3 break-words text-lg font-semibold leading-tight text-white">
+                    <h3 className="mt-3 break-words text-lg font-semibold leading-tight text-txt">
                       {note.title || "Site observation"}
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-txt-muted">{notePreview(note.observationText)}</p>
@@ -753,7 +753,7 @@ export default function SiteNotesModule() {
                         <input
                           value={note.title}
                           onChange={(event) => handleUpdateNote(note.id, { title: event.target.value })}
-                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-base font-semibold text-white outline-none focus:border-accent"
+                          className="mt-2 w-full rounded-lg border border-border bg-bg-surface px-3 py-3 text-base font-semibold text-txt outline-none focus:border-accent"
                         />
                       </label>
                       <label className="block">
@@ -876,7 +876,7 @@ export default function SiteNotesModule() {
         <div className="space-y-4">
           {reportOptionGroups.map((group) => (
             <section key={group.title} className="rounded-2xl border border-border bg-bg p-3">
-              <div className="text-sm font-semibold text-white">{group.title}</div>
+              <div className="text-sm font-semibold text-txt">{group.title}</div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {group.options.map((option) => (
                   <label
@@ -912,7 +912,7 @@ export default function SiteNotesModule() {
         title="Delete Site Note"
       >
         <p className="text-sm leading-6 text-txt-muted">
-          Delete <span className="font-semibold text-white">{deleteTarget?.title}</span>?
+          Delete <span className="font-semibold text-txt">{deleteTarget?.title}</span>?
         </p>
         <div className="mt-5 grid gap-2 sm:flex sm:justify-end">
           <Button onClick={() => setDeleteTarget(null)} className="justify-center">

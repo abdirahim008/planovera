@@ -507,14 +507,14 @@ export default function PaymentModule() {
                       type="date"
                       value={activeCert.periodStart || activeCert.date}
                       onChange={(e) => updateCertSettings(activeCert.id, { periodStart: e.target.value })}
-                      className="rounded-md border border-border bg-bg-raised px-2 py-1 text-xs text-txt outline-none focus:border-accent [color-scheme:dark]"
+                      className="rounded-md border border-border bg-bg-raised px-2 py-1 text-xs text-txt outline-none focus:border-accent [color-scheme:light]"
                     />
                     <span>→</span>
                     <input
                       type="date"
                       value={activeCert.periodEnd || activeCert.date}
                       onChange={(e) => updateCertSettings(activeCert.id, { periodEnd: e.target.value })}
-                      className="rounded-md border border-border bg-bg-raised px-2 py-1 text-xs text-txt outline-none focus:border-accent [color-scheme:dark]"
+                      className="rounded-md border border-border bg-bg-raised px-2 py-1 text-xs text-txt outline-none focus:border-accent [color-scheme:light]"
                     />
                   </div>
                 ) : (

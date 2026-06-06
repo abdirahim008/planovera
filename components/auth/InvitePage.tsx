@@ -74,24 +74,24 @@ export default function InvitePage({
   }, [configured, email, router, token]);
 
   return (
-    <div className="min-h-screen bg-[#0b0e14] px-6 py-10 text-[#e2e8f4]">
+    <div className="min-h-screen bg-bg px-6 py-10 text-txt">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-lg items-center justify-center">
-        <div className="w-full rounded-2xl border border-white/10 bg-[#12161f] p-6">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+        <div className="w-full rounded-2xl border border-border bg-bg-surface p-6">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-muted">
             Organization invite
           </div>
-          <h1 className="mt-2 text-xl font-semibold text-white">
+          <h1 className="mt-2 text-xl font-semibold text-txt">
             {email ? `Accept invite for ${email}` : "Accept invite"}
           </h1>
 
-          <div className="mt-5 rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-3 text-sm text-slate-300">
+          <div className="mt-5 rounded-lg border border-border bg-bg-input px-4 py-3 text-sm text-txt-muted">
             {notice || "Validating your account..."}
           </div>
 
           <div className="mt-5 flex gap-3">
             <a
               href="/"
-              className="inline-flex items-center justify-center rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5"
+              className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover"
             >
               Decline
             </a>

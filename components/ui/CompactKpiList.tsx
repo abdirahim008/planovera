@@ -20,7 +20,7 @@ const toneValueText: Record<CompactKpiTone, string> = {
   ok: "text-ok",
   warn: "text-warn",
   err: "text-err",
-  neutral: "text-white",
+  neutral: "text-txt",
 };
 
 const toneIcon: Record<CompactKpiTone, string> = {
@@ -28,7 +28,7 @@ const toneIcon: Record<CompactKpiTone, string> = {
   ok: "bg-ok/10 text-ok",
   warn: "bg-warn/10 text-warn",
   err: "bg-err/10 text-err",
-  neutral: "bg-white/5 text-txt-muted",
+  neutral: "bg-black/5 text-txt-muted",
 };
 
 /**
@@ -85,7 +85,7 @@ export default function CompactKpiList({
               type="button"
               onClick={row.onClick}
               className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-bg-hover/50 ${
-                striped ? "bg-white/[0.025]" : "bg-transparent"
+                striped ? "bg-black/[0.025]" : "bg-transparent"
               }`}
             >
               {content}
@@ -97,7 +97,7 @@ export default function CompactKpiList({
           <div
             key={`${row.label}-${index}`}
             className={`flex w-full items-center gap-2.5 px-3 py-2 ${
-              striped ? "bg-white/[0.025]" : "bg-transparent"
+              striped ? "bg-black/[0.025]" : "bg-transparent"
             }`}
           >
             {content}

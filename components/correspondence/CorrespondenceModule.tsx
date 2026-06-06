@@ -238,7 +238,7 @@ export default function CorrespondenceModule() {
                         <Badge color={typeColor[record.type]}>{typeShortCode[record.type]}</Badge>
                       </td>
                       <td className="data-cell-wrap">
-                        <span className="font-semibold text-white">{record.subject}</span>
+                        <span className="font-semibold text-txt">{record.subject}</span>
                       </td>
                       <td className="text-txt-muted">{record.referenceNo}</td>
                       <td className="text-txt-muted">{record.date}</td>
@@ -668,7 +668,7 @@ export default function CorrespondenceModule() {
                           type="date"
                           value={step.date}
                           onChange={(e) => updateApprovalStep(activeRecord.id, step.id, { date: e.target.value })}
-                          className="w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:dark]"
+                          className="w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:light]"
                         />
                       ) : (
                         <div className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-sm text-txt-muted">{step.date || "—"}</div>
@@ -704,7 +704,7 @@ export default function CorrespondenceModule() {
                 <tbody>
                   {activeRecord.approvalSteps.map((step) => (
                     <tr key={step.id}>
-                      <td className="font-medium text-white">{step.role}</td>
+                      <td className="font-medium text-txt">{step.role}</td>
                       <td>
                         {isEditMode ? (
                           <input

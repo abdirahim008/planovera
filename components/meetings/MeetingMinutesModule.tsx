@@ -666,7 +666,7 @@ function AttendeeGroupsModal({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-semibold text-white">{group.name}</div>
+                        <div className="font-semibold text-txt">{group.name}</div>
                         <div className="mt-1 text-xs text-txt-muted">
                           {group.members.length} attendee{group.members.length !== 1 ? "s" : ""}
                         </div>
@@ -693,7 +693,7 @@ function AttendeeGroupsModal({
 
         <div className="rounded-2xl border border-border bg-bg-raised p-4">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-base font-semibold text-white">
+            <h3 className="text-base font-semibold text-txt">
               {editingId ? "Edit Group" : "Create Group"}
             </h3>
             <Button variant="ghost" size="sm" onClick={resetDraft}>
@@ -909,7 +909,7 @@ function MeetingSeriesModal({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-semibold text-white">{series.name}</div>
+                        <div className="truncate font-semibold text-txt">{series.name}</div>
                         <div className="mt-1 truncate text-xs text-txt-muted">
                           {series.projectIds.length} project{series.projectIds.length !== 1 ? "s" : ""} ·{" "}
                           {series.defaultAttendees.length} default attendee
@@ -940,7 +940,7 @@ function MeetingSeriesModal({
 
         <div className="rounded-2xl border border-border bg-bg-raised p-4">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-white">
+            <h3 className="text-base font-semibold text-txt">
               {editingId ? "Edit series" : "Create series"}
             </h3>
             <Button variant="ghost" size="sm" onClick={resetDraft}>
@@ -1236,7 +1236,7 @@ function SeriesPickerModal({
               className="flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-bg-surface px-3 py-2.5 text-left transition hover:border-accent/40 hover:bg-bg-hover"
             >
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-white">{series.name}</div>
+                <div className="truncate text-sm font-semibold text-txt">{series.name}</div>
                 <div className="mt-0.5 truncate text-[11px] text-txt-muted">
                   {series.projectIds.length} project{series.projectIds.length !== 1 ? "s" : ""}
                   {series.cadence ? ` · ${series.cadence}` : ""}
@@ -1533,7 +1533,7 @@ export default function MeetingMinutesModule() {
     return (
       <div className="animate-fade-in">
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <h2 className="text-lg font-semibold tracking-tight text-white">Meeting Minutes</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-txt">Meeting Minutes</h2>
           <div className="flex flex-wrap gap-2">
             <Button variant="default" size="sm" onClick={() => setShowSeriesModal(true)}>
               <CalendarDays size={14} /> Meeting Series
@@ -1592,7 +1592,7 @@ export default function MeetingMinutesModule() {
         <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-2xl border border-border bg-bg-surface p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold text-white">Minutes Register</h3>
+              <h3 className="text-base font-semibold text-txt">Minutes Register</h3>
             </div>
 
             {sortedMinutes.length === 0 ? (
@@ -1639,7 +1639,7 @@ export default function MeetingMinutesModule() {
                               className="block bg-transparent text-left"
                             >
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-semibold text-white">{minute.title}</span>
+                                <span className="font-semibold text-txt">{minute.title}</span>
                                 <Badge color={minute.status === "final" ? "ok" : "warn"}>
                                   {minute.status.toUpperCase()}
                                 </Badge>
@@ -1661,7 +1661,7 @@ export default function MeetingMinutesModule() {
                               className={`rounded-full border px-2 py-0.5 text-[11px] ${
                                 minuteOpen > 0
                                   ? "border-warn/40 bg-warn/10 text-warn"
-                                  : "border-border bg-black/10 text-txt-muted"
+                                  : "border-border bg-bg text-txt-muted"
                               }`}
                             >
                               {minuteOpen}
@@ -1676,7 +1676,7 @@ export default function MeetingMinutesModule() {
                                 const rect = event.currentTarget.getBoundingClientRect();
                                 setRowMenu({ id: minute.id, x: rect.right, y: rect.bottom });
                               }}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-transparent text-txt-muted transition hover:border-accent/40 hover:text-white"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-transparent text-txt-muted transition hover:border-accent/40 hover:text-txt"
                             >
                               <MoreVertical size={16} />
                             </button>
@@ -1692,7 +1692,7 @@ export default function MeetingMinutesModule() {
 
           <div className="hidden rounded-2xl border border-border bg-bg-surface p-5 xl:block">
             <div className="mb-4">
-              <h3 className="text-base font-semibold text-white">Live Action Register</h3>
+              <h3 className="text-base font-semibold text-txt">Live Action Register</h3>
             </div>
 
             <div className="space-y-3">
@@ -1709,7 +1709,7 @@ export default function MeetingMinutesModule() {
                     <div key={action.id} className="rounded-2xl border border-border bg-bg-raised p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-semibold text-white">{action.description}</div>
+                          <div className="text-sm font-semibold text-txt">{action.description}</div>
                           <div className="mt-1 text-xs text-txt-muted">
                             {projectNameById[action.project_id] || "Unassigned project"} • {action.responsiblePerson || "Responsible person not set"}
                           </div>
@@ -1797,7 +1797,7 @@ export default function MeetingMinutesModule() {
                 current ? { ...current, title: event.target.value } : current
               )
             }
-            className="w-full max-w-3xl rounded-xl border border-border bg-bg-input px-4 py-3 text-xl font-bold text-white outline-none transition focus:border-accent"
+            className="w-full max-w-3xl rounded-xl border border-border bg-bg-input px-4 py-3 text-xl font-bold text-txt outline-none transition focus:border-accent"
             placeholder="Meeting title"
           />
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-txt-muted">
@@ -1856,7 +1856,7 @@ export default function MeetingMinutesModule() {
       <div className="space-y-5">
         <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h3 className="text-base font-semibold text-white">Attendees</h3>
+            <h3 className="text-base font-semibold text-txt">Attendees</h3>
             <div className="flex flex-wrap gap-2">
               <select
                 value={selectedGroupId}
@@ -2015,7 +2015,7 @@ export default function MeetingMinutesModule() {
 
         <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h3 className="text-base font-semibold text-white">Agenda</h3>
+            <h3 className="text-base font-semibold text-txt">Agenda</h3>
             <Button
               variant="primary"
               onClick={() =>
@@ -2032,7 +2032,7 @@ export default function MeetingMinutesModule() {
             {draftMinute.agendas.map((agenda, index) => (
               <div key={agenda.id} className="rounded-2xl border border-border bg-bg-raised p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-white">Agenda {index + 1}</div>
+                  <div className="text-sm font-semibold text-txt">Agenda {index + 1}</div>
                   <button
                     type="button"
                     onClick={() =>
@@ -2067,7 +2067,7 @@ export default function MeetingMinutesModule() {
 
         <section className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h3 className="text-base font-semibold text-white">Project Action Registry</h3>
+            <h3 className="text-base font-semibold text-txt">Project Action Registry</h3>
             <Button
               variant="primary"
               onClick={addProjectActionGroup}
@@ -2216,7 +2216,7 @@ export default function MeetingMinutesModule() {
                               description: event.target.value,
                             })
                           }
-                          className="min-h-[92px] w-full resize-y rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-sm leading-6 text-txt outline-none transition hover:bg-black/10 focus:border-accent/40 focus:bg-black/10"
+                          className="min-h-[92px] w-full resize-y rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-sm leading-6 text-txt outline-none transition hover:bg-bg focus:border-accent/40 focus:bg-bg"
                           placeholder="Action item description"
                         />
                       </div>
@@ -2243,7 +2243,7 @@ export default function MeetingMinutesModule() {
                               deadline: event.target.value,
                             })
                           }
-                          className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent [color-scheme:dark]"
+                          className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm text-txt outline-none transition focus:border-accent [color-scheme:light]"
                         />
                         <select
                           data-field="status"
@@ -2324,7 +2324,7 @@ export default function MeetingMinutesModule() {
                                   deadline: event.target.value,
                                 })
                               }
-                              className="data-cell-input [color-scheme:dark]"
+                              className="data-cell-input [color-scheme:light]"
                             />
                           </td>
                           <td className="px-2.5 py-1 align-middle">
@@ -2397,7 +2397,7 @@ export default function MeetingMinutesModule() {
                         : current
                     )
                   }
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-transparent px-4 py-2 text-[13px] text-txt-muted transition hover:border-accent/30 hover:text-white"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-transparent px-4 py-2 text-[13px] text-txt-muted transition hover:border-accent/30 hover:text-txt"
                 >
                   <Plus size={14} />
                   Create New Action Point
@@ -2478,7 +2478,7 @@ function SummaryCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{title}</div>
-          <div className="mt-3 text-2xl font-semibold text-white">{value}</div>
+          <div className="mt-3 text-2xl font-semibold text-txt">{value}</div>
           {subtitle ? <div className="mt-2 text-xs text-txt-muted">{subtitle}</div> : null}
         </div>
         <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneClass}`}>

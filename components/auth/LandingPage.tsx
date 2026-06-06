@@ -67,14 +67,14 @@ const valueProps = [
 
 export default function LandingPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#080d14] text-slate-100">
-      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(59,130,246,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.08)_1px,transparent_1px)] bg-[size:64px_64px]" />
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(37,99,235,0.28),transparent_32%),radial-gradient(circle_at_86%_18%,rgba(20,184,166,0.18),transparent_28%),linear-gradient(180deg,rgba(8,13,20,0.15),#080d14_88%)]" />
+    <main className="relative min-h-screen overflow-hidden bg-bg text-txt">
+      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(37,99,235,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.05)_1px,transparent_1px)] bg-[size:64px_64px]" />
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(37,99,235,0.10),transparent_32%),radial-gradient(circle_at_86%_18%,rgba(20,184,166,0.08),transparent_28%),linear-gradient(180deg,rgba(245,246,248,0.15),#f5f6f8_88%)]" />
 
       <div className="relative mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-10">
         <header className="flex flex-wrap items-center justify-between gap-4 py-6">
           <a href="/" className="flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white shadow-xl shadow-blue-950/30">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-white shadow-xl shadow-blue-950/30">
               <Image
                 src="/brand/planovera-mark.png"
                 alt="Planovera"
@@ -85,8 +85,8 @@ export default function LandingPage() {
               />
             </span>
             <span>
-              <span className="block text-xl font-extrabold tracking-tight text-white">Planovera</span>
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.32em] text-blue-200/55">
+              <span className="block text-xl font-extrabold tracking-tight text-txt">Planovera</span>
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.32em] text-accent">
                 Project controls
               </span>
             </span>
@@ -95,7 +95,7 @@ export default function LandingPage() {
           <nav className="flex items-center gap-3">
             <a
               href="/login"
-              className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-blue-400/50 hover:bg-blue-500/15"
+              className="rounded-2xl border border-border bg-bg-surface px-5 py-3 text-sm font-semibold text-txt transition hover:border-accent/50 hover:bg-bg-hover"
             >
               Sign in
             </a>
@@ -110,19 +110,19 @@ export default function LandingPage() {
 
         <section className="grid items-center gap-10 py-12 lg:grid-cols-[0.82fr_1.18fr] lg:py-16">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-blue-100">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-accent">
               <span className="h-2 w-2 rounded-full bg-blue-400" />
               Built for project delivery teams
             </div>
 
-            <h1 className="mt-7 text-4xl font-bold leading-[1.05] tracking-[-0.02em] text-white sm:text-5xl lg:text-[3.5rem]">
+            <h1 className="mt-7 text-4xl font-bold leading-[1.05] tracking-[-0.02em] text-txt sm:text-5xl lg:text-[3.5rem]">
               Project delivery{" "}
               <span className="bg-gradient-to-r from-blue-400 to-teal-300 bg-clip-text text-transparent">
                 command centre
               </span>{" "}
               for serious field teams.
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-8 text-blue-100/70 sm:text-lg">
+            <p className="mt-6 max-w-xl text-base leading-8 text-txt-muted sm:text-lg">
               Planovera gives NGOs, government agencies, consultants, and contractors one operating system for BOQs,
               progress, payments, meetings, documents, compliance, field notes, and technical drawings.
             </p>
@@ -137,13 +137,13 @@ export default function LandingPage() {
               </a>
               <a
                 href="/login"
-                className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-semibold text-white transition hover:border-blue-300/40 hover:bg-white/10"
+                className="rounded-2xl border border-border bg-bg-surface px-6 py-3.5 text-sm font-semibold text-txt transition hover:border-accent/40 hover:bg-bg-hover"
               >
                 Open workspace
               </a>
             </div>
 
-            <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px] font-medium text-blue-100/60">
+            <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px] font-medium text-txt-muted">
               {["BOQ & payments", "Progress & earned value", "Drawings studio"].map((item) => (
                 <span key={item} className="inline-flex items-center gap-2">
                   <CheckCircle2 size={15} className="text-teal-300" />
@@ -155,7 +155,7 @@ export default function LandingPage() {
 
           <div className="relative">
             <div className="absolute -inset-8 rounded-[3rem] bg-blue-500/12 blur-3xl" />
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-slate-950/70 p-3 shadow-2xl shadow-black/50">
+            <div className="relative overflow-hidden rounded-[2rem] border border-border bg-bg-surface p-3 shadow-2xl shadow-black/10">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-amber-400/10" />
               <Image
                 src="/brand/planovera-hero-dashboard.png"
@@ -174,10 +174,10 @@ export default function LandingPage() {
                 ].map(([value, label]) => (
                   <div
                     key={label}
-                    className="rounded-2xl border border-white/10 bg-[#09111f]/85 px-5 py-4 text-center shadow-xl shadow-black/30 backdrop-blur"
+                    className="rounded-2xl border border-border bg-white/85 px-5 py-4 text-center shadow-xl shadow-black/10 backdrop-blur"
                   >
-                    <div className="text-2xl font-bold text-white">{value}</div>
-                    <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.26em] text-blue-100/55">
+                    <div className="text-2xl font-bold text-txt">{value}</div>
+                    <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.26em] text-txt-muted">
                       {label}
                     </div>
                   </div>
@@ -187,15 +187,15 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="border-t border-white/10 py-16 lg:py-20">
+        <section className="border-t border-border py-16 lg:py-20">
           <div className="max-w-2xl">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-blue-300/70">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-accent">
               One workspace
             </span>
-            <h2 className="mt-3 text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">
+            <h2 className="mt-3 text-3xl font-bold tracking-[-0.02em] text-txt sm:text-4xl">
               Every discipline, in the same place.
             </h2>
-            <p className="mt-4 text-base leading-7 text-blue-100/65">
+            <p className="mt-4 text-base leading-7 text-txt-muted">
               Stop stitching together spreadsheets, email threads, and drawing files. Planovera connects each module so
               your team works from a single, current picture of the project.
             </p>
@@ -205,40 +205,40 @@ export default function LandingPage() {
             {moduleCards.map(({ label, description, icon: Icon }) => (
               <div
                 key={label}
-                className="group rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition hover:border-blue-300/30 hover:bg-white/[0.07]"
+                className="group rounded-2xl border border-border bg-bg-surface p-5 transition hover:border-accent/30 hover:bg-bg-hover"
               >
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-blue-500/15 text-blue-300 transition group-hover:bg-blue-500/25">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-blue-500/15 text-accent transition group-hover:bg-blue-500/25">
                   <Icon size={20} />
                 </span>
-                <div className="mt-4 text-base font-semibold text-white">{label}</div>
-                <p className="mt-1.5 text-sm leading-6 text-blue-100/60">{description}</p>
+                <div className="mt-4 text-base font-semibold text-txt">{label}</div>
+                <p className="mt-1.5 text-sm leading-6 text-txt-muted">{description}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="border-t border-white/10 py-16 lg:py-20">
+        <section className="border-t border-border py-16 lg:py-20">
           <div className="grid gap-8 lg:grid-cols-3">
             {valueProps.map(({ title, description, icon: Icon }) => (
               <div key={title} className="flex flex-col gap-3">
                 <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-teal-300/20 bg-teal-400/10 text-teal-300">
                   <Icon size={20} />
                 </span>
-                <h3 className="text-lg font-semibold text-white">{title}</h3>
-                <p className="text-sm leading-7 text-blue-100/60">{description}</p>
+                <h3 className="text-lg font-semibold text-txt">{title}</h3>
+                <p className="text-sm leading-7 text-txt-muted">{description}</p>
               </div>
             ))}
           </div>
         </section>
 
         <section className="py-12 lg:py-16">
-          <div className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-gradient-to-br from-blue-600/25 via-blue-500/10 to-teal-500/15 px-6 py-12 text-center sm:px-12 sm:py-16">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.25),transparent_60%)]" />
+          <div className="relative overflow-hidden rounded-[2rem] border border-blue-500/20 bg-gradient-to-br from-blue-600 via-blue-500 to-teal-500 px-6 py-12 text-center sm:px-12 sm:py-16">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.18),transparent_60%)]" />
             <div className="relative mx-auto max-w-2xl">
               <h2 className="text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">
                 Bring your next project online today.
               </h2>
-              <p className="mt-4 text-base leading-7 text-blue-50/75">
+              <p className="mt-4 text-base leading-7 text-blue-50/90">
                 Create an account in minutes, or open the workspace and explore with built-in demo data first.
               </p>
               <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -260,9 +260,9 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <footer className="flex flex-col items-center justify-between gap-4 border-t border-white/10 py-8 sm:flex-row">
+        <footer className="flex flex-col items-center justify-between gap-4 border-t border-border py-8 sm:flex-row">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white">
               <Image
                 src="/brand/planovera-mark.png"
                 alt="Planovera"
@@ -271,12 +271,12 @@ export default function LandingPage() {
                 className="h-6 w-6 object-contain"
               />
             </span>
-            <span className="text-sm font-semibold text-white">Planovera</span>
+            <span className="text-sm font-semibold text-txt">Planovera</span>
           </div>
-          <p className="text-[13px] text-blue-100/45">
+          <p className="text-[13px] text-txt-dim">
             &copy; {new Date().getFullYear()} Planovera. Project controls for delivery teams.
           </p>
-          <a href="/login" className="text-[13px] font-semibold text-blue-200/70 transition hover:text-white">
+          <a href="/login" className="text-[13px] font-semibold text-accent transition hover:text-accent-hover">
             Sign in
           </a>
         </footer>

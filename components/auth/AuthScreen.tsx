@@ -67,32 +67,32 @@ export default function AuthScreen({
     mode === "signin" ? "Sign in" : mode === "forgot" ? "Send reset link" : "Create account";
 
   return (
-    <main className="relative min-h-screen bg-[#0b0e14] text-[#e2e8f4]">
+    <main className="relative min-h-screen bg-bg text-txt">
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-10">
         <a href="/" className="mb-8 flex items-center gap-3">
-          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white">
+          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white">
             <img
               src="/brand/planovera-mark.png"
               alt="Planovera"
               className="h-8 w-8 object-contain"
             />
           </span>
-          <span className="text-lg font-semibold text-white">Planovera</span>
+          <span className="text-lg font-semibold text-txt">Planovera</span>
         </a>
 
-        <section className="rounded-2xl border border-white/10 bg-[#12161f] p-6">
-          <h1 className="text-xl font-semibold text-white">{heading}</h1>
+        <section className="rounded-2xl border border-border bg-bg-surface p-6">
+          <h1 className="text-xl font-semibold text-txt">{heading}</h1>
 
           {mode === "forgot" ? (
-            <p className="mt-2 text-sm leading-6 text-slate-400">
+            <p className="mt-2 text-sm leading-6 text-txt-muted">
               Enter the email for your account and we&apos;ll send a link to set a new password.
             </p>
           ) : null}
 
           {!configured ? (
-            <div className="mt-5 rounded-lg border border-amber-400/25 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
-              <p className="font-semibold text-amber-200">Add these environment variables before signing in:</p>
-              <div className="mt-3 rounded-lg border border-white/10 bg-[#0b0e14] px-3 py-3 font-mono text-xs text-slate-200">
+            <div className="mt-5 rounded-lg border border-amber-400/25 bg-amber-400/10 p-4 text-sm leading-6 text-amber-800">
+              <p className="font-semibold text-amber-900">Add these environment variables before signing in:</p>
+              <div className="mt-3 rounded-lg border border-border bg-bg-input px-3 py-3 font-mono text-xs text-txt">
                 NEXT_PUBLIC_SUPABASE_URL
                 <br />
                 NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -106,7 +106,7 @@ export default function AuthScreen({
                     type="button"
                     onClick={() => void onGoogle()}
                     disabled={busy}
-                    className="inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-lg border border-white/15 bg-white px-4 text-sm font-semibold text-[#1f2937] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-55"
+                    className="inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-white px-4 text-sm font-semibold text-[#1f2937] transition hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-55"
                   >
                     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
                       <path
@@ -128,10 +128,10 @@ export default function AuthScreen({
                     </svg>
                     {mode === "signin" ? "Sign in with Google" : "Sign up with Google"}
                   </button>
-                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                    <span className="h-px flex-1 bg-white/10" />
+                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                    <span className="h-px flex-1 bg-border" />
                     or
-                    <span className="h-px flex-1 bg-white/10" />
+                    <span className="h-px flex-1 bg-border" />
                   </div>
                 </>
               ) : null}
@@ -139,22 +139,22 @@ export default function AuthScreen({
               {mode === "signup" ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-muted">
                       Full name
                     </label>
                     <input
-                      className="w-full rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-500/20"
+                      className="w-full rounded-lg border border-border bg-bg-input px-4 py-2.5 text-sm text-txt outline-none transition placeholder:text-txt-dim focus:border-accent focus:ring-2 focus:ring-blue-500/20"
                       value={name}
                       onChange={(event) => setName(event.target.value)}
                       placeholder="Your name"
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-muted">
                       Company
                     </label>
                     <input
-                      className="w-full rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-500/20"
+                      className="w-full rounded-lg border border-border bg-bg-input px-4 py-2.5 text-sm text-txt outline-none transition placeholder:text-txt-dim focus:border-accent focus:ring-2 focus:ring-blue-500/20"
                       value={company}
                       onChange={(event) => setCompany(event.target.value)}
                       placeholder="Company or team"
@@ -164,16 +164,16 @@ export default function AuthScreen({
               ) : null}
 
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-muted">
                   Email
                 </label>
                 <div className="relative">
                   <Mail
                     size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-txt-dim"
                   />
                   <input
-                    className="w-full rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-2.5 pl-10 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="w-full rounded-lg border border-border bg-bg-input px-4 py-2.5 pl-10 text-sm text-txt outline-none transition placeholder:text-txt-dim focus:border-accent focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
@@ -185,7 +185,7 @@ export default function AuthScreen({
               </div>
 
               {inviteEmail ? (
-                <div className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-4 py-2.5 text-sm leading-6 text-emerald-100">
+                <div className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-4 py-2.5 text-sm leading-6 text-emerald-800">
                   Sign in or register with <strong>{inviteEmail}</strong> to claim the reserved seat.
                 </div>
               ) : null}
@@ -193,13 +193,13 @@ export default function AuthScreen({
               {mode !== "forgot" ? (
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-muted">
                       Password
                     </label>
                     {mode === "signin" ? (
                       <button
                         type="button"
-                        className="text-[11px] font-semibold text-blue-300 hover:text-blue-200"
+                        className="text-[11px] font-semibold text-accent hover:text-accent-hover"
                         onClick={() => setMode("forgot")}
                       >
                         Forgot password?
@@ -207,7 +207,7 @@ export default function AuthScreen({
                     ) : null}
                   </div>
                   <input
-                    className="w-full rounded-lg border border-white/10 bg-[#0b0e14] px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full rounded-lg border border-border bg-bg-input px-4 py-2.5 text-sm text-txt outline-none transition placeholder:text-txt-dim focus:border-accent focus:ring-2 focus:ring-blue-500/20"
                     type="password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
@@ -218,7 +218,7 @@ export default function AuthScreen({
               ) : null}
 
               {notice ? (
-                <div className="rounded-lg border border-blue-400/25 bg-blue-400/10 px-4 py-2.5 text-sm leading-6 text-blue-100">
+                <div className="rounded-lg border border-blue-400/25 bg-blue-400/10 px-4 py-2.5 text-sm leading-6 text-accent">
                   {notice}
                 </div>
               ) : null}
@@ -231,13 +231,13 @@ export default function AuthScreen({
                 <ArrowRight size={16} />
               </button>
 
-              <div className="pt-2 text-center text-sm text-slate-500">
+              <div className="pt-2 text-center text-sm text-txt-muted">
                 {mode === "signin" ? (
                   <>
                     No account?{" "}
                     <button
                       type="button"
-                      className="font-semibold text-blue-300 hover:text-blue-200"
+                      className="font-semibold text-accent hover:text-accent-hover"
                       onClick={() => setMode("signup")}
                     >
                       Create one
@@ -248,7 +248,7 @@ export default function AuthScreen({
                     Remembered it?{" "}
                     <button
                       type="button"
-                      className="font-semibold text-blue-300 hover:text-blue-200"
+                      className="font-semibold text-accent hover:text-accent-hover"
                       onClick={() => setMode("signin")}
                     >
                       Back to sign in
@@ -259,7 +259,7 @@ export default function AuthScreen({
                     Already have an account?{" "}
                     <button
                       type="button"
-                      className="font-semibold text-blue-300 hover:text-blue-200"
+                      className="font-semibold text-accent hover:text-accent-hover"
                       onClick={() => setMode("signin")}
                     >
                       Sign in

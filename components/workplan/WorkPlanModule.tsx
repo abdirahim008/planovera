@@ -169,12 +169,12 @@ function WorkPlanListView({
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="min-w-[180px] rounded-xl border border-border bg-black/10 p-3">
+                    <div className="min-w-[180px] rounded-xl border border-border bg-bg p-3">
                       <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                         <span>Progress</span>
                         <span className="text-txt">{completion}%</span>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                      <div className="h-2 overflow-hidden rounded-full bg-black/5">
                         <div className="h-full rounded-full bg-gradient-to-r from-accent to-ok" style={{ width: `${completion}%` }} />
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-txt-dim">
@@ -478,7 +478,7 @@ function WorkPlanTable({
                 <td className={`text-center transition-colors ${isInSelection(i, "startDate") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "startDate")} onMouseEnter={() => handleMouseEnter(i, "startDate")}>
                   {readOnly || isSection ? <span className="text-xs text-txt">{act.startDate || "—"}</span>
-                    : <input type="date" className="data-cell-input [color-scheme:dark] text-center text-xs" value={act.startDate}
+                    : <input type="date" className="data-cell-input [color-scheme:light] text-center text-xs" value={act.startDate}
                         onChange={(e) => updateActivity(act.id, "startDate", e.target.value)} onPaste={(e) => handlePaste(i, "startDate", e)} />}
                 </td>
                 <td className="text-center text-xs font-mono text-txt-muted">{act.endDate || "—"}</td>
@@ -953,7 +953,7 @@ export default function WorkPlanModule() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleBack}><ArrowLeft size={14} /> Back</Button>
-              <span className="rounded-full border border-border bg-black/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+              <span className="rounded-full border border-border bg-bg px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                 {isViewMode ? "View Mode" : "Edit Mode"}
               </span>
             </div>

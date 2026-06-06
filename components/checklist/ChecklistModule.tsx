@@ -240,7 +240,7 @@ export default function ChecklistModule() {
                 markSubmitted(item);
                 setOpenActionItemId(null);
               }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-white"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
             >
               <CheckCircle2 size={14} /> Mark submitted
             </button>
@@ -270,7 +270,7 @@ export default function ChecklistModule() {
                 duplicateChecklistItem(item.id);
                 setOpenActionItemId(null);
               }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-white"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
             >
               <Copy size={14} /> Duplicate
             </button>
@@ -293,7 +293,7 @@ export default function ChecklistModule() {
   return (
     <div className="mx-auto w-full max-w-[1500px] animate-fade-in px-1 sm:px-0">
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <h2 className="text-lg font-semibold tracking-tight text-white">Checklist</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-txt">Checklist</h2>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => addChecklistItems(starterTemplates)}>
             <FilePlus2 size={14} /> Insert starter checklist
@@ -317,7 +317,7 @@ export default function ChecklistModule() {
       </div>
       <div className="mb-5 hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5">
         {[
-          { label: "Required", value: metrics.total, tone: "text-white" },
+          { label: "Required", value: metrics.total, tone: "text-txt" },
           { label: "Pending", value: metrics.pending, tone: "text-warn" },
           { label: "Submitted", value: metrics.submitted, tone: "text-accent" },
           { label: "Verified", value: metrics.verified, tone: "text-ok" },
@@ -348,7 +348,7 @@ export default function ChecklistModule() {
               className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 filter === item.id
                   ? "border-accent bg-accent text-white"
-                  : "border-border bg-bg-surface text-txt-muted hover:bg-bg-hover hover:text-white"
+                  : "border-border bg-bg-surface text-txt-muted hover:bg-bg-hover hover:text-txt"
               }`}
             >
               {item.label}
@@ -370,14 +370,14 @@ export default function ChecklistModule() {
                 <button
                   type="button"
                   onClick={setSimpleColumns}
-                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-white"
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-txt"
                 >
                   Simple
                 </button>
                 <button
                   type="button"
                   onClick={setDetailedColumns}
-                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-white"
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-txt-muted transition hover:border-accent hover:text-txt"
                 >
                   Detailed
                 </button>
@@ -395,7 +395,7 @@ export default function ChecklistModule() {
                   {checklistOptionalFields.map((field) => (
                     <label
                       key={field.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-white"
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
                     >
                       <input
                         type="checkbox"
@@ -432,13 +432,13 @@ export default function ChecklistModule() {
                   <input
                     value={item.title}
                     onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-base font-semibold text-white outline-none focus:border-accent"
+                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-base font-semibold text-txt outline-none focus:border-accent"
                   />
                   {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
                     <button
                       type="button"
                       onClick={() => openDocument(item)}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent transition hover:text-white"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent transition hover:text-txt"
                     >
                       <ExternalLink size={13} /> Open linked document
                     </button>
@@ -520,7 +520,7 @@ export default function ChecklistModule() {
                     type="button"
                     onClick={() => openDocument(item)}
                     disabled={!item.documentUrl.trim()}
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-bg-raised text-txt-muted transition hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-bg-raised text-txt-muted transition hover:bg-bg-hover hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
                     title="Open document link"
                   >
                     <ExternalLink size={16} />
@@ -586,7 +586,7 @@ export default function ChecklistModule() {
         {visibleItems.length === 0 ? (
           <div className="rounded-2xl border border-border bg-bg-surface px-6 py-14 text-center">
             <ClipboardCheck className="mx-auto text-txt-dim" size={34} />
-            <h3 className="mt-3 text-lg font-semibold text-white">No checklist items yet</h3>
+            <h3 className="mt-3 text-lg font-semibold text-txt">No checklist items yet</h3>
             <p className="mt-1 text-sm text-txt-muted">
               Add a row or insert starter templates to begin tracking compliance.
             </p>
@@ -622,13 +622,13 @@ export default function ChecklistModule() {
                       <input
                         value={item.title}
                         onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
-                        className="data-cell-input font-semibold text-white"
+                        className="data-cell-input font-semibold text-txt"
                       />
                       {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
                         <button
                           type="button"
                           onClick={() => openDocument(item)}
-                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-accent transition hover:text-white"
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-accent transition hover:text-txt"
                         >
                           <ExternalLink size={12} /> Link
                         </button>
@@ -756,7 +756,7 @@ export default function ChecklistModule() {
                 <tr>
                   <td colSpan={tableColumnCount} className="px-6 py-14 text-center">
                     <ClipboardCheck className="mx-auto text-txt-dim" size={34} />
-                    <h3 className="mt-3 text-lg font-semibold text-white">No checklist items yet</h3>
+                    <h3 className="mt-3 text-lg font-semibold text-txt">No checklist items yet</h3>
                     <p className="mt-1 text-sm text-txt-muted">
                       Add a row or insert starter templates to begin tracking compliance.
                     </p>

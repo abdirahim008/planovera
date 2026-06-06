@@ -172,7 +172,7 @@ export default function Sidebar({
         />
         {!collapsed && (
           <>
-            <div className="min-w-0 truncate text-sm font-semibold tracking-tight text-white">
+            <div className="min-w-0 truncate text-sm font-semibold tracking-tight text-txt">
               Planovera
             </div>
             {isMobile ? (
@@ -209,7 +209,7 @@ export default function Sidebar({
             <ArrowLeft size={12} />
             All projects
           </button>
-          <div className="mt-2 truncate text-sm font-semibold text-white">{project?.name}</div>
+          <div className="mt-2 truncate text-sm font-semibold text-txt">{project?.name}</div>
           {project?.role ? (
             <div className="mt-1.5 text-[11px] capitalize text-txt-muted">
               {project.role}
@@ -228,10 +228,14 @@ export default function Sidebar({
               key={item.id}
               onClick={() => handleNavClick(item.id)}
               className={clsx(
-                "mb-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150",
+                "relative mb-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150",
                 collapsed ? "justify-center p-2.5" : "px-3 py-2",
                 active
-                  ? "bg-accent/12 text-accent"
+                  ? clsx(
+                      "bg-accent/12 font-semibold text-accent",
+                      !collapsed &&
+                        "before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-accent"
+                    )
                   : "text-txt-muted hover:bg-bg-hover hover:text-txt"
               )}
               title={collapsed ? item.label : undefined}
