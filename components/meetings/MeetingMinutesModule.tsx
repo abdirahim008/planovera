@@ -1376,6 +1376,28 @@ export default function MeetingMinutesModule() {
     return current ? [...scopedProjects, current] : scopedProjects;
   };
 
+  // Carry-forward action items for a single project, sourced from the action
+  // register (open/in-progress items). Used when a group's project picker
+  // changes so the rows reflect the newly selected project instead of staying
+  // pinned to the previous project's items.
+  const buildActionItemsForProject = (projectId: string): MeetingActionItem[] => {
+    const items = actionPoints
+      .filter((action) => action.status !== "closed" && action.project_id === projectId)
+      .map((action) => ({
+        id: uuid(),
+        actionKey: action.id,
+        project_id: action.project_id,
+        description: action.description,
+        responsiblePerson: action.responsiblePerson,
+        deadline: action.deadline,
+        status: action.status,
+        priority: action.priority,
+        notes: action.notes,
+        carriedForwardFromMinuteId: action.lastMeetingId,
+      }));
+    return items.length > 0 ? items : [createEmptyActionItem(projectId)];
+  };
+
   // Distinct projects that currently have an action group in the draft, used to
   // populate (and validate) the action-register project filter.
   const actionFilterProjectIds = useMemo(
@@ -2120,7 +2142,8 @@ export default function MeetingMinutesModule() {
                   <div className="flex flex-1 gap-2.5">
                     <select
                       value={group.project_id}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextProjectId = event.target.value;
                         setDraftMinute((current) =>
                           current
                             ? {
@@ -2129,18 +2152,18 @@ export default function MeetingMinutesModule() {
                                   item.id === group.id
                                     ? {
                                         ...item,
-                                        project_id: event.target.value,
-                                        actionItems: item.actionItems.map((actionItem) => ({
-                                          ...actionItem,
-                                          project_id: event.target.value,
-                                        })),
+                                        project_id: nextProjectId,
+                                        // Swap in the selected project's open action
+                                        // points rather than re-tagging the previous
+                                        // project's rows.
+                                        actionItems: buildActionItemsForProject(nextProjectId),
                                       }
                                     : item
                                 ),
                               }
                             : current
-                        )
-                      }
+                        );
+                      }}
                       className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none transition focus:border-accent"
                     >
                       {projectOptionsForGroup(group.project_id).map((project) => (
