@@ -28,7 +28,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
-import { useAppStore, emptyRow, headerRow, subtotalRow, grandtotalRow, noteRow, specificationRow, recalcRows, currency, resolveCellValue } from "@/lib/store";
+import { useAppStore, emptyRow, headerRow, subtotalRow, sheetTotalRow, grandtotalRow, noteRow, specificationRow, recalcRows, currency, resolveCellValue, resolveBOQItemAmount } from "@/lib/store";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { mapBOQLibraryItemRecord } from "@/lib/supabase";
 import type { BOQRow, BOQLibraryItem, BOQLibraryItemRecord, BOQSheet } from "@/lib/supabase";
@@ -82,8 +82,8 @@ const formatBOQCellDisplay = (
 ) => {
   const rowRecord = row as unknown as Record<string, string | number | null | undefined>;
   if (row.type === "header" && blankNonItemBOQColumns.has(key)) return "";
-  if ((row.type === "subtotal" || row.type === "grandtotal") && key !== "amount") return "";
-  if ((row.type === "subtotal" || row.type === "grandtotal") && key === "amount") {
+  if ((row.type === "subtotal" || row.type === "sheettotal" || row.type === "grandtotal") && key !== "amount") return "";
+  if ((row.type === "subtotal" || row.type === "sheettotal" || row.type === "grandtotal") && key === "amount") {
     return formatBOQNumberDisplay(row.amount, sheets);
   }
   if (row.type === "item" && numericBOQColumns.has(key)) {
@@ -457,7 +457,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
 
   const insertRowAt = (type: BOQRow["type"], anchorId: string, position: "above" | "below" = "below") => {
     const idx = rows.findIndex((r) => r.id === anchorId);
-    const fn = type === "header" ? headerRow : type === "subtotal" ? subtotalRow : type === "grandtotal" ? grandtotalRow : type === "notes" ? noteRow : type === "specification" ? specificationRow : emptyRow;
+    const fn = type === "header" ? headerRow : type === "subtotal" ? subtotalRow : type === "sheettotal" ? sheetTotalRow : type === "grandtotal" ? grandtotalRow : type === "notes" ? noteRow : type === "specification" ? specificationRow : emptyRow;
     const newRows = [...rows];
     newRows.splice(position === "above" ? idx : idx + 1, 0, fn());
     setRows(newRows);
@@ -465,11 +465,25 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
 
   const convertRowTo = (type: BOQRow["type"]) => {
     if (selectedRowIds.size === 0) return;
+    // Guard the single-grand-total rule defensively: ignore a request that would
+    // add a second grand total when one already exists elsewhere in the BOQ.
+    if (type === "grandtotal") {
+      const wouldDuplicate = boqSheets.some((sh) =>
+        sh.rows.some((r) => r.type === "grandtotal" && !selectedRowIds.has(r.id))
+      );
+      if (wouldDuplicate) return;
+    }
+    // One Sheet Total per sheet — ignore a request that would add a second.
+    if (type === "sheettotal") {
+      const wouldDuplicate = rows.some((r) => r.type === "sheettotal" && !selectedRowIds.has(r.id));
+      if (wouldDuplicate) return;
+    }
     setRows(
       rows.map((r) => {
         if (!selectedRowIds.has(r.id)) return r;
         if (type === "header") return { ...r, type: "header", unit: "", qty: "", rate: "", amount: "" };
         if (type === "subtotal") return { ...r, type: "subtotal", description: r.description || "Sub Total", unit: "", qty: "", rate: "" };
+        if (type === "sheettotal") return { ...r, type: "sheettotal", description: r.description || "Sheet Total", unit: "", qty: "", rate: "" };
         if (type === "grandtotal") return { ...r, type: "grandtotal", description: r.description || "Grand Total", unit: "", qty: "", rate: "" };
         if (type === "notes") return { ...r, type: "notes", itemNo: "", description: r.description || "Note", unit: "", qty: "", rate: "", amount: "" };
         if (type === "specification") return { ...r, type: "specification", itemNo: "", description: r.description || "Specification", unit: "", qty: "", rate: "", amount: "" };
@@ -516,6 +530,19 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
   const hasSelection = selectedRowIds.size > 0;
   const hasCellSelection = !!selection;
 
+  // A BOQ may carry exactly one grand total. Count grand totals across every
+  // sheet, excluding the currently selected row so re-converting the existing
+  // grand total stays allowed; when one already lives elsewhere, block creating
+  // a second (the user should subtotal a sheet and keep one grand total).
+  const selectedRowIsGrandTotal = selectedRowIds.size === 1 && selectedRow?.type === "grandtotal";
+  const grandTotalExistsElsewhere = boqSheets.some((sh) =>
+    sh.rows.some((r) => r.type === "grandtotal" && r.id !== lastSelectedRowId)
+  );
+  // One Sheet Total per sheet (this sheet only); the summary's Grand Total adds
+  // these up across sheets.
+  const selectedRowIsSheetTotal = selectedRowIds.size === 1 && selectedRow?.type === "sheettotal";
+  const sheetTotalExistsInSheet = rows.some((r) => r.type === "sheettotal" && r.id !== lastSelectedRowId);
+
   const contextItems: ContextMenuItem[] = [
     { label: "Add Row Above", icon: <Plus size={14} />, action: () => lastSelectedRowId && insertRowAt("item", lastSelectedRowId, "above"), disabled: readOnly },
     { label: "Add Row Below", icon: <Plus size={14} />, action: () => lastSelectedRowId && insertRowAt("item", lastSelectedRowId, "below"), disabled: readOnly },
@@ -526,7 +553,8 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
           { label: "Convert to Notes", icon: <StickyNote size={14} />, action: () => convertRowTo("notes"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "notes") },
           { label: "Convert to Specification", icon: <StickyNote size={14} />, action: () => convertRowTo("specification"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "specification") },
           { label: "Convert to Sub Total", icon: <Sigma size={14} />, action: () => convertRowTo("subtotal"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "subtotal") },
-          { label: "Convert to Grand Total", icon: <Sigma size={14} />, action: () => convertRowTo("grandtotal"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "grandtotal") },
+          { label: sheetTotalExistsInSheet && !selectedRowIsSheetTotal ? "Sheet Total already on this sheet" : "Convert to Sheet Total", icon: <Sigma size={14} />, action: () => convertRowTo("sheettotal"), disabled: readOnly || selectedRowIsSheetTotal || sheetTotalExistsInSheet },
+          { label: grandTotalExistsElsewhere && !selectedRowIsGrandTotal ? "Grand Total already exists" : "Convert to Grand Total", icon: <Sigma size={14} />, action: () => convertRowTo("grandtotal"), disabled: readOnly || selectedRowIsGrandTotal || grandTotalExistsElsewhere },
           { label: "Convert to Regular Item", icon: <FileSpreadsheet size={14} />, action: () => convertRowTo("item"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "item") },
           { divider: true } as ContextMenuItem,
         ]
@@ -584,6 +612,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     if (row.type === "notes") return "row-notes";
     if (row.type === "specification") return "row-specification";
     if (row.type === "subtotal") return "row-subtotal";
+    if (row.type === "sheettotal") return "row-sheettotal";
     if (row.type === "grandtotal") return "row-grandtotal";
     return "";
   };
@@ -691,7 +720,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                   const colSpan = mergedSpanCount ? mergedSpanCount : undefined;
                   const isEditing = !readOnly && editing?.id === row.id && editing?.key === col.key;
                   const locked = isColumnLocked(col.key);
-                  const editable = !readOnly && !locked && (row.type === "item" || (col.key === "description" && (row.type === "header" || row.type === "subtotal" || row.type === "grandtotal")) || (col.key === "itemNo" && row.type === "header"));
+                  const editable = !readOnly && !locked && (row.type === "item" || (col.key === "description" && (row.type === "header" || row.type === "subtotal" || row.type === "sheettotal" || row.type === "grandtotal")) || (col.key === "itemNo" && row.type === "header"));
                   const cellValue = String((row as any)[col.key] ?? "");
                   const showFormulaSuggestions = isEditing && cellValue.startsWith("=");
                   const isFormulaSourceCell =
@@ -1067,7 +1096,7 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
                       <span className="italic text-txt-dim">Note: {r.description}</span>
                     ) : r.type === "specification" ? (
                       <span className="italic text-txt-dim">Spec: {r.description}</span>
-                    ) : r.type === "subtotal" || r.type === "grandtotal" ? (
+                    ) : r.type === "subtotal" || r.type === "sheettotal" || r.type === "grandtotal" ? (
                       <span className="font-semibold italic">{r.description}</span>
                     ) : (
                       <>
@@ -1382,11 +1411,7 @@ function BOQListView({
                 s +
                 sh.rows
                   .filter((r) => r.type === "item")
-                  .reduce((sum, r) => {
-                    const q = parseFloat((r.qty || "0").toString().replace(/,/g, "")) || 0;
-                    const rate = parseFloat((r.rate || "0").toString().replace(/,/g, "")) || 0;
-                    return sum + q * rate;
-                  }, 0),
+                  .reduce((sum, r) => sum + resolveBOQItemAmount(r, boq.sheets), 0),
               0
             );
 

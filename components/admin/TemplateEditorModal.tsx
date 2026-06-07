@@ -39,6 +39,7 @@ const ROW_TYPES: { value: BOQRow["type"]; label: string }[] = [
   { value: "item", label: "Item" },
   { value: "header", label: "Header" },
   { value: "subtotal", label: "Subtotal" },
+  { value: "sheettotal", label: "Sheet total" },
   { value: "grandtotal", label: "Grand total" },
   { value: "notes", label: "Notes" },
   { value: "specification", label: "Specification" },

@@ -92,7 +92,7 @@ export interface BOQSheet {
 
 export interface BOQRow {
   id: string;
-  type: "item" | "header" | "subtotal" | "grandtotal" | "notes" | "specification";
+  type: "item" | "header" | "subtotal" | "sheettotal" | "grandtotal" | "notes" | "specification";
   itemNo: string;
   description: string;
   unit: string;

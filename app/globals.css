@@ -69,6 +69,10 @@ body {
   background: var(--color-subtotal);
   font-weight: 600;
 }
+.row-sheettotal {
+  background: #e8f0fb;
+  font-weight: 700;
+}
 .row-grandtotal {
   background: var(--color-grandtotal);
   font-weight: 700;
@@ -217,6 +221,24 @@ body {
 
 .boq-table-shell tr.row-subtotal td:last-child {
   color: #0f172a !important;
+}
+
+.boq-table-shell tr.row-sheettotal td,
+.boq-table-shell tr.row-sheettotal .row-gutter {
+  background: #e8f0fb !important;
+  color: #15315a !important;
+  border-color: #d2e0f2 !important;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.boq-table-shell tr.row-sheettotal td:first-child,
+.boq-table-shell tr.row-sheettotal .row-gutter {
+  box-shadow: inset 4px 0 0 #2563eb;
+}
+
+.boq-table-shell tr.row-sheettotal td:last-child {
+  color: #0f4c93 !important;
 }
 
 .boq-table-shell tr.row-grandtotal td,

@@ -92,6 +92,19 @@ export const subtotalRow = (): BOQRow => ({
   amount: "0.00",
 });
 
+// A Sheet Total is the total for a single sheet (sum of that sheet's items /
+// section sub totals). One per sheet; the summary's Grand Total adds these up.
+export const sheetTotalRow = (): BOQRow => ({
+  id: uuid(),
+  type: "sheettotal",
+  itemNo: "",
+  description: "Sheet Total",
+  unit: "",
+  qty: "",
+  rate: "",
+  amount: "0.00",
+});
+
 export const grandtotalRow = (): BOQRow => ({
   id: uuid(),
   type: "grandtotal",
@@ -214,23 +227,40 @@ export const resolveCellValue = (value: string, allSheets: BOQSheet[], depth = 0
   }
 };
 
+// Canonical amount for a single BOQ *item* line. Every total path — the
+// in-table subtotal/grand-total, the BOQ-list card, and exports — must use this
+// so they always agree. Order of precedence:
+//   1. An explicit formula in the Amount cell (resolved live, may cross sheets).
+//   2. qty × rate, with percentage units divided by 100.
+//   3. A directly-typed Amount — lump-sum lines carry an amount but no qty/rate
+//      and must still count. Forcing qty × rate here is what made grand totals
+//      read 0.00 for lump-sum BOQs.
+export const resolveBOQItemAmount = (row: BOQRow, allSheets: BOQSheet[] = []): number => {
+  const amountRaw = row.amount;
+  if (typeof amountRaw === "string" && amountRaw.trim().startsWith("=")) {
+    return resolveCellValue(amountRaw, allSheets);
+  }
+  const q = resolveCellValue(String(row.qty ?? ""), allSheets);
+  const rate = resolveCellValue(String(row.rate ?? ""), allSheets);
+  const computed = calculateBOQLineAmount(q, rate, row.unit);
+  if (computed) return computed;
+  // Lump-sum fallback: a typed amount with no qty/rate still counts.
+  const typed = parseFloat(String(amountRaw ?? "").replace(/,/g, ""));
+  return Number.isFinite(typed) ? typed : 0;
+};
+
 export const recalcRows = (rows: BOQRow[], allSheets?: BOQSheet[]): BOQRow[] => {
   let sectionTotal = 0;
   const sheetsForResolution = allSheets || [];
 
   return rows.map((r) => {
     if (r.type === "item") {
-      const q = resolveCellValue(r.qty, sheetsForResolution);
-      const rate = resolveCellValue(r.rate, sheetsForResolution);
-      
-      // If amount is a formula itself, resolve it
-      let amt = calculateBOQLineAmount(q, rate, r.unit);
-      if (r.amount.startsWith("=")) {
-        amt = resolveCellValue(r.amount, sheetsForResolution);
-      }
-
+      const isFormula = typeof r.amount === "string" && r.amount.startsWith("=");
+      const amt = resolveBOQItemAmount(r, sheetsForResolution);
       sectionTotal += amt;
-      return { ...r, amount: r.amount.startsWith("=") ? r.amount : (amt ? amt.toFixed(2) : "") };
+      // Keep a formula verbatim (resolved at display); otherwise store the
+      // canonical computed/typed amount.
+      return { ...r, amount: isFormula ? r.amount : (amt ? amt.toFixed(2) : "") };
     }
     if (r.type === "subtotal") {
       // An explicit formula (e.g. a Summary sheet's cross-sheet total) is kept
@@ -243,18 +273,37 @@ export const recalcRows = (rows: BOQRow[], allSheets?: BOQSheet[]): BOQRow[] => 
       sectionTotal = 0;
       return { ...r, amount: val.toFixed(2) };
     }
-    if (r.type === "grandtotal") {
+    if (r.type === "sheettotal") {
+      // Total for THIS sheet = the sum of its own line items (equivalently, the
+      // sum of its section sub totals). One per sheet; feeds the Grand Total.
       if (typeof r.amount === "string" && r.amount.startsWith("=")) {
         return r;
       }
       const total = rows
         .filter((x) => x.type === "item")
-        .reduce((s, x) => {
-          const q = resolveCellValue(x.qty, sheetsForResolution);
-          const rate = resolveCellValue(x.rate, sheetsForResolution);
-          if (x.amount.startsWith("=")) return s + resolveCellValue(x.amount, sheetsForResolution);
-          return s + calculateBOQLineAmount(q, rate, x.unit);
-        }, 0);
+        .reduce((s, x) => s + resolveBOQItemAmount(x, sheetsForResolution), 0);
+      return { ...r, amount: total.toFixed(2) };
+    }
+    if (r.type === "grandtotal") {
+      if (typeof r.amount === "string" && r.amount.startsWith("=")) {
+        return r;
+      }
+      // When any sheet declares a Sheet Total, the Grand Total auto-sums each
+      // such sheet's total (computed live, so recalc order is irrelevant).
+      // Otherwise (single-sheet BOQ) fall back to this sheet's own item sum.
+      const sheetItemsTotal = (sheet: BOQSheet) =>
+        sheet.rows
+          .filter((x) => x.type === "item")
+          .reduce((s, x) => s + resolveBOQItemAmount(x, sheetsForResolution), 0);
+      const sheetsWithTotal = sheetsForResolution.filter((sh) =>
+        sh.rows.some((x) => x.type === "sheettotal")
+      );
+      const total =
+        sheetsWithTotal.length > 0
+          ? sheetsWithTotal.reduce((s, sh) => s + sheetItemsTotal(sh), 0)
+          : rows
+              .filter((x) => x.type === "item")
+              .reduce((s, x) => s + resolveBOQItemAmount(x, sheetsForResolution), 0);
       return { ...r, amount: total.toFixed(2) };
     }
     return r;
@@ -2293,9 +2342,13 @@ export const useAppStore = create<AppState>()(
       openBOQ: (id) => {
         const boq = get().savedBOQs.find((b) => b.id === id);
         if (!boq) return;
+        // Recalculate on open so subtotals / grand totals reflect the current
+        // line items rather than a stale stored value (e.g. a grand total saved
+        // as 0.00 before its lines were entered).
+        const sheets = boq.sheets.map((s) => ({ ...s, rows: s.rows.map((r) => ({ ...r })) }));
         set({
           activeBOQId: id,
-          boqSheets: boq.sheets.map((s) => ({ ...s, rows: s.rows.map((r) => ({ ...r })) })),
+          boqSheets: sheets.map((s) => ({ ...s, rows: recalcRows(s.rows, sheets) })),
           activeSheetIndex: 0,
         });
       },
@@ -2448,9 +2501,15 @@ export const useAppStore = create<AppState>()(
       setActiveSheetIndex: (i) => set({ activeSheetIndex: i }),
       setBoqSheets: (sheets) => set({ boqSheets: sheets }),
       updateSheetRows: (sheetIndex, rows) =>
-        set((s) => ({
-          boqSheets: s.boqSheets.map((sh, i) => (i === sheetIndex ? { ...sh, rows: recalcRows(rows, s.boqSheets) } : sh)),
-        })),
+        set((s) => {
+          // Apply the edit, then recalc EVERY sheet against the updated set so a
+          // cross-sheet Grand Total (which sums other sheets' Sheet Totals) stays
+          // current even when a different sheet was the one edited.
+          const updated = s.boqSheets.map((sh, i) => (i === sheetIndex ? { ...sh, rows } : sh));
+          return {
+            boqSheets: updated.map((sh) => ({ ...sh, rows: recalcRows(sh.rows, updated) })),
+          };
+        }),
       
       startFormulaLinking: (sheetIdx, rowId, colKey, initialFormula) =>
         set((s) => {
@@ -2754,7 +2813,8 @@ export const useAppStore = create<AppState>()(
             });
             rows[targetRowIdx] = row;
           });
-          return { boqSheets: s.boqSheets.map((sh, idx) => (idx === sheetIdx ? { ...sh, rows: recalcRows(rows) } : sh)) };
+          const updated = s.boqSheets.map((sh, idx) => (idx === sheetIdx ? { ...sh, rows } : sh));
+          return { boqSheets: updated.map((sh) => ({ ...sh, rows: recalcRows(sh.rows, updated) })) };
         });
       },
       clearBOQRange: (sheetIdx, r1, r2, c1, c2) => {
@@ -2772,7 +2832,8 @@ export const useAppStore = create<AppState>()(
             boqCols.forEach((key, ci) => { if (ci >= minC && ci <= maxC && key !== "amount") (upd as any)[key] = ""; });
             return upd;
           });
-          return { boqSheets: s.boqSheets.map((sh, idx) => (idx === sheetIdx ? { ...sh, rows: recalcRows(newRows) } : sh)) };
+          const updated = s.boqSheets.map((sh, idx) => (idx === sheetIdx ? { ...sh, rows: newRows } : sh));
+          return { boqSheets: updated.map((sh) => ({ ...sh, rows: recalcRows(sh.rows, updated) })) };
         });
       },
 
