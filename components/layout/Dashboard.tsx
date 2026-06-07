@@ -1468,8 +1468,6 @@ function PortfolioDashboard({
     weightBase > 0
       ? (filteredProjectValue ? parseAmount(summary.project.contractAmount) : 1) / weightBase
       : 0;
-  const averagePhysical =
-    summaries.length > 0 ? summaries.reduce((sum, summary) => sum + summary.physical * getWeight(summary), 0) : 0;
   const averageFinancial =
     summaries.length > 0 ? summaries.reduce((sum, summary) => sum + summary.financial * getWeight(summary), 0) : 0;
   const averagePlanned =
@@ -1489,14 +1487,6 @@ function PortfolioDashboard({
       icon: Building2,
       tone: "accent" as Tone,
       trend: [0, Math.max(totalProjects - 1, 0), totalProjects, totalProjects],
-    },
-    {
-      title: "Physical Avg",
-      value: `${averagePhysical.toFixed(0)}%`,
-      subtitle: "Average physical progress across all projects",
-      icon: Activity,
-      tone: "ok" as Tone,
-      trend: summaries.map((summary) => summary.physical),
     },
     {
       title: "Financial Avg",
@@ -1778,15 +1768,9 @@ function PortfolioDashboard({
                       <ProgressStrip label="Actual" value={summary.progress.actual} tone={summary.progress.variance >= 0 ? "ok" : "warn"} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Physical</div>
-                      <div className="mt-1 text-xl font-black text-txt">{summary.physical}%</div>
-                    </div>
-                    <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Financial</div>
-                      <div className="mt-1 text-xl font-black text-txt">{summary.financial}%</div>
-                    </div>
+                  <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">Financial</div>
+                    <div className="mt-1 text-xl font-black text-txt">{summary.financial}%</div>
                   </div>
                 </div>
                 <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-txt-muted">
@@ -1804,7 +1788,6 @@ function PortfolioDashboard({
               <tr className="border-b border-border">
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Project</th>
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 220 }}>Planned vs Actual</th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 160 }}>Physical</th>
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 160 }}>Financial</th>
                 <th className="px-2 py-2" style={{ width: 44 }} aria-label="Actions" />
               </tr>
@@ -1812,7 +1795,7 @@ function PortfolioDashboard({
             <tbody>
               {summaries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-14 text-center text-sm text-txt-muted">
+                  <td colSpan={4} className="px-4 py-14 text-center text-sm text-txt-muted">
                     No projects yet. Create a project to begin.
                   </td>
                 </tr>
@@ -1855,19 +1838,6 @@ function PortfolioDashboard({
                             <div
                               className={`h-full ${ahead ? "bg-ok" : "bg-warn"}`}
                               style={{ width: `${clamp(summary.progress.actual)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="w-10 font-mono text-sm font-semibold tabular-nums text-txt">
-                            {summary.physical}%
-                          </span>
-                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/5">
-                            <div
-                              className="h-full bg-ok"
-                              style={{ width: `${clamp(summary.physical)}%` }}
                             />
                           </div>
                         </div>
