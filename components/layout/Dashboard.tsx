@@ -586,10 +586,9 @@ function buildProjectSummary(
       .map((certificate) => {
         const allItems = certificate.sheets.flatMap((sheet) => sheet.items);
         const subTotal = allItems.reduce((sum, item) => sum + parseAmount(item.totalAmount), 0);
-        const contingencies = (subTotal * certificate.contingenciesPercent) / 100;
-        const afterCont = subTotal + contingencies;
-        const govTax = (afterCont * certificate.governmentTaxPercent) / 100;
-        const gross = afterCont + govTax;
+        // Gross valuation is the certified BOQ subtotal; contingency/government
+        // tax belong in the BOQ, not the certificate.
+        const gross = subTotal;
         const net =
           gross -
           (gross * certificate.retentionPercent) / 100 -

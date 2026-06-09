@@ -70,13 +70,14 @@ export const paymentCertificateCalcs = (cert: PaymentCertificate) => {
   const totalSubTotal = itemStates.reduce((sum, item) => sum + item.totalAmount, 0);
 
   const calcGross = (subTotal: number) => {
-    const cont = percentAmount(subTotal, cert.contingenciesPercent);
-    const afterCont = subTotal + cont;
-    const gov = percentAmount(afterCont, cert.governmentTaxPercent);
-    const grand = afterCont + gov;
+    // Contingency and government tax are no longer certificate-level percentages
+    // — those belong in the BOQ as line items. Gross valuation is therefore the
+    // certified BOQ subtotal directly. The remaining certificate-level
+    // deductions (retention, withholding) still apply to the gross.
+    const grand = subTotal;
     const ret = percentAmount(grand, cert.retentionPercent);
     const wh = percentAmount(grand, cert.withholdingTaxPercent);
-    return { cont, gov, grand, ret, wh };
+    return { grand, ret, wh };
   };
 
   const boq = calcGross(boqSubTotal);

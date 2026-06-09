@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
   ArrowLeft,
   ChevronDown,
   Copy,
@@ -389,40 +388,40 @@ export default function PaymentModule() {
                 </table>
               </div>
 
-              <div className="space-y-2.5 xl:hidden">
-                {projectCerts.map((cert) => {
-                  const calc = paymentCertificateCalcs(cert);
-                  return (
-                    <button
-                      key={cert.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveCertId(cert.id);
-                        setIsEditMode(false);
-                        setActiveSheetIdx(-1);
-                      }}
-                      className="w-full rounded-xl border border-border bg-bg-surface p-4 text-left transition hover:border-accent/50"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold">{formatCertName(cert)}</div>
-                          <div className="mt-1 text-xs text-txt-muted">{cert.periodStart || cert.date} → {cert.periodEnd || cert.date}</div>
-                        </div>
-                        <Badge color={statusColor(cert.status)}>{cert.status}</Badge>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                        <div className="rounded-lg border border-border bg-bg-raised/50 p-3">
-                          <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Current Net</span>
-                          <span className="font-mono font-semibold">$ {currency(calc.curr.net)}</span>
-                        </div>
-                        <div className="rounded-lg border border-border bg-bg-raised/50 p-3">
-                          <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Advance Balance</span>
-                          <span className="font-mono font-semibold">$ {currency(calc.total.advanceBalance)}</span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="data-table-shell overflow-x-auto xl:hidden">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Certificate</th>
+                      <th className="text-right">Gross</th>
+                      <th className="text-right">Net Paid</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectCerts.map((cert) => {
+                      const calc = paymentCertificateCalcs(cert);
+                      return (
+                        <tr
+                          key={cert.id}
+                          onClick={() => {
+                            setActiveCertId(cert.id);
+                            setIsEditMode(false);
+                            setActiveSheetIdx(-1);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <td className="font-semibold">{formatCertName(cert)}</td>
+                          <td className="data-cell-num">$ {currency(calc.curr.grand)}</td>
+                          <td className="data-cell-num">$ {currency(calc.curr.net)}</td>
+                          <td>
+                            <Badge color={statusColor(cert.status)}>{cert.status}</Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -585,22 +584,26 @@ export default function PaymentModule() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      ["Gross valuation", activeCalcs.prev.grand, activeCalcs.curr.grand, activeCalcs.total.grand],
-                      ["Less retention", activeCalcs.prev.ret, activeCalcs.curr.ret, activeCalcs.total.retentionHeld],
-                      ["Retention released", 0, activeCalcs.retentionReleaseAmount, activeCalcs.retentionReleaseAmount],
-                      ["Less advance recovery", activeCalcs.previousAdvanceRecovered, activeCalcs.currentAdvanceRecovery, activeCalcs.total.advance],
-                      ["Less withholding tax", activeCalcs.prev.wh, activeCalcs.curr.wh, activeCalcs.prev.wh + activeCalcs.curr.wh],
-                      ["Adjustments / variations", 0, activeCalcs.additions - activeCalcs.deductions, activeCalcs.additions - activeCalcs.deductions],
-                      ["Net amount payable", activeCalcs.prev.net, activeCalcs.curr.net, activeCalcs.total.net],
-                    ].map(([label, previous, current, total]) => (
-                      <tr key={String(label)}>
-                        <td className="text-sm font-medium">{label}</td>
-                        <td className="data-cell-num">$ {currency(Number(previous))}</td>
-                        <td className="data-cell-num">$ {currency(Number(current))}</td>
-                        <td className="data-cell-num font-bold">$ {currency(Number(total))}</td>
-                      </tr>
-                    ))}
+                    {([
+                      { label: "Gross valuation", previous: activeCalcs.prev.grand, current: activeCalcs.curr.grand, total: activeCalcs.total.grand, always: true },
+                      { label: "Less retention", previous: activeCalcs.prev.ret, current: activeCalcs.curr.ret, total: activeCalcs.total.retentionHeld },
+                      { label: "Retention released", previous: 0, current: activeCalcs.retentionReleaseAmount, total: activeCalcs.retentionReleaseAmount },
+                      { label: "Less advance recovery", previous: activeCalcs.previousAdvanceRecovered, current: activeCalcs.currentAdvanceRecovery, total: activeCalcs.total.advance },
+                      { label: "Less withholding tax", previous: activeCalcs.prev.wh, current: activeCalcs.curr.wh, total: activeCalcs.prev.wh + activeCalcs.curr.wh },
+                      { label: "Adjustments / variations", previous: 0, current: activeCalcs.additions - activeCalcs.deductions, total: activeCalcs.additions - activeCalcs.deductions },
+                      { label: "Net amount payable", previous: activeCalcs.prev.net, current: activeCalcs.curr.net, total: activeCalcs.total.net, always: true },
+                    ] as Array<{ label: string; previous: number; current: number; total: number; always?: boolean }>)
+                      // A deduction row only appears when it actually applies
+                      // (set / non-zero); gross and net always show.
+                      .filter((row) => row.always || Math.abs(row.previous) > 0.005 || Math.abs(row.current) > 0.005 || Math.abs(row.total) > 0.005)
+                      .map((row) => (
+                        <tr key={row.label}>
+                          <td className="text-sm font-medium">{row.label}</td>
+                          <td className="data-cell-num">$ {currency(row.previous)}</td>
+                          <td className="data-cell-num">$ {currency(row.current)}</td>
+                          <td className="data-cell-num font-bold">$ {currency(row.total)}</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -785,8 +788,7 @@ export default function PaymentModule() {
                     <table className="data-table data-table-sticky text-[11px] min-w-[520px]">
                       <thead>
                         <tr>
-                          <th style={{ width: 40 }} className="data-sticky-col left-0">#</th>
-                          <th className="data-sticky-col left-10 data-sticky-edge min-w-[150px]">Description</th>
+                          <th className="data-sticky-col left-0 data-sticky-edge min-w-[150px]">Description</th>
                           <th className="text-right">BOQ Qty</th>
                           <th className="text-right">Rate</th>
                           {mobileCertSection === "previous" && (
@@ -817,8 +819,7 @@ export default function PaymentModule() {
                           const warn = line.warningStatus === "over-certified";
                           return (
                             <tr key={`${item.id}-m`} className={warn ? "bg-warn/5" : ""}>
-                              <td className="data-cell-index data-sticky-col left-0">{index + 1}</td>
-                              <td className="data-cell-wrap data-sticky-col left-10 data-sticky-edge min-w-[150px]">
+                              <td className="data-cell-wrap data-sticky-col left-0 data-sticky-edge min-w-[150px]">
                                 <div className="font-medium text-txt">{item.description}</div>
                                 <div className="mt-0.5 text-[10px] uppercase tracking-[0.08em] text-txt-dim">{[item.billNo, item.unit].filter(Boolean).join(" · ")}</div>
                               </td>
@@ -865,8 +866,7 @@ export default function PaymentModule() {
                           const totals = sheetTotals(sheet);
                           return (
                             <tr className="bg-accent/10 font-bold">
-                              <td className="data-sticky-col left-0 border-t-2 border-t-accent" />
-                              <td className="data-sticky-col left-10 data-sticky-edge border-t-2 border-t-accent">Sheet total</td>
+                              <td className="data-sticky-col left-0 data-sticky-edge border-t-2 border-t-accent">Sheet total</td>
                               <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.boq)}</td>
                               <td className="border-t-2 border-t-accent" />
                               {mobileCertSection === "previous" && (
@@ -895,22 +895,6 @@ export default function PaymentModule() {
                       </tbody>
                     </table>
                   </div>
-                  {sheet.items
-                    .filter((it) => paymentLineState(it).warningStatus !== "ok" || it.overrideNote)
-                    .map((it) => (
-                      <div key={`${it.id}-note`} className="mt-2 rounded-xl border border-warn/30 bg-warn/5 p-3">
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-warn">
-                          <AlertTriangle size={12} /> Override note · {it.billNo || it.description.slice(0, 30)}
-                        </div>
-                        <input
-                          value={it.overrideNote || ""}
-                          disabled={!isEditMode || activeLocked}
-                          onChange={(e) => updateCertItem(activeCert.id, sheet.id, it.id, "overrideNote", e.target.value)}
-                          placeholder="Required note for over-certification override"
-                          className="mt-1.5 w-full rounded-lg border border-warn/30 bg-bg-input px-3 py-2 text-sm"
-                        />
-                      </div>
-                    ))}
                 </div>
 
                 <div className="hidden data-table-shell overflow-auto xl:block" data-variant="desktop" data-cert-sheet={sheet.id} style={{ maxHeight: "calc(100vh - 425px)" }}>
@@ -931,7 +915,6 @@ export default function PaymentModule() {
                         <th className="text-right" title="Enter the total quantity completed to date. Current Qty is derived from this.">Cumulative Qty <span className="font-normal text-accent">(enter)</span></th>
                         <th className="text-right">Balance Qty</th>
                         <th className="text-right">Cumulative Amount</th>
-                        <th>Note</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -968,19 +951,6 @@ export default function PaymentModule() {
                             </td>
                             <td className={`data-cell-num ${line.balanceQty < 0 ? "text-warn" : "text-txt-muted"}`}>{currency(line.balanceQty)}</td>
                             <td className="data-cell-num font-bold text-ok">$ {currency(line.totalAmount)}</td>
-                            <td className="min-w-[220px]">
-                              {warn || item.overrideNote ? (
-                                <input
-                                  value={item.overrideNote || ""}
-                                  disabled={!isEditMode || activeLocked}
-                                  onChange={(e) => updateCertItem(activeCert.id, sheet.id, item.id, "overrideNote", e.target.value)}
-                                  placeholder="Override note"
-                                  className="data-cell-input text-xs"
-                                />
-                              ) : (
-                                <span className="text-txt-dim">—</span>
-                              )}
-                            </td>
                           </tr>
                         );
                       })}
@@ -997,7 +967,6 @@ export default function PaymentModule() {
                             <td className="border-t-2 border-t-accent" />
                             <td className="border-t-2 border-t-accent" />
                             <td className="data-cell-num border-t-2 border-t-accent text-ok">$ {currency(totals.total)}</td>
-                            <td className="border-t-2 border-t-accent" />
                           </tr>
                         );
                       })()}

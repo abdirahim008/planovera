@@ -89,10 +89,9 @@ function certificateNet(cert: PaymentCertificate) {
   const subTotal = cert.sheets
     .flatMap((sheet) => sheet.items)
     .reduce((sum, item) => sum + toNumber(item.totalAmount), 0);
-  const contingencies = (subTotal * cert.contingenciesPercent) / 100;
-  const afterCont = subTotal + contingencies;
-  const govTax = (afterCont * cert.governmentTaxPercent) / 100;
-  const gross = afterCont + govTax;
+  // Gross valuation is the certified BOQ subtotal; contingency/government tax
+  // belong in the BOQ, not the certificate.
+  const gross = subTotal;
   const retention = (gross * cert.retentionPercent) / 100;
   const advance = (gross * cert.advancePaymentPercent) / 100;
   const withholding = (gross * cert.withholdingTaxPercent) / 100;

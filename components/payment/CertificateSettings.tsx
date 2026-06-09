@@ -147,30 +147,6 @@ export default function CertificateSettings({
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>Contingencies %</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.5"
-                value={settings.contingenciesPercent}
-                onChange={(e) => update("contingenciesPercent", parseFloat(e.target.value) || 0)}
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Government Tax %</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.5"
-                value={settings.governmentTaxPercent}
-                onChange={(e) => update("governmentTaxPercent", parseFloat(e.target.value) || 0)}
-                className={inputCls}
-              />
-            </div>
-            <div>
               <label className={labelCls}>Retention %</label>
               <input
                 type="number"

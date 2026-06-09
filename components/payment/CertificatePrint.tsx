@@ -167,8 +167,6 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
         ["Bill", "Description", "BOQ Amount", "Previous Amount", "Current Amount", "Cumulative Amount"],
         ...sheetSummaries.map((row) => [row.billNo, row.name, row.boq, row.previous, row.current, row.total]),
         ["", "Works subtotal", calcs.boqSubTotal, calcs.prevSubTotal, calcs.currSubTotal, calcs.totalSubTotal],
-        ["", "Contingencies", calcs.boq.cont, calcs.prev.cont, calcs.curr.cont, calcs.total.cont],
-        ["", "Government tax", calcs.boq.gov, calcs.prev.gov, calcs.curr.gov, calcs.total.gov],
         ["", "Gross certified", calcs.boq.grand, calcs.prev.grand, calcs.curr.grand, calcs.total.grand],
         ["", "Retention deducted", "", calcs.prev.ret, calcs.curr.ret, calcs.total.ret],
         ["", "Retention released", "", "", calcs.curr.retentionRelease, calcs.curr.retentionRelease],
@@ -359,22 +357,6 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
                     <td className="num">{fmt(calcs.prevSubTotal)}</td>
                     <td className="num">{fmt(calcs.currSubTotal)}</td>
                     <td className="num">{fmt(calcs.totalSubTotal)}</td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td className="desc">Contingencies</td>
-                    <td className="num">{fmt(calcs.boq.cont)}</td>
-                    <td className="num">{fmt(calcs.prev.cont)}</td>
-                    <td className="num">{fmt(calcs.curr.cont)}</td>
-                    <td className="num">{fmt(calcs.total.cont)}</td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td className="desc">Government tax</td>
-                    <td className="num">{fmt(calcs.boq.gov)}</td>
-                    <td className="num">{fmt(calcs.prev.gov)}</td>
-                    <td className="num">{fmt(calcs.curr.gov)}</td>
-                    <td className="num">{fmt(calcs.total.gov)}</td>
                   </tr>
                   <tr className="subtotal">
                     <td />
