@@ -140,6 +140,11 @@ export interface PaymentCertificate {
   advancePaymentAmount?: string;
   advanceRecoveredPrevious?: string;
   advanceRecoveryCurrent?: string;
+  // Advance recovery schedule: recover advancePaymentPercent% of cumulative work
+  // done, starting at this IPC number. advanceRecoverFull sweeps the remaining
+  // balance on the current certificate (capped so the net never goes negative).
+  advanceRecoveryStartIpc?: number;
+  advanceRecoverFull?: boolean;
   retentionReleaseAmount?: string;
   finalAccountNote?: string;
   adjustments?: PaymentAdjustmentLine[];

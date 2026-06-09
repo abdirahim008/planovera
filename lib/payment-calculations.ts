@@ -89,14 +89,9 @@ export const paymentCertificateCalcs = (cert: PaymentCertificate) => {
     : percentAmount(boq.grand, cert.advancePaymentPercent);
   const previousAdvanceRecovered = hasExplicitNumber(cert.advanceRecoveredPrevious)
     ? parsePaymentNumber(cert.advanceRecoveredPrevious)
-    : percentAmount(prev.grand, cert.advancePaymentPercent);
-  const fallbackCurrentAdvance =
-    cert.type === "final"
-      ? Math.max(0, advancePaymentAmount - previousAdvanceRecovered)
-      : percentAmount(curr.grand, cert.advancePaymentPercent);
-  const currentAdvanceRecovery = hasExplicitNumber(cert.advanceRecoveryCurrent)
-    ? parsePaymentNumber(cert.advanceRecoveryCurrent)
-    : fallbackCurrentAdvance;
+    : 0;
+  const outstandingAdvance = Math.max(0, advancePaymentAmount - previousAdvanceRecovered);
+
   const retentionReleaseAmount = hasExplicitNumber(cert.retentionReleaseAmount)
     ? parsePaymentNumber(cert.retentionReleaseAmount)
     : cert.type === "final"
@@ -110,19 +105,52 @@ export const paymentCertificateCalcs = (cert: PaymentCertificate) => {
     .filter((line) => line.type === "deduction")
     .reduce((sum, line) => sum + parsePaymentNumber(line.amount), 0);
 
+  // Net payable this period BEFORE advance recovery. Recovery is capped to this
+  // so an over-large sweep can never push a certificate's net negative.
+  const payableBeforeAdvance =
+    curr.grand + additions + retentionReleaseAmount - curr.ret - curr.wh - deductions;
+
+  // Advance recovery — cumulative method: recover up to (recovery% x cumulative
+  // work done) less what's already been recovered, becoming active once the
+  // certificate reaches the configured start IPC. Precedence: an explicit
+  // "recover full remaining" sweep, then a manual entry, then the cumulative
+  // auto amount (and a legacy final-certificate sweep).
+  const recoveryStartIpc =
+    cert.advanceRecoveryStartIpc && cert.advanceRecoveryStartIpc > 0 ? cert.advanceRecoveryStartIpc : 1;
+  const recoveryActive = (cert.number ?? 1) >= recoveryStartIpc;
+  const cumulativeRecoveryTarget = Math.min(
+    advancePaymentAmount,
+    percentAmount(total.grand, cert.advancePaymentPercent)
+  );
+  const autoCurrentRecovery = recoveryActive
+    ? Math.max(0, cumulativeRecoveryTarget - previousAdvanceRecovered)
+    : 0;
+
+  let currentAdvanceRecovery: number;
+  if (cert.advanceRecoverFull) {
+    currentAdvanceRecovery = outstandingAdvance;
+  } else if (hasExplicitNumber(cert.advanceRecoveryCurrent)) {
+    currentAdvanceRecovery = parsePaymentNumber(cert.advanceRecoveryCurrent);
+  } else if (cert.type === "final") {
+    currentAdvanceRecovery = outstandingAdvance;
+  } else {
+    currentAdvanceRecovery = autoCurrentRecovery;
+  }
+  // Never recover more than is outstanding, nor more than the certificate pays.
+  currentAdvanceRecovery = Math.max(
+    0,
+    Math.min(currentAdvanceRecovery, outstandingAdvance, Math.max(0, payableBeforeAdvance))
+  );
+
   const prevNet = prev.grand - prev.ret - previousAdvanceRecovered - prev.wh;
-  const currNet =
-    curr.grand +
-    additions +
-    retentionReleaseAmount -
-    curr.ret -
-    currentAdvanceRecovery -
-    curr.wh -
-    deductions;
+  const currNet = payableBeforeAdvance - currentAdvanceRecovery;
   const totalNet = prevNet + currNet;
   const advanceRecoveredTotal = previousAdvanceRecovered + currentAdvanceRecovery;
   const advanceBalance = Math.max(0, advancePaymentAmount - advanceRecoveredTotal);
   const retentionHeld = Math.max(0, prev.ret + curr.ret - retentionReleaseAmount);
+  // Share of the contract certified to date — drives the "recover the advance"
+  // warnings as the works approach completion.
+  const completionPercent = boqSubTotal > 0 ? (totalSubTotal / boqSubTotal) * 100 : 0;
   const unresolvedWarnings = allItems.filter(
     (item) => paymentLineState(item).warningStatus === "over-certified"
   ).length;
@@ -152,9 +180,11 @@ export const paymentCertificateCalcs = (cert: PaymentCertificate) => {
     advancePaymentAmount,
     previousAdvanceRecovered,
     currentAdvanceRecovery,
+    outstandingAdvance,
     retentionReleaseAmount,
     additions,
     deductions,
+    completionPercent,
     unresolvedWarnings,
   };
 };

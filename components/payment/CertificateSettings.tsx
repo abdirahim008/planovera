@@ -25,6 +25,7 @@ export default function CertificateSettings({
     governmentTaxPercent: cert.governmentTaxPercent,
     retentionPercent: cert.retentionPercent,
     advancePaymentPercent: cert.advancePaymentPercent,
+    advanceRecoveryStartIpc: cert.advanceRecoveryStartIpc ?? 1,
     withholdingTaxPercent: cert.withholdingTaxPercent,
     advancePaymentAmount: cert.advancePaymentAmount || "0.00",
     advanceRecoveredPrevious: cert.advanceRecoveredPrevious || "0.00",
@@ -52,6 +53,7 @@ export default function CertificateSettings({
       governmentTaxPercent: cert.governmentTaxPercent,
       retentionPercent: cert.retentionPercent,
       advancePaymentPercent: cert.advancePaymentPercent,
+      advanceRecoveryStartIpc: cert.advanceRecoveryStartIpc ?? 1,
       withholdingTaxPercent: cert.withholdingTaxPercent,
       advancePaymentAmount: cert.advancePaymentAmount || "0.00",
       advanceRecoveredPrevious: cert.advanceRecoveredPrevious || "0.00",
@@ -159,7 +161,7 @@ export default function CertificateSettings({
               />
             </div>
             <div>
-              <label className={labelCls}>Default Advance Recovery %</label>
+              <label className={labelCls}>Advance Recovery %</label>
               <input
                 type="number"
                 min="0"
@@ -169,6 +171,19 @@ export default function CertificateSettings({
                 onChange={(e) => update("advancePaymentPercent", parseFloat(e.target.value) || 0)}
                 className={inputCls}
               />
+              <p className="mt-1 text-[11px] text-txt-dim">Applied to cumulative work done each certificate.</p>
+            </div>
+            <div>
+              <label className={labelCls}>Start Recovery at IPC #</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={settings.advanceRecoveryStartIpc}
+                onChange={(e) => update("advanceRecoveryStartIpc", Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className={inputCls}
+              />
+              <p className="mt-1 text-[11px] text-txt-dim">Recovery begins on this certificate number.</p>
             </div>
             <div>
               <label className={labelCls}>Withholding Tax %</label>

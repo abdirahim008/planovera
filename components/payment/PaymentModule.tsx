@@ -609,14 +609,25 @@ export default function PaymentModule() {
               </div>
 
               {activeCert.type !== "final" && (() => {
-                const outstandingBefore = Math.max(
+                const outstandingBefore = activeCalcs.outstandingAdvance;
+                const recoveryPct = activeCert.advancePaymentPercent || 0;
+                // Cumulative proposal: recovery% of cumulative work done, less
+                // what's already recovered, capped to the outstanding advance and
+                // to what this certificate pays (so the net can't go negative).
+                const cumulativeTarget = Math.min(
+                  activeCalcs.advancePaymentAmount,
+                  (activeCalcs.total.grand * recoveryPct) / 100
+                );
+                const payableBeforeAdvance = activeCalcs.curr.net + activeCalcs.currentAdvanceRecovery;
+                const proposed = Math.max(
                   0,
-                  activeCalcs.advancePaymentAmount - activeCalcs.previousAdvanceRecovered
+                  Math.min(cumulativeTarget - activeCalcs.previousAdvanceRecovered, outstandingBefore, payableBeforeAdvance)
                 );
-                const proposed = Math.min(
-                  Math.max(0, (activeCalcs.curr.grand * (activeCert.advancePaymentPercent || 0)) / 100),
-                  outstandingBefore
-                );
+                const completion = activeCalcs.completionPercent;
+                const balanceOutstanding = activeCalcs.total.advanceBalance > 0.5;
+                const hardWarn = balanceOutstanding && completion >= 99;
+                const softWarn = balanceOutstanding && completion >= 90 && completion < 99;
+                const sweepOn = Boolean(activeCert.advanceRecoverFull);
                 return (
                   <div className="rounded-2xl border border-purple-400/30 bg-purple-500/5 p-4">
                     <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -626,6 +637,18 @@ export default function PaymentModule() {
                         <span className="font-mono font-semibold text-purple-300">$ {currency(activeCalcs.total.advanceBalance)}</span>
                       </div>
                     </div>
+
+                    {(hardWarn || softWarn) && (
+                      <div className={`mb-3 flex items-start gap-2 rounded-lg border p-3 text-xs ${hardWarn ? "border-err/40 bg-err/10 text-err" : "border-warn/40 bg-warn/10 text-warn"}`}>
+                        <span className="mt-0.5 font-bold">!</span>
+                        <span>
+                          {hardWarn
+                            ? `Works are ${completion.toFixed(0)}% certified and $ ${currency(activeCalcs.total.advanceBalance)} of advance is still outstanding — recover it on this certificate before only retention remains.`
+                            : `Works are ${completion.toFixed(0)}% certified with $ ${currency(activeCalcs.total.advanceBalance)} advance outstanding — clear it over the remaining certificates while there is still payment to deduct from.`}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                       {[
                         ["Original advance", `$ ${currency(activeCalcs.advancePaymentAmount)}`],
@@ -639,10 +662,23 @@ export default function PaymentModule() {
                         </div>
                       ))}
                     </div>
+
+                    {isEditMode && !activeLocked && (
+                      <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-txt">
+                        <input
+                          type="checkbox"
+                          checked={sweepOn}
+                          onChange={(e) => updateCertSettings(activeCert.id, { advanceRecoverFull: e.target.checked })}
+                          className="h-4 w-4 accent-purple-500"
+                        />
+                        Recover the full remaining advance on this certificate ($ {currency(outstandingBefore)})
+                      </label>
+                    )}
+
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
                       <label className="flex-1">
                         <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Recovery this period</span>
-                        {isEditMode && !activeLocked ? (
+                        {isEditMode && !activeLocked && !sweepOn ? (
                           <input
                             value={activeCert.advanceRecoveryCurrent ?? ""}
                             onChange={(e) => updateCertSettings(activeCert.id, { advanceRecoveryCurrent: e.target.value })}
@@ -653,19 +689,20 @@ export default function PaymentModule() {
                           <div className="font-mono font-semibold text-purple-300">$ {currency(activeCalcs.currentAdvanceRecovery)}</div>
                         )}
                       </label>
-                      {isEditMode && !activeLocked && (
+                      {isEditMode && !activeLocked && !sweepOn && (
                         <Button
                           size="sm"
                           variant="default"
                           onClick={() => updateCertSettings(activeCert.id, { advanceRecoveryCurrent: proposed.toFixed(2) })}
                         >
-                          Propose {activeCert.advancePaymentPercent || 0}% proportional
+                          Propose {recoveryPct}% of cumulative
                         </Button>
                       )}
                     </div>
                     <div className="mt-2 text-[11px] text-txt-dim">
-                      Proposed = {activeCert.advancePaymentPercent || 0}% of this period&apos;s gross valuation
-                      (${currency(activeCalcs.curr.grand)}), capped at the outstanding advance.
+                      {sweepOn
+                        ? "Recovering the full remaining advance this certificate (capped so the net stays positive)."
+                        : `Proposed = ${recoveryPct}% of cumulative work done ($ ${currency(activeCalcs.total.grand)}) less already recovered, capped at the outstanding advance and this certificate's payable.`}
                     </div>
                   </div>
                 );

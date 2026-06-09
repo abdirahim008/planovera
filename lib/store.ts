@@ -2973,7 +2973,11 @@ export const useAppStore = create<AppState>()(
             withholdingTaxPercent,
             advancePaymentAmount,
             advanceRecoveredPrevious,
-            advanceRecoveryCurrent: type === "final" ? remainingAdvance.toFixed(2) : "0.00",
+            advanceRecoveryStartIpc: prevCert?.advanceRecoveryStartIpc ?? 1,
+            advanceRecoverFull: false,
+            // Empty (not "0.00") so interim certs use the cumulative auto method;
+            // a final certificate still sweeps whatever remains.
+            advanceRecoveryCurrent: type === "final" ? remainingAdvance.toFixed(2) : "",
             retentionReleaseAmount: type === "final" && previousCalcs ? previousCalcs.total.retentionHeld.toFixed(2) : "0.00",
             finalAccountNote: type === "final" ? "Final account prepared from latest approved IPC and BOQ valuation." : "",
             adjustments: [],
