@@ -542,7 +542,7 @@ export default function PaymentModule() {
               }`}
               onClick={() => setActiveSheetIdx(-1)}
             >
-              Review & Deductions
+              IPC Summary Page
             </button>
             {activeCert.sheets.map((sheet, index) => (
               <button
@@ -559,7 +559,9 @@ export default function PaymentModule() {
 
           {activeSheetIdx === -1 && (
             <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {/* Headline figures duplicate the header card + breakdown table, so
+                  they're hidden on mobile to keep the certificate view clean. */}
+              <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
                 {[
                   { label: "1. Valuation this period", value: activeCalcs.curr.grand, color: "accent" },
                   { label: "2. Retention held", value: activeCalcs.total.retentionHeld, color: "err" },
@@ -574,10 +576,10 @@ export default function PaymentModule() {
               </div>
 
               <div className="data-table-shell overflow-auto">
-                <table className="data-table" style={{ minWidth: 940 }}>
+                <table className="data-table" style={{ minWidth: 460 }}>
                   <thead>
                     <tr>
-                      <th>Description</th>
+                      <th className="w-[132px]">Description</th>
                       <th className="text-right">Previous</th>
                       <th className="text-right">Current</th>
                       <th className="text-right">Cumulative</th>
@@ -649,19 +651,36 @@ export default function PaymentModule() {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                      {[
+                    {(() => {
+                      const advRows: Array<[string, string]> = [
                         ["Original advance", `$ ${currency(activeCalcs.advancePaymentAmount)}`],
                         ["Previously recovered", `$ ${currency(activeCalcs.previousAdvanceRecovered)}`],
                         ["Recovered to date", `$ ${currency(activeCalcs.total.advance)}`],
                         ["Outstanding before this", `$ ${currency(outstandingBefore)}`],
-                      ].map(([label, value]) => (
-                        <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
-                          <div className="mt-1 font-mono font-semibold text-txt">{value}</div>
-                        </div>
-                      ))}
-                    </div>
+                      ];
+                      return (
+                        <>
+                          {/* Mobile: tight label/value list instead of four cards. */}
+                          <div className="divide-y divide-border rounded-xl border border-border bg-bg-raised/50 sm:hidden">
+                            {advRows.map(([label, value]) => (
+                              <div key={label} className="flex items-center justify-between gap-3 px-3 py-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-txt-dim">{label}</span>
+                                <span className="font-mono text-sm font-semibold text-txt">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Desktop: card grid. */}
+                          <div className="hidden gap-2 text-xs sm:grid sm:grid-cols-4">
+                            {advRows.map(([label, value]) => (
+                              <div key={label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{label}</div>
+                                <div className="mt-1 font-mono font-semibold text-txt">{value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     {isEditMode && !activeLocked && (
                       <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-txt">
