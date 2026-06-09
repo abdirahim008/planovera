@@ -186,6 +186,9 @@ export default function PaymentModule() {
   // Which section's columns the narrow (mobile) IPC table shows; Description +
   // BOQ Qty + Rate stay pinned, this toggles the trailing numeric columns.
   const [mobileCertSection, setMobileCertSection] = useState<"previous" | "current" | "cumulative">("current");
+  // Advance-recovery panel is collapsed by default so it doesn't dominate the
+  // certificate view; the user expands it when they need to set recovery.
+  const [advanceOpen, setAdvanceOpen] = useState(false);
 
   const projectCerts = useMemo(
     () =>
@@ -632,16 +635,22 @@ export default function PaymentModule() {
                 const sweepOn = Boolean(activeCert.advanceRecoverFull);
                 return (
                   <div className="rounded-2xl border border-purple-400/30 bg-purple-500/5 p-4">
-                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Advance recovery</div>
-                      <div className="text-xs text-txt-muted">
-                        Balance after this certificate:{" "}
+                    <button
+                      type="button"
+                      onClick={() => setAdvanceOpen((v) => !v)}
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                      aria-expanded={advanceOpen}
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Advance recovery</span>
+                      <span className="flex items-center gap-2 text-xs text-txt-muted">
+                        Balance:{" "}
                         <span className="font-mono font-semibold text-purple-300">$ {currency(activeCalcs.total.advanceBalance)}</span>
-                      </div>
-                    </div>
+                        <ChevronDown size={16} className={`shrink-0 transition-transform ${advanceOpen ? "rotate-180" : ""}`} />
+                      </span>
+                    </button>
 
                     {(hardWarn || softWarn) && (
-                      <div className={`mb-3 flex items-start gap-2 rounded-lg border p-3 text-xs ${hardWarn ? "border-err/40 bg-err/10 text-err" : "border-warn/40 bg-warn/10 text-warn"}`}>
+                      <div className={`mt-3 flex items-start gap-2 rounded-lg border p-3 text-xs ${hardWarn ? "border-err/40 bg-err/10 text-err" : "border-warn/40 bg-warn/10 text-warn"}`}>
                         <span className="mt-0.5 font-bold">!</span>
                         <span>
                           {hardWarn
@@ -650,6 +659,8 @@ export default function PaymentModule() {
                         </span>
                       </div>
                     )}
+
+                    {advanceOpen && (<div className="mt-3 space-y-3">
 
                     {(() => {
                       const advRows: Array<[string, string]> = [
@@ -723,6 +734,8 @@ export default function PaymentModule() {
                         ? "Recovering the full remaining advance this certificate (capped so the net stays positive)."
                         : `Proposed = ${recoveryPct}% of cumulative work done ($ ${currency(activeCalcs.total.grand)}) less already recovered, capped at the outstanding advance and this certificate's payable.`}
                     </div>
+
+                    </div>)}
                   </div>
                 );
               })()}
