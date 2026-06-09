@@ -1,4 +1,6 @@
 import Image from "next/image";
+
+import LandingSignOut from "@/components/auth/LandingSignOut";
 import {
   ArrowRight,
   CheckCircle2,
@@ -65,7 +67,12 @@ const valueProps = [
   },
 ];
 
-export default function LandingPage() {
+export default function LandingPage({ authenticated = false }: { authenticated?: boolean }) {
+  // When the visitor already has a live session, point every call-to-action at
+  // the workspace instead of bouncing through /login (which would just redirect
+  // back to the dashboard). Logged-out visitors get the real sign-in / sign-up.
+  const enterHref = authenticated ? "/workspace" : "/login";
+  const signupHref = authenticated ? "/workspace" : "/login?mode=signup";
   return (
     <main className="relative min-h-screen overflow-hidden bg-bg text-txt">
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(37,99,235,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.05)_1px,transparent_1px)] bg-[size:64px_64px]" />
@@ -93,18 +100,32 @@ export default function LandingPage() {
           </a>
 
           <nav className="flex items-center gap-3">
-            <a
-              href="/login"
-              className="rounded-2xl border border-border bg-bg-surface px-5 py-3 text-sm font-semibold text-txt transition hover:border-accent/50 hover:bg-bg-hover"
-            >
-              Sign in
-            </a>
-            <a
-              href="/login?mode=signup"
-              className="rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-400"
-            >
-              Create account
-            </a>
+            {authenticated ? (
+              <>
+                <LandingSignOut className="rounded-2xl border border-border bg-bg-surface px-5 py-3 text-sm font-semibold text-txt transition hover:border-accent/50 hover:bg-bg-hover disabled:opacity-60" />
+                <a
+                  href="/workspace"
+                  className="rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-400"
+                >
+                  Go to workspace
+                </a>
+              </>
+            ) : (
+              <>
+                <a
+                  href={enterHref}
+                  className="rounded-2xl border border-border bg-bg-surface px-5 py-3 text-sm font-semibold text-txt transition hover:border-accent/50 hover:bg-bg-hover"
+                >
+                  Sign in
+                </a>
+                <a
+                  href={signupHref}
+                  className="rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-400"
+                >
+                  Create account
+                </a>
+              </>
+            )}
           </nav>
         </header>
 
@@ -129,14 +150,14 @@ export default function LandingPage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <a
-                href="/login?mode=signup"
+                href={signupHref}
                 className="inline-flex items-center gap-2 rounded-2xl bg-blue-500 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-blue-500/25 transition hover:bg-blue-400"
               >
                 Start with Planovera
                 <ArrowRight size={16} />
               </a>
               <a
-                href="/login"
+                href={enterHref}
                 className="rounded-2xl border border-border bg-bg-surface px-6 py-3.5 text-sm font-semibold text-txt transition hover:border-accent/40 hover:bg-bg-hover"
               >
                 Open workspace
@@ -243,14 +264,14 @@ export default function LandingPage() {
               </p>
               <div className="mt-8 flex flex-wrap justify-center gap-3">
                 <a
-                  href="/login?mode=signup"
+                  href={signupHref}
                   className="inline-flex items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-sm font-semibold text-slate-900 shadow-xl shadow-black/20 transition hover:bg-blue-50"
                 >
                   Create account
                   <ArrowRight size={16} />
                 </a>
                 <a
-                  href="/login"
+                  href={enterHref}
                   className="rounded-2xl border border-white/20 bg-white/5 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
                   Open workspace
@@ -276,7 +297,7 @@ export default function LandingPage() {
           <p className="text-[13px] text-txt-dim">
             &copy; {new Date().getFullYear()} Planovera. Project controls for delivery teams.
           </p>
-          <a href="/login" className="text-[13px] font-semibold text-accent transition hover:text-accent-hover">
+          <a href={enterHref} className="text-[13px] font-semibold text-accent transition hover:text-accent-hover">
             Sign in
           </a>
         </footer>
