@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import { Layers3 } from "lucide-react";
 import type { TitleBlockData } from "@/lib/drawings/fabricHelpers";
 import { PATTERNS, PatternType } from "@/lib/drawings/patterns";
+import { TITLE_BLOCK_TEMPLATES } from "@/lib/drawings/titleBlocks";
 import {
   ADMIN_SVG_TEMPLATES,
   DETAIL_BLOCKS,
@@ -93,6 +94,99 @@ interface LeftPanelProps {
 
 export type DrawingPanelTab = "library" | "properties" | "details" | "projects" | "admin";
 
+// Rasterized thumbnails are cached across renders so scrolling the library back
+// and forth never re-rasterizes the same drawing.
+const thumbnailCache = new Map<string, string>();
+
+/**
+ * Library card thumbnail. Imported CAD drawings can be large SVGs (hundreds of
+ * KB each); rendering all of them inline as data-URI <img>s makes the library
+ * panel heavy. This defers work until the card scrolls into view, then
+ * rasterizes the SVG once to a small PNG and caches it — so the DOM only ever
+ * holds tiny thumbnails for the cards you actually look at.
+ */
+function LibraryThumbnail({ id, svg, alt }: { id: string; svg: string; alt: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<string | null>(() => thumbnailCache.get(id) ?? null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (thumb) return;
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "250px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [thumb]);
+
+  useEffect(() => {
+    if (!visible || thumb) return;
+    let cancelled = false;
+    const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const maxW = 260;
+      const natW = img.naturalWidth || maxW;
+      const natH = img.naturalHeight || maxW;
+      const scale = Math.min(1, maxW / natW);
+      const w = Math.max(1, Math.round(natW * scale));
+      const h = Math.max(1, Math.round(natH * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setThumb(url);
+        return;
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      let out = url;
+      try {
+        out = canvas.toDataURL("image/png");
+      } catch {
+        out = url;
+      }
+      thumbnailCache.set(id, out);
+      setThumb(out);
+    };
+    img.onerror = () => {
+      if (!cancelled) setThumb(url);
+    };
+    img.src = url;
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, thumb, svg, id]);
+
+  return (
+    <div
+      ref={ref}
+      className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5"
+    >
+      {thumb ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={thumb} alt={alt} className="max-h-full max-w-full" />
+      ) : (
+        <div className="h-full w-full animate-pulse rounded-lg bg-slate-50" />
+      )}
+    </div>
+  );
+}
+
 export default function LeftPanel({
   layout = "top",
   activeTray,
@@ -165,6 +259,8 @@ export default function LeftPanel({
   const [svgUploadName, setSvgUploadName] = useState("");
   const [svgUploadError, setSvgUploadError] = useState<string | null>(null);
   const svgFileInputRef = useRef<HTMLInputElement | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const [savedLogos, setSavedLogos] = useState<Array<{ id: string; dataUrl: string }>>([]);
   const [beamWidth, setBeamWidth] = useState(400);
   const [beamDepth, setBeamDepth] = useState(400);
   const [beamTopBars, setBeamTopBars] = useState(2);
@@ -249,6 +345,34 @@ export default function LeftPanel({
     key: K,
     value: TitleBlockData[K],
   ) => setTitleBlockData({ ...titleBlockData, [key]: value });
+
+  // Logos the user has uploaded before, so they can re-use one across sheets.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("drawflow-logos");
+      if (raw) setSavedLogos(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleLogoFile = (file?: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUrl) return;
+      updateTitleBlock("logoDataUrl", dataUrl);
+      const next = [{ id: `logo-${Date.now()}`, dataUrl }, ...savedLogos.filter((l) => l.dataUrl !== dataUrl)].slice(0, 8);
+      setSavedLogos(next);
+      try {
+        window.localStorage.setItem("drawflow-logos", JSON.stringify(next));
+      } catch {
+        /* over-quota: keep it in memory only */
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const setNumber = (setter: (value: number) => void) => (value: string) => {
     setter(Number(value) || 0);
@@ -1003,13 +1127,92 @@ export default function LeftPanel({
               </div>
             </div>
 
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+            <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Sheet and title block</h3>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Drawing metadata used in exports and title blocks.
+                  Pick a title block style, add a logo, then apply it to the current sheet.
                 </p>
               </div>
+
+              <div>
+                <label className="label">Title block style</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {TITLE_BLOCK_TEMPLATES.map((tpl) => {
+                    const active = (titleBlockData.template ?? "minimal") === tpl.id;
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        title={tpl.description}
+                        onClick={() => updateTitleBlock("template", tpl.id)}
+                        className={`rounded-xl border p-1.5 text-left transition ${active ? "border-sky-500 ring-2 ring-sky-200" : "border-slate-200 hover:border-slate-300"}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`data:image/svg+xml;utf8,${encodeURIComponent(tpl.thumbnail)}`}
+                          alt={tpl.label}
+                          className="aspect-[120/84] w-full rounded-md border border-slate-100 bg-white object-contain"
+                        />
+                        <div className="mt-1 truncate text-[11px] font-semibold text-slate-700">{tpl.label}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Logo</label>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-14 w-20 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    {titleBlockData.logoDataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={titleBlockData.logoDataUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <span className="text-[10px] text-slate-400">No logo</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-start gap-1.5">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        handleLogoFile(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                    <button type="button" className="btn" onClick={() => logoInputRef.current?.click()}>
+                      Upload logo
+                    </button>
+                    {titleBlockData.logoDataUrl ? (
+                      <button type="button" className="text-[11px] text-slate-500 transition hover:text-red-500" onClick={() => updateTitleBlock("logoDataUrl", "")}>
+                        Remove logo
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {savedLogos.length > 0 ? (
+                  <div className="mt-2">
+                    <div className="mb-1 text-[11px] text-slate-500">Saved logos</div>
+                    <div className="flex flex-wrap gap-2">
+                      {savedLogos.map((logo) => (
+                        <button
+                          key={logo.id}
+                          type="button"
+                          onClick={() => updateTitleBlock("logoDataUrl", logo.dataUrl)}
+                          className={`h-10 w-14 overflow-hidden rounded-md border bg-white p-0.5 ${titleBlockData.logoDataUrl === logo.dataUrl ? "border-sky-500" : "border-slate-200 hover:border-slate-300"}`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={logo.dataUrl} alt="Saved logo" className="h-full w-full object-contain" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <div>
                 <label className="label">Drawing title</label>
                 <input className="input" value={titleBlockData.drawingTitle} onChange={(event) => updateTitleBlock("drawingTitle", event.target.value)} />
@@ -1024,6 +1227,51 @@ export default function LeftPanel({
                   <input className="input" value={titleBlockData.revision} onChange={(event) => updateTitleBlock("revision", event.target.value)} />
                 </div>
               </div>
+
+              {(titleBlockData.template ?? "minimal") !== "minimal" ? (
+                <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Bordered template details</div>
+                  <div>
+                    <label className="label">Client</label>
+                    <input className="input" value={titleBlockData.client} onChange={(event) => updateTitleBlock("client", event.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label">Consultant</label>
+                    <input className="input" value={titleBlockData.consultant ?? ""} onChange={(event) => updateTitleBlock("consultant", event.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label">Project description</label>
+                    <textarea className="input min-h-[56px] resize-y" value={titleBlockData.projectDescription ?? ""} onChange={(event) => updateTitleBlock("projectDescription", event.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Designed by</label>
+                      <input className="input" value={titleBlockData.designedBy ?? ""} onChange={(event) => updateTitleBlock("designedBy", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label">Drawn by</label>
+                      <input className="input" value={titleBlockData.drawnBy} onChange={(event) => updateTitleBlock("drawnBy", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label">Checked by</label>
+                      <input className="input" value={titleBlockData.checkedBy} onChange={(event) => updateTitleBlock("checkedBy", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label">Approved by</label>
+                      <input className="input" value={titleBlockData.approvedBy ?? ""} onChange={(event) => updateTitleBlock("approvedBy", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label">Job no.</label>
+                      <input className="input" value={titleBlockData.jobNo ?? ""} onChange={(event) => updateTitleBlock("jobNo", event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label">Status</label>
+                      <input className="input" value={titleBlockData.status ?? ""} onChange={(event) => updateTitleBlock("status", event.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-2 gap-2">
                 <button className="btn btn-primary" onClick={onApplyTitleBlock}>
                   Apply title block
@@ -1183,15 +1431,7 @@ export default function LeftPanel({
                         Insert
                       </button>
                     </div>
-                    <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`data:image/svg+xml;utf8,${encodeURIComponent(item.svg)}`}
-                        alt={item.name}
-                        className="max-h-full max-w-full"
-                        loading="lazy"
-                      />
-                    </div>
+                    <LibraryThumbnail id={item.id} svg={item.svg} alt={item.name} />
                     <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {item.tags.map((tag) => (

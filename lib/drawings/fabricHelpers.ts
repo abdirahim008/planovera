@@ -5,16 +5,11 @@
 import type * as FabricNS from "fabric";
 import { jsPDF } from "jspdf";
 import type { PaperSizeKey, Orientation } from "./paper";
+import { TITLE_BLOCK_KEY, TB_FIELD_KEY, buildTitleBlock } from "./titleBlocks";
 
 type FabricMod = typeof FabricNS;
 type FabricCanvas = FabricNS.Canvas;
 type FabricObject = FabricNS.FabricObject;
-
-// -----------------------------------------------------------------
-// Custom flag we stamp on the title-block group so we can find/replace it.
-// -----------------------------------------------------------------
-const TITLE_BLOCK_KEY = "__isTitleBlock";
-const TB_FIELD_KEY    = "__tbField";
 
 export async function createSvgObject(
   fabric: FabricMod,
@@ -109,131 +104,28 @@ export interface TitleBlockData {
   drawnBy: string;
   checkedBy: string;
   sheet: string;
+  // Optional fields used by the richer bordered templates. Older saved pages
+  // simply omit them and fall back to the minimal block.
+  template?: "minimal" | "block" | "strip";
+  logoDataUrl?: string;
+  designedBy?: string;
+  approvedBy?: string;
+  jobNo?: string;
+  status?: string;
+  consultant?: string;
+  projectDescription?: string;
 }
 
-// Remove any existing title block.
-function removeExistingTitleBlock(canvas: FabricCanvas): void {
-  const existing = canvas
-    .getObjects()
-    .filter((o) => (o as any)[TITLE_BLOCK_KEY] === true);
-  existing.forEach((o) => canvas.remove(o));
-}
-
-// -----------------------------------------------------------------
-// Build an AutoCAD-style title block in the bottom-right corner.
-// `paperWidth` / `paperHeight` are in canvas pixels.
-// -----------------------------------------------------------------
-export function createOrUpdateTitleBlock(
+// Build the selected title-block template (and page border, for the bordered
+// templates) onto the canvas. Delegates to lib/drawings/titleBlocks.ts.
+export async function createOrUpdateTitleBlock(
   fabric: FabricMod,
   canvas: FabricCanvas,
   data: TitleBlockData,
   paperWidth: number,
-  paperHeight: number
-): void {
-  removeExistingTitleBlock(canvas);
-
-  // Tune these to taste — they're in canvas pixels (1 px ≈ 0.2645 mm at 96 DPI).
-  const TB_W = Math.min(Math.max(paperWidth * 0.30, 260), 520);
-  const TB_H = 130;
-  const PADDING = 24;
-
-  const x = paperWidth  - TB_W - PADDING;
-  const y = paperHeight - TB_H - PADDING;
-
-  const stroke = "#000000";
-  const thin = 0.8;
-  const thick = 1.5;
-
-  // Outer rectangle
-  const rect = new fabric.Rect({
-    left: 0, top: 0, width: TB_W, height: TB_H,
-    fill: "#ffffff", stroke, strokeWidth: thick,
-  });
-
-  // Row separators (y positions in local coords)
-  const row1 = 24;      // between project / drawing
-  const row2 = 50;      // between drawing / details
-  const row3 = 78;      // details header row
-  const row4 = 104;     // second details row
-  const colMid = TB_W * 0.55;
-  const colR   = TB_W * 0.78;
-
-  const lines: FabricObject[] = [
-    new fabric.Line([0, row1, TB_W, row1],      { stroke, strokeWidth: thin }),
-    new fabric.Line([0, row2, TB_W, row2],      { stroke, strokeWidth: thin }),
-    new fabric.Line([0, row3, TB_W, row3],      { stroke, strokeWidth: thin }),
-    new fabric.Line([0, row4, TB_W, row4],      { stroke, strokeWidth: thin }),
-    new fabric.Line([colMid, row2, colMid, TB_H], { stroke, strokeWidth: thin }),
-    new fabric.Line([colR,   row2, colR,   TB_H], { stroke, strokeWidth: thin }),
-  ];
-
-  const mkText = (
-    text: string,
-    lx: number, ly: number,
-    size: number, bold = false,
-    color = "#111",
-    fieldName?: keyof TitleBlockData
-  ) =>
-    new fabric.Textbox(text, {
-      left: lx, top: ly,
-      width: TB_W - lx - 4,
-      fontSize: size,
-      fontFamily: "Arial",
-      fontWeight: bold ? "bold" : "normal",
-      fill: color,
-      editable: !!fieldName,
-      splitByGrapheme: false,
-      [TB_FIELD_KEY]: fieldName,
-    } as any);
-
-  const texts: FabricObject[] = [
-    // Row 0 — project
-    mkText("PROJECT",       4, 3, 7, true, "#666"),
-    mkText(data.projectTitle || "—", 4, 11, 11, true, "#111", "projectTitle"),
-
-    // Row 1 — drawing title
-    mkText("DRAWING TITLE", 4, row1 + 3, 7, true, "#666"),
-    mkText(data.drawingTitle || "—", 4, row1 + 11, 10, true, "#111", "drawingTitle"),
-
-    // Row 2 — client
-    mkText("CLIENT",        4, row2 + 3, 7, true, "#666"),
-    mkText(data.client || "—", 4, row2 + 11, 9, false, "#111", "client"),
-
-    // Row 3 — labels
-    mkText("DRAWING No.",   4, row3 + 3, 7, true, "#666"),
-    mkText("SCALE",         colMid + 4, row3 + 3, 7, true, "#666"),
-    mkText("DATE",          colR   + 4, row3 + 3, 7, true, "#666"),
-    mkText(data.drawingNo || "—", 4, row3 + 11, 9, false, "#111", "drawingNo"),
-    mkText(data.scale     || "—", colMid + 4, row3 + 11, 9, false, "#111", "scale"),
-    mkText(data.date      || "—", colR   + 4, row3 + 11, 9, false, "#111", "date"),
-
-    // Row 4 — drawn / checked / sheet + rev
-    mkText("DRAWN BY",      4, row4 + 3, 7, true, "#666"),
-    mkText("CHECKED",       colMid + 4, row4 + 3, 7, true, "#666"),
-    mkText("SHEET / REV",   colR   + 4, row4 + 3, 7, true, "#666"),
-    mkText(data.drawnBy   || "—", 4, row4 + 11, 9, false, "#111", "drawnBy"),
-    mkText(data.checkedBy || "—", colMid + 4, row4 + 11, 9, false, "#111", "checkedBy"),
-    mkText(
-      data.sheet || "1 of 1",
-      colR + 4, row4 + 11, 9, true, "#111", "sheet"
-    ),
-  ];
-
-  const group = new fabric.Group([rect, ...lines, ...texts], {
-    left: x, top: y,
-    selectable: true,
-    subTargetCheck: false,
-    lockRotation: true,
-  });
-
-  // Tag it so we can find/replace later.
-  (group as any)[TITLE_BLOCK_KEY] = true;
-  group.set({ [TITLE_BLOCK_KEY]: true } as any);
-
-  canvas.add(group);
-  // Put it on top so it's always visible
-  canvas.bringObjectToFront(group);
-  canvas.requestRenderAll();
+  paperHeight: number,
+): Promise<void> {
+  await buildTitleBlock(fabric, canvas, data, paperWidth, paperHeight);
 }
 
 export interface Page {

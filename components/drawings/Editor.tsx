@@ -2025,11 +2025,11 @@ export default function Editor({
     setZoom(Math.max(0.12, +fit.toFixed(2)));
   }, [currentPage]);
 
-  const handleApplyTitleBlock = useCallback(() => {
+  const handleApplyTitleBlock = useCallback(async () => {
     const canvas = fabricRef.current;
     if (!canvas || !fabricMod || !currentPage) return;
     const { width, height } = getPaperDimensions(currentPage.paperSize, currentPage.orientation);
-    createOrUpdateTitleBlock(fabricMod, canvas, currentPage.titleBlockData, width, height);
+    await createOrUpdateTitleBlock(fabricMod, canvas, currentPage.titleBlockData, width, height);
     commitHistory();
     setMessage("Title block applied to the current sheet.");
   }, [commitHistory, currentPage, fabricMod, setMessage]);
