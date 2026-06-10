@@ -1,5 +1,6 @@
 "use client";
 
+// Drawing studio left panel: library browser, parametric editors, tools, admin publishing.
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Layers3 } from "lucide-react";
 import type { TitleBlockData } from "@/lib/drawings/fabricHelpers";
@@ -24,9 +25,11 @@ import {
   ParametricBlockState,
   StoreyMode,
   StructuralView,
+  TEMPLATE_REGISTRY,
   WallOpeningParams,
   getDefaultParametricParams,
   normalizeParametricParams,
+  type TemplateParamValues,
 } from "@/lib/drawings/parametricBlocks";
 
 type LineStyle = "solid" | "dashed";
@@ -85,6 +88,7 @@ interface LeftPanelProps {
     description: string;
     tags: string[];
   }) => void;
+  onDeleteLibraryItem: (item: LibraryItem) => void;
 }
 
 export type DrawingPanelTab = "library" | "properties" | "details" | "projects" | "admin";
@@ -123,6 +127,7 @@ export default function LeftPanel({
   onDeleteProject,
   onPublishRawSvg,
   onPublishCanvasToLibrary,
+  onDeleteLibraryItem,
 }: LeftPanelProps) {
   const isAdmin = session.role === "admin";
   const tabs: Array<{ id: DrawingPanelTab; label: string; short: string }> = [
@@ -232,6 +237,11 @@ export default function LeftPanel({
 
   const handleInsertLibraryItem = (item: LibraryItem) => {
     onRecordLibraryUse(item.id);
+    if (item.parametricKind) {
+      // Insert as an editable parametric block so dimensions can be changed.
+      onAddParametricBlock(item.parametricKind, item.parametricParams as Partial<ParametricBlockParams>);
+      return;
+    }
     onAddSvg(item.svg);
   };
 
@@ -404,8 +414,73 @@ export default function LeftPanel({
   const activeTabLabel = tabs.find((item) => item.id === activeTrayValue)?.label ?? "Drawing tools";
   const isSideLayout = layout === "side";
 
+  const updateTemplateDraft = (key: string, value: number | string) => {
+    if (!selectedParametricBlock) return;
+    setParametricDraft((current) => ({
+      ...((current ?? selectedParametricBlock.params) as TemplateParamValues),
+      [key]: value,
+    }));
+  };
+
   const renderParametricEditor = () => {
     if (!selectedParametricBlock || !parametricDraft) return null;
+
+    // Registry templates: editor UI generated from the parameter schema.
+    const template = TEMPLATE_REGISTRY[selectedParametricBlock.kind];
+    if (template) {
+      const draft = parametricDraft as TemplateParamValues;
+      return (
+        <div className="space-y-3 rounded-3xl border border-sky-200 bg-sky-50/60 p-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Parametric block</p>
+            <h3 className="mt-1 text-sm font-semibold text-slate-950">{template.label}</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Edit the dimensions and click apply — the drawing regenerates with correct annotations.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {template.params.map((def) =>
+              def.type === "number" ? (
+                <div key={def.key}>
+                  <label className="label">
+                    {def.label}
+                    {def.unit ? ` (${def.unit})` : ""}
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={def.min}
+                    max={def.max}
+                    step={def.step ?? (def.integer ? 1 : undefined)}
+                    value={String(draft[def.key] ?? def.default)}
+                    onChange={(event) => updateTemplateDraft(def.key, event.target.value)}
+                  />
+                </div>
+              ) : (
+                <div key={def.key}>
+                  <label className="label">{def.label}</label>
+                  <select
+                    className="input"
+                    value={String(draft[def.key] ?? def.default)}
+                    onChange={(event) => updateTemplateDraft(def.key, event.target.value)}
+                  >
+                    {def.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ),
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button className="btn btn-primary" onClick={applyParametricDraft}>Apply changes</button>
+            <button className="btn" onClick={resetParametricDraft}>Reset to default</button>
+          </div>
+        </div>
+      );
+    }
 
     if (selectedParametricBlock.kind === "beam-detail") {
       const draft = parametricDraft as BeamDetailParams;
@@ -1050,10 +1125,24 @@ export default function LeftPanel({
                               ? "Shared admin library"
                               : "System starter"}
                         </div>
+                        {item.parametricKind ? (
+                          <div className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                            Editable dimensions
+                          </div>
+                        ) : null}
                       </div>
                       <button className="btn btn-primary shrink-0" onClick={() => handleInsertLibraryItem(item)}>
                         Insert
                       </button>
+                    </div>
+                    <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`data:image/svg+xml;utf8,${encodeURIComponent(item.svg)}`}
+                        alt={item.name}
+                        className="max-h-full max-w-full"
+                        loading="lazy"
+                      />
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -1449,6 +1538,23 @@ export default function LeftPanel({
                 />
               </div>
 
+              {svgText.trim().includes("<svg") ? (
+                <div>
+                  <label className="label">Live preview</label>
+                  <div className="flex h-44 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`}
+                      alt="SVG preview"
+                      className="max-h-full max-w-full"
+                      onError={(event) => {
+                        (event.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-2 gap-2">
                 <button className="btn btn-primary" onClick={() => svgText.trim() && onAddSvg(svgText)}>
                   Insert SVG
@@ -1680,7 +1786,7 @@ export default function LeftPanel({
                   <div className={`mt-3 text-xs ${activeProjectId === project.id ? "text-slate-300" : "text-slate-500"}`}>
                     Last saved {new Date(project.updatedAt).toLocaleString()}
                   </div>
-                  <button
+                    <button
                     className={`btn btn-danger mt-3 ${activeProjectId === project.id ? "!border-red-300/30 !bg-red-500/15 !text-red-100" : ""}`}
                     onClick={() => onDeleteProject(project.id)}
                   >
@@ -1749,6 +1855,30 @@ export default function LeftPanel({
                 />
               </div>
 
+              {svgText.trim().includes("<svg") ? (
+                <div>
+                  <label className="label">Publish preview</label>
+                  <div className="flex h-44 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`}
+                      alt="Publish preview"
+                      className="max-h-full max-w-full"
+                      onError={(event) => {
+                        (event.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    This is what engineers will see in the shared library. Paste SVG in the Tools tab to change it.
+                  </p>
+                </div>
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
+                  No SVG draft loaded. Paste or upload SVG markup in the Tools tab — a live preview will appear here before you publish.
+                </p>
+              )}
+
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   className="btn btn-primary"
@@ -1787,6 +1917,49 @@ export default function LeftPanel({
                 >
                   Reset publish form
                 </button>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Manage published items</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Load an item back into the publish form to revise it, or remove it from the library. Built-in system parts cannot be removed.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {libraryItems.filter((item) => item.source !== "seed").map((item) => (
+                  <div key={`manage-${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                      <div className="truncate text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                        {item.category} · {item.source === "admin" ? "Shared" : "Personal"}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setSvgText(item.svg);
+                          setPublishName(item.name);
+                          setPublishCategory(item.category);
+                          setPublishDescription(item.description);
+                          setPublishTags(item.tags.join(", "));
+                        }}
+                      >
+                        Load
+                      </button>
+                      <button className="btn btn-danger" onClick={() => onDeleteLibraryItem(item)}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {libraryItems.every((item) => item.source === "seed") ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-xs text-slate-500">
+                    No admin or personal items published yet.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 "use client";
+// Drawing studio editor: Fabric.js canvas, parametric blocks, library, persistence.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as FabricNS from "fabric";
@@ -56,6 +57,7 @@ import {
   getDefaultParametricParams,
   normalizeParametricParams,
 } from "@/lib/drawings/parametricBlocks";
+import { sanitizeSvgMarkup } from "@/lib/drawings/svgSanitize";
 import { useAppStore } from "@/lib/store";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 
@@ -1674,7 +1676,7 @@ export default function Editor({
       }
 
       try {
-        await addSvgToCanvas(fabricMod, canvas, svg);
+        await addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg));
         commitHistory();
         setMessage("SVG block inserted on the canvas.");
       } catch (error) {
@@ -2412,9 +2414,33 @@ export default function Editor({
       svg: string;
     }) => {
       const supabase = getSupabaseBrowserClient();
-      if (!supabase || session?.role !== "admin") return;
       if (!payload.svg.trim()) {
         setMessage("Paste or generate SVG code before publishing.");
+        return;
+      }
+      const cleanSvg = sanitizeSvgMarkup(payload.svg);
+
+      // Demo mode / no Supabase: publish into the local shared library.
+      if (!supabase) {
+        const item = createLibraryItem({
+          name: payload.name.trim() || "Published Drawing",
+          category: payload.category,
+          description: payload.description.trim() || "Admin-published SVG drawing.",
+          tags: payload.tags.length > 0 ? payload.tags : parseTags(payload.name),
+          svg: cleanSvg,
+          source: "admin",
+          assetType: "object",
+          author: session?.name || "Demo Admin",
+        });
+        const nextItems = mergeLibraryItems([item, ...libraryItems.filter((entry) => entry.id !== item.id)]);
+        setLibraryItems(nextItems);
+        persistLibraryItems(nextItems);
+        setMessage(`Published "${item.name}" to the demo shared library.`);
+        return;
+      }
+
+      if (session?.role !== "admin") {
+        setMessage("Shared library publishing requires an admin session.");
         return;
       }
 
@@ -2425,7 +2451,7 @@ export default function Editor({
           category: payload.category,
           description: payload.description.trim() || "Admin-published SVG drawing.",
           tags: payload.tags.length > 0 ? payload.tags : parseTags(payload.name),
-          svg: payload.svg,
+          svg: cleanSvg,
           author_id: userId,
           author_name: session.name,
         })
@@ -2444,7 +2470,38 @@ export default function Editor({
       setLibraryItems((previous) => mergeLibraryItems([item, ...previous.filter((entry) => entry.id !== item.id)]));
       setMessage(`Published "${item.name}" to the shared library.`);
     },
-    [session, setMessage, userId],
+    [libraryItems, session, setMessage, userId],
+  );
+
+  const handleDeleteLibraryItem = useCallback(
+    async (item: LibraryItem) => {
+      if (item.source === "seed") {
+        setMessage("Built-in system library items cannot be deleted.");
+        return;
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase && item.source === "admin") {
+        if (session?.role !== "admin") {
+          setMessage("Only admins can remove shared library items.");
+          return;
+        }
+        const { error } = await supabase.from("drawing_library_items").delete().eq("id", item.id);
+        if (error) {
+          setMessage(`Library delete failed: ${error.message}`);
+          return;
+        }
+        setLibraryItems((previous) => previous.filter((entry) => entry.id !== item.id));
+        setMessage(`Removed "${item.name}" from the shared library.`);
+        return;
+      }
+
+      const nextItems = libraryItems.filter((entry) => entry.id !== item.id);
+      setLibraryItems(nextItems);
+      persistLibraryItems(nextItems);
+      setMessage(`Removed "${item.name}" from the library.`);
+    },
+    [libraryItems, session, setMessage],
   );
 
   const handlePublishCanvasToLibrary = useCallback(
@@ -2720,6 +2777,7 @@ export default function Editor({
           onDeleteProject={(projectId) => void handleDeleteProject(projectId)}
           onPublishRawSvg={(payload) => void handlePublishRawSvg(payload)}
           onPublishCanvasToLibrary={(payload) => void handlePublishCanvasToLibrary(payload)}
+          onDeleteLibraryItem={(item) => void handleDeleteLibraryItem(item)}
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-950">

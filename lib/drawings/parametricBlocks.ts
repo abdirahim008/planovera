@@ -1,10 +1,50 @@
-export type ParametricBlockKind =
+// ------------------------------------------------------------------
+// Parametric drawing blocks.
+//
+// Two families share one dispatch surface:
+// 1. Legacy structural kinds (beam/column/footing/openings) with typed
+//    params and hand-built editors — generators rebuilt in proper CAD
+//    monochrome style using cadPrimitives.
+// 2. Registry templates (roads, drainage, water, structural details)
+//    defined declaratively in lib/drawings/templates/* — their editor
+//    UI is generated from the parameter schema.
+// ------------------------------------------------------------------
+
+import {
+  CAD,
+  svgDoc,
+  line,
+  rect,
+  text,
+  dimH,
+  dimV,
+  leader,
+  concreteHatchRect,
+  hatchRect,
+  earthTicks,
+  gravelRect,
+  drawingTitle,
+  barDot,
+  mmLabel,
+} from "./cadPrimitives";
+import {
+  DRAWING_TEMPLATES,
+  TEMPLATE_REGISTRY,
+  createTemplateSvg,
+  normalizeTemplateValues,
+  type TemplateParamValues,
+} from "./templateRegistry";
+
+export type LegacyParametricBlockKind =
   | "beam-detail"
   | "column-detail"
   | "footing-detail"
   | "wall-opening"
   | "door-opening"
   | "window-opening";
+
+/** Any parametric kind — legacy structural kinds or a registry template kind. */
+export type ParametricBlockKind = string;
 
 export type OpeningType = "door" | "window" | "opening";
 export type StructuralView = "plan" | "section";
@@ -55,7 +95,8 @@ export type ParametricBlockParams =
   | BeamDetailParams
   | ColumnDetailParams
   | FootingDetailParams
-  | WallOpeningParams;
+  | WallOpeningParams
+  | TemplateParamValues;
 
 export type ParametricBlockState = {
   kind: ParametricBlockKind;
@@ -66,16 +107,19 @@ export type ParametricBlockState = {
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const roundClamp = (value: number, min: number, max: number) => clamp(Math.round(value), min, max);
 
-const svgDoc = (viewBox: string, body: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" fill="none">${body}</svg>`;
-
-export const PARAMETRIC_BLOCK_LABELS: Record<ParametricBlockKind, string> = {
+const LEGACY_LABELS: Record<LegacyParametricBlockKind, string> = {
   "beam-detail": "Beam detailing",
   "column-detail": "Column detailing",
   "footing-detail": "Footing detailing",
   "wall-opening": "Wall opening",
   "door-opening": "Door opening",
   "window-opening": "Window opening",
+};
+
+/** Labels for every known parametric kind (legacy + registry templates). */
+export const PARAMETRIC_BLOCK_LABELS: Record<string, string> = {
+  ...LEGACY_LABELS,
+  ...Object.fromEntries(DRAWING_TEMPLATES.map((template) => [template.kind, template.label])),
 };
 
 export const DEFAULT_BEAM_DETAIL_PARAMS: BeamDetailParams = {
@@ -187,6 +231,8 @@ export function normalizeParametricParams(
   kind: ParametricBlockKind,
   params?: Partial<ParametricBlockParams>,
 ): ParametricBlockParams {
+  const template = TEMPLATE_REGISTRY[kind];
+  if (template) return normalizeTemplateValues(template, params as Partial<TemplateParamValues>);
   if (kind === "beam-detail") return normalizeBeamDetailParams(params as Partial<BeamDetailParams>);
   if (kind === "column-detail") return normalizeColumnDetailParams(params as Partial<ColumnDetailParams>);
   if (kind === "footing-detail") return normalizeFootingDetailParams(params as Partial<FootingDetailParams>);
@@ -197,158 +243,174 @@ export function getDefaultParametricParams(kind: ParametricBlockKind): Parametri
   return normalizeParametricParams(kind);
 }
 
-function distributeBars(count: number, x1: number, x2: number, y: number, radius: number) {
-  if (count <= 0) return "";
-  if (count === 1) {
-    return `<circle cx="${(x1 + x2) / 2}" cy="${y}" r="${radius}" fill="#0f172a"/>`;
-  }
-  return Array.from({ length: count }, (_, index) => {
-    const t = index / (count - 1);
-    const x = x1 + (x2 - x1) * t;
-    return `<circle cx="${x}" cy="${y}" r="${radius}" fill="#0f172a"/>`;
-  }).join("");
-}
-
+// ------------------------------------------------------------------
+// Beam section — CAD monochrome
+// ------------------------------------------------------------------
 export function createBeamDetailSvg(input: Partial<BeamDetailParams> = {}) {
   const { widthMm, depthMm, topBars, bottomBars, barDiaMm, stirrupDiaMm, stirrupSpacingMm } =
     normalizeBeamDetailParams(input);
-  const scale = 1.15;
-  const beamW = Math.max(widthMm * scale, 180);
-  const beamH = Math.max(depthMm * scale, 180);
-  const pad = 78;
-  const cover = 34;
-  const barRadius = Math.max(barDiaMm * 0.9, 7);
-  const stirrupStroke = Math.max(stirrupDiaMm * 0.55, 4);
-  const topY = pad + cover;
-  const bottomY = pad + beamH - cover;
-  const x1 = pad + cover;
-  const x2 = pad + beamW - cover;
 
-  return svgDoc(
-    `0 0 ${beamW + pad * 2} ${beamH + pad * 2 + 86}`,
-    `
-      <line x1="${pad}" y1="${pad - 26}" x2="${pad + beamW}" y2="${pad - 26}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${pad}" y1="${pad - 40}" x2="${pad}" y2="${pad - 12}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${pad + beamW}" y1="${pad - 40}" x2="${pad + beamW}" y2="${pad - 12}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${pad + beamW / 2}" y="${pad - 30}" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(widthMm / 1000).toFixed(2)}</text>
-      <line x1="${pad - 28}" y1="${pad}" x2="${pad - 28}" y2="${pad + beamH}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${pad - 42}" y1="${pad}" x2="${pad - 14}" y2="${pad}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${pad - 42}" y1="${pad + beamH}" x2="${pad - 14}" y2="${pad + beamH}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${pad - 32}" y="${pad + beamH / 2}" transform="rotate(-90 ${pad - 32} ${pad + beamH / 2})" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(depthMm / 1000).toFixed(2)}</text>
-      <rect x="${pad}" y="${pad}" width="${beamW}" height="${beamH}" fill="#ffffff" stroke="#0f172a" stroke-width="5"/>
-      <rect x="${pad + cover / 2}" y="${pad + cover / 2}" width="${beamW - cover}" height="${beamH - cover}" rx="10" stroke="#0f172a" stroke-width="${stirrupStroke}"/>
-      ${distributeBars(topBars, x1, x2, topY, barRadius)}
-      ${distributeBars(bottomBars, x1, x2, bottomY, barRadius)}
-      <text x="${pad + beamW / 2}" y="${pad + beamH + 42}" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" fill="#0f172a">BEAM DETAILING</text>
-      <text x="${pad + beamW / 2}" y="${pad + beamH + 62}" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">${widthMm} x ${depthMm} / TOP ${topBars}T${barDiaMm} / BOT ${bottomBars}T${barDiaMm}</text>
-      <text x="${pad + beamW / 2}" y="${pad + beamH + 80}" text-anchor="middle" font-family="Arial" font-size="14" fill="#475569">R${stirrupDiaMm} @ ${stirrupSpacingMm}</text>
-    `,
+  const s = Math.min(0.55, 220 / Math.max(widthMm, depthMm));
+  const w = Math.max(widthMm * s, 120);
+  const h = Math.max(depthMm * s, 120);
+  const x = 116;
+  const y = 76;
+  const coverPx = Math.max(30 * s * 1.6, 14);
+
+  const parts: string[] = [];
+
+  // Section outline + concrete hatch
+  parts.push(rect(x, y, w, h, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(concreteHatchRect(x + 1.5, y + 1.5, w - 3, h - 3, 13));
+
+  // Stirrup (closed link)
+  const sw = Math.max(stirrupDiaMm * 0.3, 2);
+  parts.push(
+    `<rect x="${x + coverPx}" y="${y + coverPx}" width="${w - coverPx * 2}" height="${h - coverPx * 2}" rx="7" fill="none" stroke="${CAD.ink}" stroke-width="${sw}"/>`,
   );
+
+  // Bars
+  const barR = Math.max(barDiaMm * 0.28, 3.4);
+  const bx1 = x + coverPx + barR + 2;
+  const bx2 = x + w - coverPx - barR - 2;
+  const topY = y + coverPx + barR + 2;
+  const botY = y + h - coverPx - barR - 2;
+  const placeRow = (count: number, rowY: number) => {
+    if (count <= 0) return;
+    if (count === 1) {
+      parts.push(barDot((bx1 + bx2) / 2, rowY, barDiaMm));
+      return;
+    }
+    for (let index = 0; index < count; index += 1) {
+      const t = index / (count - 1);
+      parts.push(barDot(bx1 + (bx2 - bx1) * t, rowY, barDiaMm));
+    }
+  };
+  placeRow(topBars, topY);
+  placeRow(bottomBars, botY);
+
+  // Dimensions
+  parts.push(dimH(x, x + w, y, y - 34, mmLabel(widthMm)));
+  parts.push(dimV(y, y + h, x, x - 38, mmLabel(depthMm)));
+
+  // Leaders
+  const lx = x + w + 64;
+  parts.push(leader(bx2 - 4, topY, lx, y + 8, [`${topBars}T${mmLabel(barDiaMm)} TOP`]));
+  parts.push(leader(bx2 - 4, botY, lx, y + h - 4, [`${bottomBars}T${mmLabel(barDiaMm)} BOTTOM`]));
+  parts.push(leader(x + w - coverPx, y + h / 2, lx, y + h / 2 - 4, [`R${mmLabel(stirrupDiaMm)} @ ${mmLabel(stirrupSpacingMm)} C/C`, "STIRRUPS"]));
+
+  const titleY = y + h + 64;
+  parts.push(drawingTitle(x + w / 2 + 40, titleY, "BEAM SECTION", `${mmLabel(widthMm)} x ${mmLabel(depthMm)} — SCALE: NTS`));
+
+  return svgDoc(lx + 196, titleY + 52, parts.join(""));
 }
 
+// ------------------------------------------------------------------
+// Column — plan section & elevation, CAD monochrome
+// ------------------------------------------------------------------
 function getColumnPerimeterBars(count: number) {
   const perimeterBars = Math.max(count, 4);
   const extra = perimeterBars - 4;
   const sideEach = Math.floor(extra / 2);
   const remainder = extra % 2;
-  return {
-    leftSide: sideEach,
-    rightSide: sideEach,
-    topSide: remainder,
-    bottomSide: 0,
-  };
+  return { leftSide: sideEach, rightSide: sideEach, topSide: remainder };
 }
 
 function createColumnPlanSvg(input: ColumnDetailParams) {
-  const scale = 0.62;
-  const width = Math.max(input.widthMm * scale, 120);
-  const depth = Math.max(input.depthMm * scale, 120);
-  const offsetX = 88;
-  const offsetY = 70;
-  const tieInset = 18;
-  const barRadius = Math.max(input.barDiaMm * 0.45, 6);
-  const left = offsetX + 16;
-  const right = offsetX + width - 16;
-  const top = offsetY + 16;
-  const bottom = offsetY + depth - 16;
-  const distribution = getColumnPerimeterBars(input.mainBars);
-  const bars: string[] = [
-    `<circle cx="${left}" cy="${top}" r="${barRadius}" fill="#0f172a"/>`,
-    `<circle cx="${right}" cy="${top}" r="${barRadius}" fill="#0f172a"/>`,
-    `<circle cx="${left}" cy="${bottom}" r="${barRadius}" fill="#0f172a"/>`,
-    `<circle cx="${right}" cy="${bottom}" r="${barRadius}" fill="#0f172a"/>`,
-  ];
+  const s = Math.min(0.62, 230 / Math.max(input.widthMm, input.depthMm));
+  const w = Math.max(input.widthMm * s, 110);
+  const h = Math.max(input.depthMm * s, 110);
+  const x = 116;
+  const y = 76;
+  const coverPx = Math.max(30 * s * 1.6, 13);
 
-  for (let index = 1; index <= distribution.leftSide; index += 1) {
-    const ratio = index / (distribution.leftSide + 1);
-    const y = top + (bottom - top) * ratio;
-    bars.push(`<circle cx="${left}" cy="${y}" r="${barRadius - 1}" fill="#ef4444"/>`);
-    bars.push(`<circle cx="${right}" cy="${y}" r="${barRadius - 1}" fill="#ef4444"/>`);
-  }
-  for (let index = 1; index <= distribution.topSide; index += 1) {
-    const ratio = index / (distribution.topSide + 1);
-    const x = left + (right - left) * ratio;
-    bars.push(`<circle cx="${x}" cy="${top}" r="${barRadius - 1}" fill="#ef4444"/>`);
-  }
+  const parts: string[] = [];
+  parts.push(rect(x, y, w, h, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(concreteHatchRect(x + 1.5, y + 1.5, w - 3, h - 3, 12));
 
-  return svgDoc(
-    `0 0 ${width + 240} ${depth + 170}`,
-    `
-      <line x1="${offsetX}" y1="${offsetY - 24}" x2="${offsetX + width}" y2="${offsetY - 24}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${offsetX}" y1="${offsetY - 38}" x2="${offsetX}" y2="${offsetY - 10}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${offsetX + width}" y1="${offsetY - 38}" x2="${offsetX + width}" y2="${offsetY - 10}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${offsetX + width / 2}" y="${offsetY - 28}" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(input.widthMm / 1000).toFixed(2)}</text>
-      <line x1="${offsetX - 28}" y1="${offsetY}" x2="${offsetX - 28}" y2="${offsetY + depth}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${offsetX - 42}" y1="${offsetY}" x2="${offsetX - 14}" y2="${offsetY}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${offsetX - 42}" y1="${offsetY + depth}" x2="${offsetX - 14}" y2="${offsetY + depth}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${offsetX - 32}" y="${offsetY + depth / 2}" transform="rotate(-90 ${offsetX - 32} ${offsetY + depth / 2})" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(input.depthMm / 1000).toFixed(2)}</text>
-      <rect x="${offsetX}" y="${offsetY}" width="${width}" height="${depth}" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
-      <rect x="${offsetX + tieInset}" y="${offsetY + tieInset}" width="${width - tieInset * 2}" height="${depth - tieInset * 2}" rx="12" stroke="#0f172a" stroke-width="4"/>
-      ${bars.join("")}
-      <text x="${offsetX + width + 26}" y="${offsetY + 48}" font-family="Arial" font-size="13" fill="#0f172a">${input.mainBars}T${input.barDiaMm}</text>
-      <text x="${offsetX + width + 26}" y="${offsetY + 66}" font-family="Arial" font-size="13" fill="#0f172a">ties R${input.tieDiaMm}</text>
-      <text x="${offsetX + width + 26}" y="${offsetY + 84}" font-family="Arial" font-size="13" fill="#0f172a">@ ${input.tieSpacingMm}</text>
-      <text x="${offsetX + width / 2}" y="${offsetY + depth + 38}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#0f172a">COLUMN DETAILING PLAN</text>
-    `,
+  const tw = Math.max(input.tieDiaMm * 0.3, 1.8);
+  parts.push(
+    `<rect x="${x + coverPx}" y="${y + coverPx}" width="${w - coverPx * 2}" height="${h - coverPx * 2}" rx="7" fill="none" stroke="${CAD.ink}" stroke-width="${tw}"/>`,
   );
+
+  const barR = Math.max(input.barDiaMm * 0.26, 3.2);
+  const left = x + coverPx + barR + 2;
+  const right = x + w - coverPx - barR - 2;
+  const top = y + coverPx + barR + 2;
+  const bottom = y + h - coverPx - barR - 2;
+  const dist = getColumnPerimeterBars(input.mainBars);
+
+  parts.push(barDot(left, top, input.barDiaMm));
+  parts.push(barDot(right, top, input.barDiaMm));
+  parts.push(barDot(left, bottom, input.barDiaMm));
+  parts.push(barDot(right, bottom, input.barDiaMm));
+  for (let index = 1; index <= dist.leftSide; index += 1) {
+    const ratio = index / (dist.leftSide + 1);
+    const yy = top + (bottom - top) * ratio;
+    parts.push(barDot(left, yy, input.barDiaMm));
+    parts.push(barDot(right, yy, input.barDiaMm));
+  }
+  for (let index = 1; index <= dist.topSide; index += 1) {
+    const ratio = index / (dist.topSide + 1);
+    const xx = left + (right - left) * ratio;
+    parts.push(barDot(xx, top, input.barDiaMm));
+  }
+
+  parts.push(dimH(x, x + w, y, y - 34, mmLabel(input.widthMm)));
+  parts.push(dimV(y, y + h, x, x - 38, mmLabel(input.depthMm)));
+
+  const lx = x + w + 64;
+  parts.push(leader(right, top, lx, y + 10, [`${input.mainBars}T${mmLabel(input.barDiaMm)}`, "MAIN BARS"]));
+  parts.push(leader(x + w - coverPx, y + h / 2 + 8, lx, y + h / 2 + 18, [`R${mmLabel(input.tieDiaMm)} @ ${mmLabel(input.tieSpacingMm)} C/C`, "TIES"]));
+
+  const titleY = y + h + 64;
+  parts.push(drawingTitle(x + w / 2 + 40, titleY, "COLUMN SECTION", `${mmLabel(input.widthMm)} x ${mmLabel(input.depthMm)} — SCALE: NTS`));
+  return svgDoc(lx + 186, titleY + 52, parts.join(""));
 }
 
 function createColumnSectionSvg(input: ColumnDetailParams) {
-  const height = input.storeyMode === "multi" ? 300 : 220;
-  const width = Math.max(input.widthMm * 0.5, 120);
-  const x = 120;
-  const y = 52;
-  const outerY = y + 24;
-  const tieCount = Math.max(Math.round(height / Math.max(input.tieSpacingMm * 0.45, 26)), 4);
-  const tieLines = Array.from({ length: tieCount }, (_, index) => {
-    const ratio = index / Math.max(tieCount - 1, 1);
-    const yy = outerY + ratio * (height - 48);
-    return `<line x1="${x + 20}" y1="${yy}" x2="${x + width - 20}" y2="${yy}" stroke="#0f172a" stroke-width="3"/>`;
-  }).join("");
-  const continuation =
-    input.storeyMode === "multi"
-      ? `<path d="M${x + 22} ${y + 8} V${y - 18} M${x + width - 22} ${y + 8} V${y - 18}" stroke="#ef4444" stroke-width="4"/>
-         <text x="${x + width + 40}" y="${y + 18}" font-family="Arial" font-size="12" fill="#0f172a">continues to upper storey</text>`
-      : `<path d="M${x + 22} ${y + 8} V${y - 8} M${x + width - 22} ${y + 8} V${y - 8}" stroke="#ef4444" stroke-width="4"/>
-         <text x="${x + width + 40}" y="${y + 18}" font-family="Arial" font-size="12" fill="#0f172a">starter bars / single storey</text>`;
+  const storeyH = input.storeyMode === "multi" ? 330 : 250;
+  const w = Math.max(input.widthMm * 0.42, 96);
+  const x = 150;
+  const y = 84;
+  const floorY = y + storeyH;
 
-  return svgDoc(
-    `0 0 520 ${height + 150}`,
-    `
-      <line x1="${x - 28}" y1="${y}" x2="${x - 28}" y2="${y + height}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x - 42}" y1="${y}" x2="${x - 14}" y2="${y}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x - 42}" y1="${y + height}" x2="${x - 14}" y2="${y + height}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${x - 32}" y="${y + height / 2}" transform="rotate(-90 ${x - 32} ${y + height / 2})" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${input.storeyMode === "multi" ? "3.20" : "2.80"}</text>
-      <rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
-      ${tieLines}
-      <line x1="${x + 22}" y1="${y}" x2="${x + 22}" y2="${y + height}" stroke="#ef4444" stroke-width="4"/>
-      <line x1="${x + width - 22}" y1="${y}" x2="${x + width - 22}" y2="${y + height}" stroke="#ef4444" stroke-width="4"/>
-      ${continuation}
-      <text x="${x + width + 40}" y="${y + 54}" font-family="Arial" font-size="13" fill="#0f172a">${input.mainBars}T${input.barDiaMm}</text>
-      <text x="${x + width + 40}" y="${y + 74}" font-family="Arial" font-size="13" fill="#0f172a">R${input.tieDiaMm} @ ${input.tieSpacingMm}</text>
-      <text x="${x + width / 2}" y="${y + height + 42}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#0f172a">COLUMN DETAILING SECTION</text>
-    `,
-  );
+  const parts: string[] = [];
+
+  // Floor slab at base
+  parts.push(rect(x - 96, floorY, w + 192, 34, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(concreteHatchRect(x - 94, floorY + 1.5, w + 188, 31, 12));
+
+  // Column shaft
+  parts.push(rect(x, y, w, storeyH, { fill: CAD.white, strokeWidth: CAD.thick }));
+
+  // Main bars (vertical, near faces)
+  const inset = Math.max(w * 0.16, 12);
+  parts.push(line(x + inset, y - (input.storeyMode === "multi" ? 34 : 0), x + inset, floorY + 30, 2.6));
+  parts.push(line(x + w - inset, y - (input.storeyMode === "multi" ? 34 : 0), x + w - inset, floorY + 30, 2.6));
+
+  // Ties at spacing
+  const tieStep = Math.max(input.tieSpacingMm * 0.24, 13);
+  for (let ty = y + 12; ty < floorY - 8; ty += tieStep) {
+    parts.push(line(x + 7, ty, x + w - 7, ty, 1.2));
+  }
+
+  // Lap / starter note
+  const lapNote =
+    input.storeyMode === "multi"
+      ? ["BARS CONTINUE TO", "UPPER STOREY — LAP 40Ø"]
+      : ["STARTER BARS", "FROM FOUNDATION"];
+  parts.push(leader(x + inset, y + 14, x + w + 72, y + 6, lapNote));
+  parts.push(leader(x + w - 10, y + storeyH * 0.45, x + w + 72, y + storeyH * 0.42, [`R${mmLabel(input.tieDiaMm)} @ ${mmLabel(input.tieSpacingMm)} C/C TIES`]));
+  parts.push(leader(x + w - inset, floorY - 26, x + w + 72, floorY - 40, [`${input.mainBars}T${mmLabel(input.barDiaMm)} MAIN BARS`]));
+
+  // Dimensions
+  parts.push(dimV(y, floorY, x, x - 44, input.storeyMode === "multi" ? "3200" : "2800"));
+  parts.push(dimH(x, x + w, floorY + 34, floorY + 70, mmLabel(input.widthMm)));
+
+  const titleY = floorY + 122;
+  parts.push(drawingTitle(x + w / 2 + 50, titleY, "COLUMN ELEVATION", "SCALE: NTS"));
+  return svgDoc(x + w + 280, titleY + 52, parts.join(""));
 }
 
 export function createColumnDetailSvg(input: Partial<ColumnDetailParams> = {}) {
@@ -356,82 +418,109 @@ export function createColumnDetailSvg(input: Partial<ColumnDetailParams> = {}) {
   return normalized.view === "plan" ? createColumnPlanSvg(normalized) : createColumnSectionSvg(normalized);
 }
 
+// ------------------------------------------------------------------
+// Isolated footing — plan & section, CAD monochrome
+// ------------------------------------------------------------------
 function createFootingPlanSvg(input: FootingDetailParams) {
-  const scale = 0.16;
-  const footingW = Math.max(input.footingWidthMm * scale, 180);
-  const footingL = Math.max(input.footingLengthMm * scale, 180);
-  const columnW = Math.min(Math.max(input.columnWidthMm * scale, 40), footingW - 40);
-  const columnL = Math.min(Math.max(input.columnDepthMm * scale, 40), footingL - 40);
-  const x = 88;
-  const y = 68;
-  const colX = x + footingW / 2 - columnW / 2;
-  const colY = y + footingL / 2 - columnL / 2;
-  const rebarX = Array.from({ length: input.barCountX }, (_, index) => {
-    const ratio = index / Math.max(input.barCountX - 1, 1);
-    const xx = x + 18 + ratio * (footingW - 36);
-    return `<line x1="${xx}" y1="${y + 18}" x2="${xx}" y2="${y + footingL - 18}" stroke="#ef4444" stroke-width="2.5"/>`;
-  }).join("");
-  const rebarY = Array.from({ length: input.barCountY }, (_, index) => {
-    const ratio = index / Math.max(input.barCountY - 1, 1);
-    const yy = y + 18 + ratio * (footingL - 36);
-    return `<line x1="${x + 18}" y1="${yy}" x2="${x + footingW - 18}" y2="${yy}" stroke="#f59e0b" stroke-width="2.5"/>`;
-  }).join("");
+  const s = Math.min(0.15, 300 / Math.max(input.footingWidthMm, input.footingLengthMm));
+  const fw = Math.max(input.footingWidthMm * s, 170);
+  const fl = Math.max(input.footingLengthMm * s, 170);
+  const cw = Math.min(Math.max(input.columnWidthMm * s, 30), fw - 40);
+  const cl = Math.min(Math.max(input.columnDepthMm * s, 30), fl - 40);
+  const x = 118;
+  const y = 84;
+  const colX = x + fw / 2 - cw / 2;
+  const colY = y + fl / 2 - cl / 2;
 
-  return svgDoc(
-    `0 0 ${footingW + 240} ${footingL + 170}`,
-    `
-      <line x1="${x}" y1="${y - 24}" x2="${x + footingW}" y2="${y - 24}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x}" y1="${y - 38}" x2="${x}" y2="${y - 10}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x + footingW}" y1="${y - 38}" x2="${x + footingW}" y2="${y - 10}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${x + footingW / 2}" y="${y - 28}" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(input.footingWidthMm / 1000).toFixed(2)}</text>
-      <line x1="${x - 28}" y1="${y}" x2="${x - 28}" y2="${y + footingL}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x - 42}" y1="${y}" x2="${x - 14}" y2="${y}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x - 42}" y1="${y + footingL}" x2="${x - 14}" y2="${y + footingL}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${x - 32}" y="${y + footingL / 2}" transform="rotate(-90 ${x - 32} ${y + footingL / 2})" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(input.footingLengthMm / 1000).toFixed(2)}</text>
-      <rect x="${x}" y="${y}" width="${footingW}" height="${footingL}" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
-      ${rebarX}
-      ${rebarY}
-      <rect x="${colX}" y="${colY}" width="${columnW}" height="${columnL}" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
-      <text x="${x + footingW + 28}" y="${y + 48}" font-family="Arial" font-size="13" fill="#0f172a">${input.barCountX}T${input.barDiaMm} dir. X</text>
-      <text x="${x + footingW + 28}" y="${y + 68}" font-family="Arial" font-size="13" fill="#0f172a">${input.barCountY}T${input.barDiaMm} dir. Y</text>
-      <text x="${x + footingW / 2}" y="${y + footingL + 38}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#0f172a">COLUMN FOOTING PLAN</text>
-    `,
-  );
+  const parts: string[] = [];
+  parts.push(rect(x, y, fw, fl, { fill: CAD.white, strokeWidth: CAD.thick }));
+
+  // Reinforcement mesh
+  for (let index = 0; index < input.barCountX; index += 1) {
+    const ratio = index / Math.max(input.barCountX - 1, 1);
+    const xx = x + 16 + ratio * (fw - 32);
+    parts.push(line(xx, y + 14, xx, y + fl - 14, 1.6));
+  }
+  for (let index = 0; index < input.barCountY; index += 1) {
+    const ratio = index / Math.max(input.barCountY - 1, 1);
+    const yy = y + 16 + ratio * (fl - 32);
+    parts.push(line(x + 14, yy, x + fw - 14, yy, 1.6));
+  }
+
+  // Column over mesh
+  parts.push(rect(colX, colY, cw, cl, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(concreteHatchRect(colX + 1.5, colY + 1.5, cw - 3, cl - 3, 9));
+
+  // Dimensions
+  parts.push(dimH(x, x + fw, y, y - 34, mmLabel(input.footingWidthMm)));
+  parts.push(dimV(y, y + fl, x, x - 38, mmLabel(input.footingLengthMm)));
+  parts.push(dimH(colX, colX + cw, colY, y - 8, mmLabel(input.columnWidthMm), { size: 10 }));
+
+  // Leaders
+  const lx = x + fw + 62;
+  parts.push(leader(x + fw - 30, y + 24, lx, y + 12, [`${input.barCountX}T${mmLabel(input.barDiaMm)} DIR. X`]));
+  parts.push(leader(x + fw - 22, y + fl - 30, lx, y + fl - 36, [`${input.barCountY}T${mmLabel(input.barDiaMm)} DIR. Y`]));
+
+  const titleY = y + fl + 62;
+  parts.push(drawingTitle(x + fw / 2 + 40, titleY, "ISOLATED FOOTING PLAN", "SCALE: NTS"));
+  return svgDoc(lx + 180, titleY + 52, parts.join(""));
 }
 
 function createFootingSectionSvg(input: FootingDetailParams) {
-  const footingWidth = Math.max(input.footingWidthMm * 0.18, 220);
-  const footingDepth = Math.max(input.footingDepthMm * 0.16, 56);
-  const pedestalWidth = Math.max(input.columnWidthMm * 0.22, 70);
-  const pedestalDepth = Math.max(input.columnDepthMm * 0.18, 70);
-  const x = 88;
-  const y = 176;
-  const colX = x + footingWidth / 2 - pedestalWidth / 2;
-  const colY = y - pedestalDepth;
-  const barsTop = x + 26;
-  const barsBottom = x + footingWidth - 26;
+  const s = Math.min(0.16, 330 / input.footingWidthMm);
+  const fw = Math.max(input.footingWidthMm * s, 220);
+  const fh = Math.max(input.footingDepthMm * s * 1.3, 54);
+  const pw = Math.min(Math.max(input.columnWidthMm * s * 1.3, 52), fw - 60);
+  const x = 130;
+  const yGround = 96;
+  const pedestalH = 96;
+  const yFtg = yGround + pedestalH;
+  const colX = x + fw / 2 - pw / 2;
 
-  return svgDoc(
-    `0 0 ${footingWidth + 220} 360`,
-    `
-      <line x1="${x}" y1="${y + footingDepth + 28}" x2="${x + footingWidth}" y2="${y + footingDepth + 28}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x}" y1="${y + footingDepth + 14}" x2="${x}" y2="${y + footingDepth + 42}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x + footingWidth}" y1="${y + footingDepth + 14}" x2="${x + footingWidth}" y2="${y + footingDepth + 42}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${x + footingWidth / 2}" y="${y + footingDepth + 24}" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(input.footingWidthMm / 1000).toFixed(2)}</text>
-      <line x1="${x + footingWidth + 36}" y1="${y}" x2="${x + footingWidth + 36}" y2="${y + footingDepth}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x + footingWidth + 22}" y1="${y}" x2="${x + footingWidth + 50}" y2="${y}" stroke="#ff4fa3" stroke-width="3"/>
-      <line x1="${x + footingWidth + 22}" y1="${y + footingDepth}" x2="${x + footingWidth + 50}" y2="${y + footingDepth}" stroke="#ff4fa3" stroke-width="3"/>
-      <text x="${x + footingWidth + 32}" y="${y + footingDepth / 2}" transform="rotate(-90 ${x + footingWidth + 32} ${y + footingDepth / 2})" text-anchor="middle" font-family="Arial" font-size="12" fill="#ff4fa3">${(input.footingDepthMm / 1000).toFixed(2)}</text>
-      <rect x="${x}" y="${y}" width="${footingWidth}" height="${footingDepth}" fill="#e2e8f0" stroke="#0f172a" stroke-width="4"/>
-      <rect x="${colX}" y="${colY}" width="${pedestalWidth}" height="${pedestalDepth}" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
-      <line x1="${barsTop}" y1="${y + footingDepth - 18}" x2="${barsBottom}" y2="${y + footingDepth - 18}" stroke="#ef4444" stroke-width="4"/>
-      <line x1="${barsTop}" y1="${y + footingDepth - 30}" x2="${barsBottom}" y2="${y + footingDepth - 30}" stroke="#f59e0b" stroke-width="4"/>
-      <path d="M${colX} ${y} L${colX - 22} ${y + footingDepth} M${colX + pedestalWidth} ${y} L${colX + pedestalWidth + 22} ${y + footingDepth}" stroke="#0f172a" stroke-width="3"/>
-      <text x="${x + footingWidth + 54}" y="${y - 38}" font-family="Arial" font-size="13" fill="#0f172a">${input.barCountX} / ${input.barCountY} T${input.barDiaMm}</text>
-      <text x="${x + footingWidth + 54}" y="${y - 20}" font-family="Arial" font-size="13" fill="#0f172a">column ${input.columnWidthMm} x ${input.columnDepthMm}</text>
-      <text x="${x + footingWidth / 2}" y="${y + footingDepth + 74}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#0f172a">COLUMN FOOTING SECTION</text>
-    `,
-  );
+  const parts: string[] = [];
+
+  // Ground line + earth ticks
+  parts.push(line(x - 84, yGround, x + fw + 84, yGround, 1.3));
+  parts.push(earthTicks({ x: x + fw + 84, y: yGround }, { x: x - 84, y: yGround }, { spacing: 13, length: 9 }));
+  parts.push(text(x - 66, yGround - 9, "GL", { size: 10.5 }));
+
+  // Pedestal / column
+  parts.push(rect(colX, yGround - 40, pw, pedestalH + 40, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(concreteHatchRect(colX + 1.5, yGround - 38, pw - 3, pedestalH + 36, 11));
+
+  // Footing block
+  parts.push(rect(x, yFtg, fw, fh, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(concreteHatchRect(x + 1.5, yFtg + 1.5, fw - 3, fh - 3, 12));
+
+  // Bottom mat with end hooks
+  const barY = yFtg + fh - 12;
+  parts.push(line(x + 16, barY, x + fw - 16, barY, 2.6));
+  parts.push(line(x + 16, barY, x + 16, barY - 14, 2.6));
+  parts.push(line(x + fw - 16, barY, x + fw - 16, barY - 14, 2.6));
+  for (let bx = x + 34; bx < x + fw - 24; bx += 30) parts.push(barDot(bx, barY - 7, input.barDiaMm));
+
+  // Starter bars into pedestal
+  parts.push(line(colX + 12, yGround - 40, colX + 12, barY - 4, 2.2));
+  parts.push(line(colX + pw - 12, yGround - 40, colX + pw - 12, barY - 4, 2.2));
+  parts.push(line(colX + 12, barY - 4, colX + 12 + 22, barY - 4, 2.2));
+  parts.push(line(colX + pw - 12, barY - 4, colX + pw - 12 - 22, barY - 4, 2.2));
+
+  // Blinding
+  parts.push(rect(x - 14, yFtg + fh, fw + 28, 15, { strokeWidth: CAD.thin }));
+  parts.push(gravelRect(x - 14, yFtg + fh, fw + 28, 15, 10));
+
+  // Dimensions
+  parts.push(dimH(x, x + fw, yFtg + fh + 15, yFtg + fh + 56, mmLabel(input.footingWidthMm)));
+  parts.push(dimV(yFtg, yFtg + fh, x + fw, x + fw + 46, mmLabel(input.footingDepthMm)));
+  parts.push(dimH(colX, colX + pw, yGround - 40, yGround - 68, mmLabel(input.columnWidthMm)));
+
+  // Leaders
+  parts.push(leader(x + fw - 56, barY - 5, x + fw + 100, barY - 32, [`${input.barCountX} / ${input.barCountY} T${mmLabel(input.barDiaMm)}`, "BOTTOM MAT E.W."]));
+  parts.push(leader(x + fw - 30, yFtg + fh + 8, x + fw + 100, yFtg + fh + 34, ["75 mm BLINDING"]));
+
+  const titleY = yFtg + fh + 112;
+  parts.push(drawingTitle(x + fw / 2 + 30, titleY, "ISOLATED FOOTING SECTION", "SCALE: NTS"));
+  return svgDoc(x + fw + 230, titleY + 52, parts.join(""));
 }
 
 export function createFootingDetailSvg(input: Partial<FootingDetailParams> = {}) {
@@ -439,40 +528,60 @@ export function createFootingDetailSvg(input: Partial<FootingDetailParams> = {})
   return normalized.view === "plan" ? createFootingPlanSvg(normalized) : createFootingSectionSvg(normalized);
 }
 
+// ------------------------------------------------------------------
+// Wall opening (plan), CAD monochrome with dimension chain
+// ------------------------------------------------------------------
 export function createWallOpeningSvg(input: Partial<WallOpeningParams> = {}) {
   const { wallLengthMm, wallThicknessMm, openingType, openingWidthMm, openingOffsetMm } =
     normalizeWallOpeningParams("wall-opening", input);
-  const wallW = wallLengthMm * 0.18;
-  const wallH = Math.max(wallThicknessMm * 0.32, 42);
-  const openingW = openingWidthMm * 0.18;
-  const openingX = 46 + openingOffsetMm * 0.18;
-  const hingeX = openingX;
-  const latchX = openingX + openingW;
-  const pad = 46;
-  const doorSwing =
-    openingType === "door"
-      ? `<line x1="${hingeX}" y1="${pad + wallH}" x2="${hingeX}" y2="${pad + wallH + openingW}" stroke="#0f172a" stroke-width="4" stroke-linecap="round"/>
-         <path d="M${hingeX} ${pad + wallH + openingW} A${openingW} ${openingW} 0 0 0 ${latchX} ${pad + wallH}" stroke="#2563eb" stroke-width="3"/>
-         <line x1="${hingeX}" y1="${pad + wallH}" x2="${latchX}" y2="${pad + wallH}" stroke="#64748b" stroke-width="2" stroke-dasharray="8 7"/>`
-      : "";
-  const windowLine =
-    openingType === "window"
-      ? `<line x1="${openingX}" y1="${pad + wallH / 2}" x2="${openingX + openingW}" y2="${pad + wallH / 2}" stroke="#2563eb" stroke-width="5"/>
-         <line x1="${openingX}" y1="${pad + wallH / 2 - 13}" x2="${openingX + openingW}" y2="${pad + wallH / 2 - 13}" stroke="#2563eb" stroke-width="2"/>
-         <line x1="${openingX}" y1="${pad + wallH / 2 + 13}" x2="${openingX + openingW}" y2="${pad + wallH / 2 + 13}" stroke="#2563eb" stroke-width="2"/>`
-      : "";
 
-  return svgDoc(
-    `0 0 ${wallW + pad * 2} ${wallH + pad * 2 + 104}`,
-    `
-      <rect x="${pad}" y="${pad}" width="${openingX - pad}" height="${wallH}" fill="#e2e8f0" stroke="#0f172a" stroke-width="3"/>
-      <rect x="${openingX + openingW}" y="${pad}" width="${pad + wallW - openingX - openingW}" height="${wallH}" fill="#e2e8f0" stroke="#0f172a" stroke-width="3"/>
-      <rect x="${openingX}" y="${pad}" width="${openingW}" height="${wallH}" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 7"/>
-      ${doorSwing}
-      ${windowLine}
-      <text x="${pad + wallW / 2}" y="${pad + wallH + 72}" text-anchor="middle" font-family="Arial" font-size="18" fill="#334155">${wallLengthMm} WALL / ${openingWidthMm} ${openingType.toUpperCase()}</text>
-    `,
-  );
+  const s = Math.min(0.17, 620 / wallLengthMm);
+  const wallW = wallLengthMm * s;
+  const wallH = Math.max(wallThicknessMm * s * 1.4, 30);
+  const x = 96;
+  const y = 110;
+  const oX = x + openingOffsetMm * s;
+  const oW = openingWidthMm * s;
+
+  const parts: string[] = [];
+
+  // Wall segments with masonry hatch
+  parts.push(rect(x, y, oX - x, wallH, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(hatchRect(x + 1.5, y + 1.5, oX - x - 3, wallH - 3, { spacing: 8 }));
+  parts.push(rect(oX + oW, y, x + wallW - oX - oW, wallH, { fill: CAD.white, strokeWidth: CAD.thick }));
+  parts.push(hatchRect(oX + oW + 1.5, y + 1.5, x + wallW - oX - oW - 3, wallH - 3, { spacing: 8 }));
+
+  // Opening (dashed reveal lines)
+  parts.push(line(oX, y, oX + oW, y, 1, CAD.faint, "7 6"));
+  parts.push(line(oX, y + wallH, oX + oW, y + wallH, 1, CAD.faint, "7 6"));
+
+  if (openingType === "door") {
+    // Door leaf + swing
+    parts.push(line(oX, y + wallH, oX, y + wallH + oW, 2.4));
+    parts.push(
+      `<path d="M${oX} ${y + wallH + oW} A${oW} ${oW} 0 0 0 ${oX + oW} ${y + wallH}" stroke="${CAD.ink}" stroke-width="1" fill="none" stroke-dasharray="3 4"/>`,
+    );
+  } else if (openingType === "window") {
+    const mid = y + wallH / 2;
+    parts.push(line(oX, mid - 5, oX + oW, mid - 5, 1.4));
+    parts.push(line(oX, mid, oX + oW, mid, 2.2));
+    parts.push(line(oX, mid + 5, oX + oW, mid + 5, 1.4));
+    parts.push(line(oX, y, oX, y + wallH, 1.4));
+    parts.push(line(oX + oW, y, oX + oW, y + wallH, 1.4));
+  }
+
+  // Dimension chain below: offset | opening | remainder, total above
+  const yDim = y + wallH + (openingType === "door" ? oW + 26 : 38);
+  parts.push(dimH(x, oX, y + wallH, yDim, mmLabel(openingOffsetMm)));
+  parts.push(dimH(oX, oX + oW, y + wallH, yDim, mmLabel(openingWidthMm)));
+  parts.push(dimH(oX + oW, x + wallW, y + wallH, yDim, mmLabel(wallLengthMm - openingOffsetMm - openingWidthMm)));
+  parts.push(dimH(x, x + wallW, y, y - 38, mmLabel(wallLengthMm)));
+  parts.push(dimV(y, y + wallH, x, x - 34, mmLabel(wallThicknessMm), { size: 10 }));
+
+  const label = openingType === "door" ? "DOOR" : openingType === "window" ? "WINDOW" : "OPENING";
+  const titleY = yDim + 56;
+  parts.push(drawingTitle(x + wallW / 2, titleY, `WALL PLAN — ${mmLabel(openingWidthMm)} ${label}`, "SCALE: NTS"));
+  return svgDoc(x * 2 + wallW, titleY + 52, parts.join(""));
 }
 
 export function createDoorBlockSvg(widthMm = 900) {
@@ -495,10 +604,20 @@ export function createWindowBlockSvg(widthMm = 1200) {
   });
 }
 
+// ------------------------------------------------------------------
+// Dispatch — registry templates first, then legacy kinds.
+// ------------------------------------------------------------------
 export function createParametricBlockSvg(kind: ParametricBlockKind, params?: Partial<ParametricBlockParams>) {
+  if (TEMPLATE_REGISTRY[kind]) {
+    return createTemplateSvg(kind, params as Partial<TemplateParamValues>);
+  }
   const normalized = normalizeParametricParams(kind, params);
   if (kind === "beam-detail") return createBeamDetailSvg(normalized as BeamDetailParams);
   if (kind === "column-detail") return createColumnDetailSvg(normalized as ColumnDetailParams);
   if (kind === "footing-detail") return createFootingDetailSvg(normalized as FootingDetailParams);
   return createWallOpeningSvg(normalized as WallOpeningParams);
 }
+
+// Re-export for consumers that need template metadata alongside blocks.
+export { TEMPLATE_REGISTRY, DRAWING_TEMPLATES, normalizeTemplateValues, createTemplateSvg };
+export type { TemplateParamValues };
