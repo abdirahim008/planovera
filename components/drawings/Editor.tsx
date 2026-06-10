@@ -371,6 +371,10 @@ export default function Editor({
   const fabricRef = useRef<FabricNS.Canvas | null>(null);
   const clipboardRef = useRef<FabricNS.FabricObject | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  // Anchor for cursor-centred wheel zoom: the paper point under the pointer and
+  // the pointer's screen position. Consumed by the zoom effect right after the
+  // canvas resizes, so the point under the cursor stays put.
+  const wheelAnchorRef = useRef({ active: false, clientX: 0, clientY: 0, paperX: 0, paperY: 0 });
   const historyRef = useRef<CanvasHistory>({
     past: [],
     future: [],
@@ -1192,23 +1196,29 @@ export default function Editor({
     let lastPosY = 0;
 
     canvas.on("mouse:wheel", (opt) => {
-      const delta = opt.e.deltaY;
-      const zoomFactor = 0.999 ** delta;
+      const event = opt.e;
 
-      setZoom((oldZoom) => {
-        const newZoom = Math.max(0.1, Math.min(4, oldZoom * zoomFactor));
-        setTimeout(() => {
-          const workspace = workspaceRef.current;
-          if (!workspace) return;
-          const ratio = newZoom / oldZoom;
-          workspace.scrollLeft = (workspace.scrollLeft + opt.e.offsetX) * ratio - opt.e.offsetX;
-          workspace.scrollTop = (workspace.scrollTop + opt.e.offsetY) * ratio - opt.e.offsetY;
-        }, 0);
-        return newZoom;
-      });
+      // Record the drawing point currently under the cursor (in unscaled paper
+      // units) from the zoom that's actually applied right now — this is
+      // zoom-invariant, so it stays correct even while several wheel ticks are
+      // still batched in React state. The zoom effect re-anchors the scroll to
+      // it right after the canvas resizes.
+      const canvasEl = canvasElRef.current;
+      if (canvasEl) {
+        const rect = canvasEl.getBoundingClientRect();
+        const appliedZoom = canvas.getZoom() || 1;
+        const anchor = wheelAnchorRef.current;
+        anchor.active = true;
+        anchor.clientX = event.clientX;
+        anchor.clientY = event.clientY;
+        anchor.paperX = (event.clientX - rect.left) / appliedZoom;
+        anchor.paperY = (event.clientY - rect.top) / appliedZoom;
+      }
 
-      opt.e.preventDefault();
-      opt.e.stopPropagation();
+      setZoom((oldZoom) => Math.max(0.1, Math.min(4, oldZoom * (0.999 ** event.deltaY))));
+
+      event.preventDefault();
+      event.stopPropagation();
     });
 
     canvas.on("mouse:down", (opt) => {
@@ -1643,6 +1653,23 @@ export default function Editor({
     if (!canvas || !currentPage) return;
     const { width, height } = getPaperDimensions(currentPage.paperSize, currentPage.orientation);
     applyZoom(canvas, zoom, width, height);
+
+    // Cursor-anchored wheel zoom: now that the canvas has resized, scroll so the
+    // paper point that was under the cursor lands back under it. Done here —
+    // synchronously after the resize — to avoid racing the browser's automatic
+    // scroll clamp when the sheet shrinks on zoom-out. Button/fit zooms leave
+    // the anchor inactive and keep their centred behaviour.
+    const anchor = wheelAnchorRef.current;
+    if (anchor.active) {
+      anchor.active = false;
+      const workspace = workspaceRef.current;
+      const canvasEl = canvasElRef.current;
+      if (workspace && canvasEl) {
+        const rect = canvasEl.getBoundingClientRect();
+        workspace.scrollLeft += rect.left + anchor.paperX * zoom - anchor.clientX;
+        workspace.scrollTop += rect.top + anchor.paperY * zoom - anchor.clientY;
+      }
+    }
   }, [applyZoom, currentPage, zoom]);
 
   const getPaperCenter = useCallback(() => {
