@@ -1,5 +1,5 @@
 import type { PaymentCertificate, Project, UserSignatureProfile } from "@/lib/supabase";
-import { paymentCertificateCalcs } from "@/lib/payment-calculations";
+import { paymentCertificateCalcs, paymentLineState } from "@/lib/payment-calculations";
 
 /* ------------------------------------------------------------------ *
  * Formal A4-landscape "Summary of Statement for Payment on Account"
@@ -126,7 +126,17 @@ body{margin:0;background:#fff;font-family:var(--sans);color:#000;}
 .ipc-sig-agent{font-size:10px;margin-top:auto;}
 .ipc-sig-note{font-size:8.5px;color:#333;margin-top:4px;line-height:1.3;}
 @page{size:A4 landscape;margin:7mm;}
-@media print{.ipc-tbl td,.ipc-tbl th{font-size:8.4pt;padding:2px 4px;}.ipc-num,.ipc-lbl,.ipc-k,.ipc-v{font-size:8.4pt;}.ipc-v2{font-size:7.8pt;}.ipc-brand-name{font-size:14pt;}.ipc-tbl--sig td{height:88px;}}
+.ipc-detail{page-break-before:always;margin-top:18px;}
+.ipc-detail-head{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;}
+.ipc-detail-title{font-weight:700;font-size:13px;}
+.ipc-detail-sub{font-size:10px;color:#555;}
+.ipc-dtbl{width:100%;border-collapse:collapse;table-layout:fixed;}
+.ipc-dtbl th,.ipc-dtbl td{border:1px solid #999;padding:2px 4px;font-size:9px;line-height:1.2;word-wrap:break-word;vertical-align:top;}
+.ipc-dtbl th{background:#eef0f3;font-weight:700;text-align:center;}
+.ipc-dtbl td.dn{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.ipc-dtbl td.dc{text-align:center;}
+.ipc-dtbl tfoot td{font-weight:700;background:#f5f6f8;}
+@media print{.ipc-tbl td,.ipc-tbl th{font-size:8.4pt;padding:2px 4px;}.ipc-num,.ipc-lbl,.ipc-k,.ipc-v{font-size:8.4pt;}.ipc-v2{font-size:7.8pt;}.ipc-brand-name{font-size:14pt;}.ipc-tbl--sig td{height:88px;}.ipc-dtbl th,.ipc-dtbl td{font-size:7.6pt;}}
 `;
 
 function row(code: string, label: string, lvl: number, prev: number, cur: number, tot: number, bold = false) {
@@ -187,6 +197,36 @@ export function ipcDocInnerHtml(d: IpcDocData): string {
   </div>`;
 }
 
+/** Per-sheet BOQ line-item detail pages appended after the formal statement. */
+function ipcSheetsHtml(cert: PaymentCertificate, currencyCode: string): string {
+  const sheets = cert.sheets || [];
+  if (!sheets.length) return "";
+  return sheets
+    .map((sheet) => {
+      let bBoq = 0;
+      let bCur = 0;
+      let bTot = 0;
+      const body = sheet.items
+        .map((item, i) => {
+          const l = paymentLineState(item);
+          bBoq += l.boqAmount;
+          bCur += l.currentAmount;
+          bTot += l.totalAmount;
+          return `<tr><td class="dc">${i + 1}</td><td class="dc">${esc(item.billNo || "")}</td><td>${esc(item.description || "")}</td><td class="dc">${esc(item.unit || "")}</td><td class="dn">${fmt(l.boqQty)}</td><td class="dn">${fmt(l.rate)}</td><td class="dn">${fmt(l.boqAmount)}</td><td class="dn">${fmt(l.previousQty)}</td><td class="dn">${fmt(l.currentQty)}</td><td class="dn">${fmt(l.totalQty)}</td><td class="dn">${fmt(l.currentAmount)}</td><td class="dn">${fmt(l.totalAmount)}</td></tr>`;
+        })
+        .join("");
+      return `<div class="ipc-detail">
+        <div class="ipc-detail-head"><div class="ipc-detail-title">${esc(sheet.name || "Sheet")}</div><div class="ipc-detail-sub">Certificate detail — quantities and amounts</div></div>
+        <table class="ipc-dtbl"><colgroup><col style="width:3%"/><col style="width:8%"/><col style="width:27%"/><col style="width:5%"/><col style="width:8%"/><col style="width:8%"/><col style="width:9%"/><col style="width:7%"/><col style="width:7%"/><col style="width:7%"/><col style="width:10%"/><col style="width:11%"/></colgroup>
+        <thead><tr><th>#</th><th>Item No.</th><th>Description</th><th>Unit</th><th>BOQ Qty</th><th>Rate</th><th>BOQ Amount</th><th>Prev Qty</th><th>Curr Qty</th><th>Cum Qty</th><th>Curr Amount</th><th>Cum Amount</th></tr></thead>
+        <tbody>${body}</tbody>
+        <tfoot><tr><td class="dc" colspan="6">Bill total (${esc(currencyCode)})</td><td class="dn">${fmt(bBoq)}</td><td colspan="3"></td><td class="dn">${fmt(bCur)}</td><td class="dn">${fmt(bTot)}</td></tr></tfoot>
+        </table>
+      </div>`;
+    })
+    .join("");
+}
+
 /** Full standalone HTML document (for the iframe srcDoc and the print window). */
 export function buildIpcFormalHtml(
   cert: PaymentCertificate,
@@ -195,5 +235,6 @@ export function buildIpcFormalHtml(
   autoPrint = false,
 ): string {
   const d = buildIpcDocData(cert, project, signatureProfile);
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>IPC ${esc(d.header.certificateNo)} — ${esc(d.header.projectTitle)}</title><style>${IPC_DOC_CSS}</style></head><body>${ipcDocInnerHtml(d)}${autoPrint ? "<script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>" : ""}</body></html>`;
+  const detail = ipcSheetsHtml(cert, d.header.currency);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>IPC ${esc(d.header.certificateNo)} — ${esc(d.header.projectTitle)}</title><style>${IPC_DOC_CSS}</style></head><body>${ipcDocInnerHtml(d)}${detail}${autoPrint ? "<script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>" : ""}</body></html>`;
 }

@@ -194,7 +194,6 @@ export default function PaymentModule() {
   // IPC summary view direction: the modern in-app statement, or the formal
   // A4-landscape "Ledger / PDF" preview (identical markup to the exported PDF).
   const [ipcView, setIpcView] = useState<"modern" | "ledger">("modern");
-  const [ipcPreview, setIpcPreview] = useState(false);
 
   const projectCerts = useMemo(
     () =>
@@ -456,7 +455,7 @@ export default function PaymentModule() {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <CertificatePrint cert={activeCert} projectName={project?.name || "Project"} />
+              <CertificatePrint cert={activeCert} project={project} />
               {activeLocked ? (
                 <>
                   {activeCert.type === "interim" && (
@@ -568,7 +567,7 @@ export default function PaymentModule() {
 
           {activeSheetIdx === -1 && (
             <div className="space-y-5">
-              {/* View switcher + PDF actions (matches the design prototype). */}
+              {/* On-screen view switcher. PDF/Excel export lives in the top toolbar. */}
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg border border-border bg-bg p-0.5 text-xs font-semibold">
                   {([["modern", "Modern"], ["ledger", "Ledger / PDF"]] as const).map(([k, l]) => (
@@ -582,27 +581,6 @@ export default function PaymentModule() {
                     </button>
                   ))}
                 </div>
-                <div className="flex-1" />
-                <button
-                  type="button"
-                  onClick={() => setIpcPreview(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-surface px-3 py-1.5 text-xs font-semibold text-txt transition hover:bg-bg-hover"
-                >
-                  <Eye size={14} /> Preview PDF
-                </button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => {
-                    const w = window.open("", "_blank");
-                    if (w) {
-                      w.document.write(buildIpcFormalHtml(activeCert, project, userSignatureProfile, true));
-                      w.document.close();
-                    }
-                  }}
-                >
-                  <FileText size={14} /> Export PDF
-                </Button>
               </div>
 
               {ipcView === "ledger" ? (
@@ -970,49 +948,6 @@ export default function PaymentModule() {
               </div>
               </>
               )}
-            </div>
-          )}
-
-          {ipcPreview && (
-            <div
-              className="fixed inset-0 z-[200] flex flex-col items-center overflow-auto bg-[rgba(16,24,38,0.6)] p-4"
-              onClick={() => setIpcPreview(false)}
-            >
-              <div
-                className="mb-3 flex w-full max-w-5xl items-center justify-between text-white"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <span className="text-sm font-semibold">PDF preview — A4 landscape</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const w = window.open("", "_blank");
-                      if (w) {
-                        w.document.write(buildIpcFormalHtml(activeCert, project, userSignatureProfile, true));
-                        w.document.close();
-                      }
-                    }}
-                    className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-hover"
-                  >
-                    Save as PDF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIpcPreview(false)}
-                    className="rounded-lg border border-white/40 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-              <div className="w-full max-w-5xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <iframe
-                  title="IPC formal preview"
-                  className="h-[78vh] w-full border-0 bg-white"
-                  srcDoc={buildIpcFormalHtml(activeCert, project, userSignatureProfile)}
-                />
-              </div>
             </div>
           )}
 

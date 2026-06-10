@@ -1,134 +1,43 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import * as XLSX from "xlsx-js-style";
-import type { PaymentCertificate } from "@/lib/supabase";
-import { currency } from "@/lib/store";
-import {
-  parsePaymentNumber,
-  paymentCertificateCalcs,
-  paymentLineState,
-} from "@/lib/payment-calculations";
-import Modal from "@/components/ui/Modal";
-import Button from "@/components/ui/Button";
+import { Eye, FileText, FileSpreadsheet } from "lucide-react";
+import type { PaymentCertificate, Project } from "@/lib/supabase";
+import { useAppStore } from "@/lib/store";
+import { paymentLineState } from "@/lib/payment-calculations";
+import { buildIpcFormalHtml, buildIpcDocData } from "./ipcFormalDoc";
 
 interface CertificatePrintProps {
   cert: PaymentCertificate;
-  projectName: string;
+  project: Project | null;
 }
 
-const fmt = (value: number) => currency(value);
-
 const certificateTitle = (cert: PaymentCertificate) =>
-  `${cert.type === "final" ? "Final Payment Certificate" : "Interim Payment Certificate"} No. ${String(
-    cert.number
-  ).padStart(2, "0")}${cert.revision ? ` Rev ${cert.revision}` : ""}`;
-
-const selectedSheetTotals = (cert: PaymentCertificate, selectedSheetIds: Set<string>) =>
-  cert.sheets
-    .filter((sheet) => selectedSheetIds.has(sheet.id))
-    .map((sheet, index) => {
-      const totals = sheet.items.reduce(
-        (acc, item) => {
-          const line = paymentLineState(item);
-          acc.boq += line.boqAmount;
-          acc.previous += line.previousAmount;
-          acc.current += line.currentAmount;
-          acc.total += line.totalAmount;
-          return acc;
-        },
-        { boq: 0, previous: 0, current: 0, total: 0 }
-      );
-      return { billNo: index + 1, name: sheet.name, ...totals };
-    });
+  `${cert.type === "final" ? "Final Payment Certificate" : "Interim Payment Certificate"} No. ${String(cert.number).padStart(2, "0")}${
+    cert.revision ? ` Rev ${cert.revision}` : ""
+  }`;
 
 const safeSheetName = (value: string, fallback: string) =>
   (value || fallback).replace(/[\\/?*\[\]:]/g, " ").trim().slice(0, 31) || fallback;
 
-export default function CertificatePrint({ cert, projectName }: CertificatePrintProps) {
-  const printRef = useRef<HTMLDivElement>(null);
-  const [showSelector, setShowSelector] = useState(false);
-  const [action, setAction] = useState<"print" | "excel">("print");
-  const [includeSummary, setIncludeSummary] = useState(true);
-  const [selectedSheetIds, setSelectedSheetIds] = useState<Set<string>>(
-    new Set(cert.sheets.map((s) => s.id))
-  );
+/**
+ * Certificate output: a single formal-template path. "Export PDF" / "Preview
+ * PDF" render the A4-landscape UNOPS statement (ipcFormalDoc) followed by the
+ * per-sheet BOQ line-item detail; "Export Excel" mirrors that — a formal A–M
+ * summary sheet plus one detail sheet per BOQ sheet.
+ */
+export default function CertificatePrint({ cert, project }: CertificatePrintProps) {
+  const userSignatureProfile = useAppStore((s) => s.userSignatureProfile);
+  const [preview, setPreview] = useState(false);
 
-  useEffect(() => {
-    setSelectedSheetIds(new Set(cert.sheets.map((s) => s.id)));
-  }, [cert.id, cert.sheets]);
+  const formalHtml = (autoPrint = false) => buildIpcFormalHtml(cert, project, userSignatureProfile, autoPrint);
 
-  const selectedSheets = useMemo(
-    () => cert.sheets.filter((sheet) => selectedSheetIds.has(sheet.id)),
-    [cert.sheets, selectedSheetIds]
-  );
-  const sheetSummaries = useMemo(
-    () => selectedSheetTotals(cert, selectedSheetIds),
-    [cert, selectedSheetIds]
-  );
-  const calcs = paymentCertificateCalcs(cert);
-  const adjustmentAdditions = (cert.adjustments || [])
-    .filter((line) => line.type === "addition")
-    .reduce((sum, line) => sum + parsePaymentNumber(line.amount), 0);
-  const adjustmentDeductions = (cert.adjustments || [])
-    .filter((line) => line.type === "deduction")
-    .reduce((sum, line) => sum + parsePaymentNumber(line.amount), 0);
-
-  const toggleSheet = (sheetId: string) => {
-    setSelectedSheetIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(sheetId)) next.delete(sheetId);
-      else next.add(sheetId);
-      return next;
-    });
-  };
-
-  const printStyles = `
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; line-height: 1.35; }
-    .page { padding: 0; color: #111827; }
-    .header { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 12px; }
-    .kicker { color: #4b5563; font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 700; }
-    .title { margin-top: 3px; font-size: 18px; font-weight: 800; color: #111827; }
-    .subtitle { margin-top: 3px; font-size: 10.5px; color: #374151; }
-    .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 14px; }
-    .meta div { border: 1px solid #cbd5e1; padding: 6px; min-height: 38px; }
-    .label { display: block; color: #64748b; font-size: 8px; text-transform: uppercase; letter-spacing: 0.13em; font-weight: 700; margin-bottom: 3px; }
-    .value { color: #111827; font-weight: 700; overflow-wrap: anywhere; }
-    h2 { margin: 14px 0 7px; padding-top: 7px; border-top: 1.5px solid #111827; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #111827; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 12px; page-break-inside: auto; }
-    th, td { border: 1px solid #cbd5e1; padding: 4px 5px; color: #111827; vertical-align: top; overflow-wrap: anywhere; word-break: normal; }
-    th { background: #f1f5f9; font-size: 8.5px; text-align: center; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    td.center { text-align: center; }
-    td.desc { text-align: left; }
-    tr.subtotal td { background: #f8fafc; font-weight: 800; }
-    tr.net td { background: #ecfdf5; font-weight: 900; }
-    tr.warn td { background: #fff7ed; }
-    .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; page-break-inside: avoid; }
-    .sig { min-height: 78px; border-top: 1px solid #111827; padding-top: 6px; }
-    .footer { margin-top: 14px; color: #64748b; font-size: 8px; text-align: center; }
-    .page-break { page-break-before: always; }
-    @media print { @page { size: A4 landscape; margin: 12mm 10mm 14mm; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } tr { page-break-inside: avoid; } }
-  `;
-
-  const handlePrint = () => {
-    const content = printRef.current;
-    if (!content) return;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${certificateTitle(cert)}</title>
-          <style>${printStyles}</style>
-        </head>
-        <body>${content.innerHTML}</body>
-      </html>
-    `);
-    printWindow.document.close();
-    setTimeout(() => printWindow.print(), 350);
+  const exportPdf = () => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(formalHtml(true));
+    w.document.close();
   };
 
   const excelBorder = {
@@ -157,64 +66,61 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
 
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
+    const d = buildIpcDocData(cert, project, userSignatureProfile);
+    const H = d.header;
 
-    if (includeSummary) {
-      const rows: Array<Array<string | number>> = [
-        [certificateTitle(cert)],
-        [`Project: ${projectName}`],
-        [`Period: ${cert.periodStart || cert.date} to ${cert.periodEnd || cert.date}`],
-        [],
-        ["Bill", "Description", "BOQ Amount", "Previous Amount", "Current Amount", "Cumulative Amount"],
-        ...sheetSummaries.map((row) => [row.billNo, row.name, row.boq, row.previous, row.current, row.total]),
-        ["", "Works subtotal", calcs.boqSubTotal, calcs.prevSubTotal, calcs.currSubTotal, calcs.totalSubTotal],
-        ["", "Gross certified", calcs.boq.grand, calcs.prev.grand, calcs.curr.grand, calcs.total.grand],
-        ["", "Retention deducted", "", calcs.prev.ret, calcs.curr.ret, calcs.total.ret],
-        ["", "Retention released", "", "", calcs.curr.retentionRelease, calcs.curr.retentionRelease],
-        ["", "Advance recovered", "", calcs.prev.advance, calcs.curr.advance, calcs.total.advance],
-        ["", "Withholding tax", "", calcs.prev.wh, calcs.curr.wh, calcs.total.wh],
-        ["", "Adjustment additions", "", "", adjustmentAdditions, adjustmentAdditions],
-        ["", "Adjustment deductions", "", "", adjustmentDeductions, adjustmentDeductions],
-        ["", "Current net payable", "", "", calcs.curr.net, calcs.total.net],
-        ["", "Retention held", "", "", "", calcs.total.retentionHeld],
-        ["", "Advance balance", "", "", "", calcs.total.advanceBalance],
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [{ wch: 8 }, { wch: 34 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
-      (ws as any)["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
-      ];
-      styleRow(ws, 1, 6, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
-      styleRow(ws, 2, 6, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
-      styleRow(ws, 3, 6, { alignment: { horizontal: "center" } });
-      styleRow(ws, 5, 6, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
-      for (let row = 6; row <= rows.length; row++) {
-        styleRow(ws, row, 6, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
-      }
-      XLSX.utils.book_append_sheet(wb, ws, "Summary");
+    // Formal A–M statement, mirroring the PDF.
+    const rows: Array<Array<string | number>> = [
+      [H.title],
+      [`Project: ${H.projectTitle}`],
+      [`Contract No: ${H.contractNo}`, "", `Certificate No: ${H.certificateNo}`, `Valuation: ${H.valuationDate}`],
+      [`Contractor: ${H.contractor}`],
+      [`Contract Price: ${H.contractPrice}`, "", `Period: ${H.period}`],
+      [],
+      ["Account details", "Prev. Certificate", "This Certificate", `Total (${H.currency})`],
+      ["A. Total of work done", d.prev.workDone, d.cur.workDone, d.total.workDone],
+      ["B. Material on site", d.prev.material, d.cur.material, d.total.material],
+      ["C. Variations", d.prev.variations, d.cur.variations, d.total.variations],
+      ["D. Sub-total", d.prev.D, d.cur.D, d.total.D],
+      ["E. Less 5% tax", d.prev.tax, d.cur.tax, d.total.tax],
+      ["E. Less retention money", d.prev.retention, d.cur.retention, d.total.retention],
+      ["E. Less withholding tax", d.prev.wh, d.cur.wh, d.total.wh],
+      ["F. Sub-total", d.prev.F, d.cur.F, d.total.F],
+      ["G. Advance payment", d.prev.advance, d.cur.advance, d.total.advance],
+      ["H. Repayment of advance", d.prev.repay, d.cur.repay, d.total.repay],
+      ["I. Balance of advance (G-H)", d.prev.balanceI, d.cur.balanceI, d.total.balanceI],
+      ["J. Compensation costs/claims", d.prev.J, d.cur.J, d.total.J],
+      ["K. Interest on delayed payment", d.prev.K, d.cur.K, d.total.K],
+      ["L. Liquidated damage", d.prev.L, d.cur.L, d.total.L],
+      ["M. Total of payment", d.M.prev, d.M.cur, d.M.total],
+      ["Previous certificates", "", "", d.previousCertificates],
+      ["Now due to contractor", "", "", d.nowDue],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 36 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+    (ws as any)["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
+    ];
+    styleRow(ws, 1, 4, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
+    styleRow(ws, 2, 4, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+    styleRow(ws, 7, 4, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+    for (let row = 8; row <= rows.length; row++) {
+      styleRow(ws, row, 4, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
     }
+    // Bold the sub-total / total / now-due lines (D, F, M, Now due).
+    [11, 15, 22, 24].forEach((r) => styleRow(ws, r, 4, { font: { ...baseFont, bold: true } }));
+    XLSX.utils.book_append_sheet(wb, ws, "IPC Summary");
 
-    selectedSheets.forEach((sheet) => {
-      const rows: Array<Array<string | number>> = [[
-        "#",
-        "Item No.",
-        "Description",
-        "Unit",
-        "BOQ Qty",
-        "Rate",
-        "BOQ Amount",
-        "Previous Qty",
-        "Current Qty",
-        "Cumulative Qty",
-        "Balance Qty",
-        "Current Amount",
-        "Cumulative Amount",
-        "Warning / Note",
-      ]];
+    // Per-sheet BOQ line-item detail.
+    (cert.sheets || []).forEach((sheet) => {
+      const detailRows: Array<Array<string | number>> = [
+        ["#", "Item No.", "Description", "Unit", "BOQ Qty", "Rate", "BOQ Amount", "Previous Qty", "Current Qty", "Cumulative Qty", "Balance Qty", "Current Amount", "Cumulative Amount", "Warning / Note"],
+      ];
       sheet.items.forEach((item, index) => {
         const line = paymentLineState(item);
-        rows.push([
+        detailRows.push([
           index + 1,
           item.billNo,
           item.description,
@@ -231,28 +137,16 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
           item.overrideNote || (line.warningStatus === "over-certified" ? "Over BOQ quantity" : ""),
         ]);
       });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [
-        { wch: 5 },
-        { wch: 12 },
-        { wch: 46 },
-        { wch: 8 },
-        { wch: 11 },
-        { wch: 12 },
-        { wch: 14 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 14 },
-        { wch: 12 },
-        { wch: 15 },
-        { wch: 16 },
-        { wch: 28 },
+      const dws = XLSX.utils.aoa_to_sheet(detailRows);
+      dws["!cols"] = [
+        { wch: 5 }, { wch: 12 }, { wch: 46 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 14 },
+        { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 15 }, { wch: 16 }, { wch: 28 },
       ];
-      styleRow(ws, 1, 14, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
-      for (let row = 2; row <= rows.length; row++) {
-        styleRow(ws, row, 14, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
+      styleRow(dws, 1, 14, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+      for (let row = 2; row <= detailRows.length; row++) {
+        styleRow(dws, row, 14, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
       }
-      XLSX.utils.book_append_sheet(wb, ws, safeSheetName(sheet.name, "Sheet"));
+      XLSX.utils.book_append_sheet(wb, dws, safeSheetName(sheet.name, "Sheet"));
     });
 
     const safeDate = String(cert.date || "").replace(/[^\d-]/g, "") || "date";
@@ -271,260 +165,57 @@ export default function CertificatePrint({ cert, projectName }: CertificatePrint
     URL.revokeObjectURL(url);
   };
 
-  const runAction = () => {
-    if (!includeSummary && selectedSheets.length === 0) return;
-    setShowSelector(false);
-    if (action === "excel") exportToExcel();
-    else handlePrint();
-  };
+  const btnCls =
+    "inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-raised px-3 py-1.5 text-xs font-medium text-txt transition-colors hover:bg-bg-hover";
 
   return (
     <>
-      <button
-        onClick={() => {
-          setAction("print");
-          setShowSelector(true);
-        }}
-        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
-      >
-        Print Certificate
+      <button type="button" onClick={() => setPreview(true)} className={btnCls}>
+        <Eye size={14} /> Preview PDF
       </button>
       <button
-        onClick={() => {
-          setAction("excel");
-          setShowSelector(true);
-        }}
-        className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-raised px-3 py-1.5 text-xs font-medium text-txt transition-colors hover:bg-bg-hover"
+        type="button"
+        onClick={exportPdf}
+        className="ml-2 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
       >
-        Export Excel
+        <FileText size={14} /> Export PDF
+      </button>
+      <button type="button" onClick={exportToExcel} className={`${btnCls} ml-2`}>
+        <FileSpreadsheet size={14} /> Export Excel
       </button>
 
-      <div ref={printRef} style={{ position: "absolute", left: "-9999px", top: 0 }}>
-        <div className="page">
-          {includeSummary && (
-            <>
-              <div className="header">
-                <div className="kicker">Payment certificate</div>
-                <div className="title">{certificateTitle(cert)}</div>
-                <div className="subtitle">{projectName}</div>
-              </div>
-              <div className="meta">
-                <div>
-                  <span className="label">Certificate Date</span>
-                  <span className="value">{cert.date}</span>
-                </div>
-                <div>
-                  <span className="label">Period</span>
-                  <span className="value">{cert.periodStart || cert.date} to {cert.periodEnd || cert.date}</span>
-                </div>
-                <div>
-                  <span className="label">Status</span>
-                  <span className="value">{cert.status.toUpperCase()}</span>
-                </div>
-                <div>
-                  <span className="label">Previous Certificate</span>
-                  <span className="value">{cert.previousCertificateId ? "Linked" : "None"}</span>
-                </div>
-              </div>
-
-              <h2>Summary bills of quantities</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: "7%" }}>Bill</th>
-                    <th style={{ width: "31%" }}>Description</th>
-                    <th>BOQ Amount</th>
-                    <th>Previous Amount</th>
-                    <th>Current Amount</th>
-                    <th>Cumulative Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sheetSummaries.map((row) => (
-                    <tr key={row.name}>
-                      <td className="center">{row.billNo}</td>
-                      <td className="desc">{row.name}</td>
-                      <td className="num">{fmt(row.boq)}</td>
-                      <td className="num">{fmt(row.previous)}</td>
-                      <td className="num">{fmt(row.current)}</td>
-                      <td className="num">{fmt(row.total)}</td>
-                    </tr>
-                  ))}
-                  <tr className="subtotal">
-                    <td />
-                    <td className="desc">Works subtotal</td>
-                    <td className="num">{fmt(calcs.boqSubTotal)}</td>
-                    <td className="num">{fmt(calcs.prevSubTotal)}</td>
-                    <td className="num">{fmt(calcs.currSubTotal)}</td>
-                    <td className="num">{fmt(calcs.totalSubTotal)}</td>
-                  </tr>
-                  <tr className="subtotal">
-                    <td />
-                    <td className="desc">Gross certified</td>
-                    <td className="num">{fmt(calcs.boq.grand)}</td>
-                    <td className="num">{fmt(calcs.prev.grand)}</td>
-                    <td className="num">{fmt(calcs.curr.grand)}</td>
-                    <td className="num">{fmt(calcs.total.grand)}</td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td className="desc">Retention deducted</td>
-                    <td />
-                    <td className="num">{fmt(calcs.prev.ret)}</td>
-                    <td className="num">{fmt(calcs.curr.ret)}</td>
-                    <td className="num">{fmt(calcs.total.ret)}</td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td className="desc">Retention released</td>
-                    <td />
-                    <td />
-                    <td className="num">{fmt(calcs.curr.retentionRelease)}</td>
-                    <td className="num">{fmt(calcs.curr.retentionRelease)}</td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td className="desc">Advance recovered</td>
-                    <td />
-                    <td className="num">{fmt(calcs.prev.advance)}</td>
-                    <td className="num">{fmt(calcs.curr.advance)}</td>
-                    <td className="num">{fmt(calcs.total.advance)}</td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td className="desc">Withholding tax</td>
-                    <td />
-                    <td className="num">{fmt(calcs.prev.wh)}</td>
-                    <td className="num">{fmt(calcs.curr.wh)}</td>
-                    <td className="num">{fmt(calcs.total.wh)}</td>
-                  </tr>
-                  {(cert.adjustments || []).map((line) => (
-                    <tr key={line.id} className={line.type === "deduction" ? "warn" : undefined}>
-                      <td />
-                      <td className="desc">
-                        {line.type === "deduction" ? "Less" : "Add"} {line.label}
-                        {line.note ? ` - ${line.note}` : ""}
-                      </td>
-                      <td />
-                      <td />
-                      <td className="num">{fmt(parsePaymentNumber(line.amount))}</td>
-                      <td className="num">{fmt(parsePaymentNumber(line.amount))}</td>
-                    </tr>
-                  ))}
-                  <tr className="net">
-                    <td />
-                    <td className="desc">Current net payable</td>
-                    <td />
-                    <td className="num">{fmt(calcs.prev.net)}</td>
-                    <td className="num">{fmt(calcs.curr.net)}</td>
-                    <td className="num">{fmt(calcs.total.net)}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div className="signatures">
-                <div className="sig">
-                  <span className="label">Prepared by</span>
-                  <div className="value">{cert.contractorName || "Contractor representative"}</div>
-                  <div>{cert.contractorCompany}</div>
-                </div>
-                <div className="sig">
-                  <span className="label">Checked by</span>
-                  <div className="value">{cert.engineerName || "Engineer representative"}</div>
-                  <div>{cert.engineerOrg}</div>
-                </div>
-                <div className="sig">
-                  <span className="label">Approved by</span>
-                  <div className="value">{cert.employerName || "Employer representative"}</div>
-                  <div>{cert.employerOrg}</div>
-                </div>
-              </div>
-              <div className="footer">Generated from Planovera project controls.</div>
-            </>
-          )}
-
-          {selectedSheets.map((sheet, sheetIndex) => (
-            <div key={sheet.id} className={includeSummary || sheetIndex > 0 ? "page-break" : ""}>
-              <div className="header">
-                <div className="kicker">Certificate detail</div>
-                <div className="title">{sheet.name}</div>
-                <div className="subtitle">{certificateTitle(cert)} - {projectName}</div>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: "4%" }}>#</th>
-                    <th style={{ width: "8%" }}>Item No.</th>
-                    <th style={{ width: "25%" }}>Description</th>
-                    <th style={{ width: "6%" }}>Unit</th>
-                    <th>BOQ Qty</th>
-                    <th>Rate</th>
-                    <th>BOQ Amount</th>
-                    <th>Prev Qty</th>
-                    <th>Curr Qty</th>
-                    <th>Cum Qty</th>
-                    <th>Balance</th>
-                    <th>Curr Amount</th>
-                    <th>Cum Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sheet.items.map((item, index) => {
-                    const line = paymentLineState(item);
-                    return (
-                      <tr key={item.id} className={line.warningStatus === "over-certified" ? "warn" : ""}>
-                        <td className="center">{index + 1}</td>
-                        <td className="center">{item.billNo}</td>
-                        <td className="desc">
-                          {item.description}
-                          {item.overrideNote ? <div><strong>Note:</strong> {item.overrideNote}</div> : null}
-                        </td>
-                        <td className="center">{item.unit}</td>
-                        <td className="num">{fmt(line.boqQty)}</td>
-                        <td className="num">{fmt(line.rate)}</td>
-                        <td className="num">{fmt(line.boqAmount)}</td>
-                        <td className="num">{fmt(line.previousQty)}</td>
-                        <td className="num">{fmt(line.currentQty)}</td>
-                        <td className="num">{fmt(line.totalQty)}</td>
-                        <td className="num">{fmt(line.balanceQty)}</td>
-                        <td className="num">{fmt(line.currentAmount)}</td>
-                        <td className="num">{fmt(line.totalAmount)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      {preview ? (
+        <div
+          className="fixed inset-0 z-[200] flex flex-col items-center overflow-auto bg-[rgba(16,24,38,0.6)] p-4"
+          onClick={() => setPreview(false)}
+        >
+          <div
+            className="mb-3 flex w-full max-w-5xl items-center justify-between text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="text-sm font-semibold">PDF preview — A4 landscape</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={exportPdf}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-hover"
+              >
+                Save as PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreview(false)}
+                className="rounded-lg border border-white/40 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+              >
+                Close
+              </button>
             </div>
-          ))}
+          </div>
+          <div className="w-full max-w-5xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <iframe title="IPC formal preview" className="h-[80vh] w-full border-0 bg-white" srcDoc={formalHtml(false)} />
+          </div>
         </div>
-      </div>
-
-      <Modal
-        open={showSelector}
-        onClose={() => setShowSelector(false)}
-        title={action === "excel" ? "Export to Excel" : "Print Certificate"}
-        width={520}
-      >
-        <p className="mb-3 text-sm text-txt-muted">Select which pages/sheets to include.</p>
-        <div className="max-h-[300px] space-y-2 overflow-auto rounded-lg border border-border bg-bg-raised/30 p-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input type="checkbox" checked={includeSummary} onChange={(e) => setIncludeSummary(e.target.checked)} />
-            Include Summary Page
-          </label>
-          {cert.sheets.map((sheet) => (
-            <label key={sheet.id} className="flex cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" checked={selectedSheetIds.has(sheet.id)} onChange={() => toggleSheet(sheet.id)} />
-              {sheet.name}
-            </label>
-          ))}
-        </div>
-        <div className="mt-4 flex justify-end gap-3">
-          <Button variant="ghost" onClick={() => setShowSelector(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!includeSummary && selectedSheets.length === 0} onClick={runAction}>
-            {action === "excel" ? "Export Selected" : "Print Selected"}
-          </Button>
-        </div>
-      </Modal>
+      ) : null}
     </>
   );
 }
