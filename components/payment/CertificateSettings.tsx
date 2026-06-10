@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import type { PaymentCertificate } from "@/lib/supabase";
+import { useAppStore } from "@/lib/store";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
+import SignatureField from "@/components/ui/SignatureField";
 
 interface CertificateSettingsProps {
   open: boolean;
@@ -41,6 +43,9 @@ export default function CertificateSettings({
     employerName: cert.employerName,
     employerOrg: cert.employerOrg,
     employerTitle: cert.employerTitle,
+    contractorSignatureSource: cert.contractorSignatureSource ?? "none",
+    engineerSignatureSource: cert.engineerSignatureSource ?? "none",
+    employerSignatureSource: cert.employerSignatureSource ?? "none",
     date: cert.date,
     status: cert.status,
   });
@@ -69,6 +74,9 @@ export default function CertificateSettings({
       employerName: cert.employerName,
       employerOrg: cert.employerOrg,
       employerTitle: cert.employerTitle,
+    contractorSignatureSource: cert.contractorSignatureSource ?? "none",
+    engineerSignatureSource: cert.engineerSignatureSource ?? "none",
+    employerSignatureSource: cert.employerSignatureSource ?? "none",
       date: cert.date,
       status: cert.status,
     });
@@ -81,6 +89,8 @@ export default function CertificateSettings({
     onSave(settings);
     onClose();
   };
+
+  const userSignatureProfile = useAppStore((s) => s.userSignatureProfile);
 
   const inputCls =
     "w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-txt outline-none focus:border-accent transition-colors";
@@ -265,15 +275,17 @@ export default function CertificateSettings({
             Contractor (Prepared by)
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>Name</label>
-              <input
-                value={settings.contractorName}
-                onChange={(e) => update("contractorName", e.target.value)}
-                placeholder="e.g. John Doe"
-                className={inputCls}
-              />
-            </div>
+            <SignatureField
+              label="Name"
+              value={settings.contractorName}
+              onChange={(v) => update("contractorName", v)}
+              source={settings.contractorSignatureSource}
+              onSourceChange={(s) => update("contractorSignatureSource", s)}
+              profile={userSignatureProfile}
+              placeholder="e.g. John Doe"
+              inputClassName={inputCls}
+              labelClassName={labelCls}
+            />
             <div>
               <label className={labelCls}>Company</label>
               <input
@@ -301,15 +313,17 @@ export default function CertificateSettings({
             Engineer (Rates & Quantities Confirmed by)
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>Name</label>
-              <input
-                value={settings.engineerName}
-                onChange={(e) => update("engineerName", e.target.value)}
-                placeholder="e.g. Jane Smith"
-                className={inputCls}
-              />
-            </div>
+            <SignatureField
+              label="Name"
+              value={settings.engineerName}
+              onChange={(v) => update("engineerName", v)}
+              source={settings.engineerSignatureSource}
+              onSourceChange={(s) => update("engineerSignatureSource", s)}
+              profile={userSignatureProfile}
+              placeholder="e.g. Jane Smith"
+              inputClassName={inputCls}
+              labelClassName={labelCls}
+            />
             <div>
               <label className={labelCls}>Organization</label>
               <input
@@ -337,15 +351,17 @@ export default function CertificateSettings({
             Employer (Checked by)
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>Name</label>
-              <input
-                value={settings.employerName}
-                onChange={(e) => update("employerName", e.target.value)}
-                placeholder="e.g. Omar Hussein"
-                className={inputCls}
-              />
-            </div>
+            <SignatureField
+              label="Name"
+              value={settings.employerName}
+              onChange={(v) => update("employerName", v)}
+              source={settings.employerSignatureSource}
+              onSourceChange={(s) => update("employerSignatureSource", s)}
+              profile={userSignatureProfile}
+              placeholder="e.g. Omar Hussein"
+              inputClassName={inputCls}
+              labelClassName={labelCls}
+            />
             <div>
               <label className={labelCls}>Organization</label>
               <input

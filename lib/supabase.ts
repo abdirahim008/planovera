@@ -158,6 +158,11 @@ export interface PaymentCertificate {
   employerName: string;
   employerOrg: string;
   employerTitle: string;
+  // Whether each signatory slot shows the user's saved signature image
+  // ("saved") or stays blank ("none"/undefined). Defaults to blank.
+  contractorSignatureSource?: "saved" | "none";
+  engineerSignatureSource?: "saved" | "none";
+  employerSignatureSource?: "saved" | "none";
 }
 
 export interface PaymentItem {

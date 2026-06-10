@@ -26,6 +26,7 @@ import Modal from "@/components/ui/Modal";
 import CompactKpiList from "@/components/ui/CompactKpiList";
 import CertificateSettings from "./CertificateSettings";
 import CertificatePrint from "./CertificatePrint";
+import { buildIpcFormalHtml } from "./ipcFormalDoc";
 import type { PaymentAdjustmentLine, PaymentCertificate, PaymentCertSheet } from "@/lib/supabase";
 
 const formatCertName = (cert: Pick<PaymentCertificate, "type" | "number" | "revision">) => {
@@ -172,6 +173,7 @@ export default function PaymentModule() {
     deleteCertificate,
     savedBOQs,
     project,
+    userSignatureProfile,
   } = useAppStore();
 
   const [activeCertId, setActiveCertId] = useState<string | null>(null);
@@ -189,6 +191,10 @@ export default function PaymentModule() {
   // Advance-recovery panel is collapsed by default so it doesn't dominate the
   // certificate view; the user expands it when they need to set recovery.
   const [advanceOpen, setAdvanceOpen] = useState(false);
+  // IPC summary view direction: the modern in-app statement, or the formal
+  // A4-landscape "Ledger / PDF" preview (identical markup to the exported PDF).
+  const [ipcView, setIpcView] = useState<"modern" | "ledger">("modern");
+  const [ipcPreview, setIpcPreview] = useState(false);
 
   const projectCerts = useMemo(
     () =>
@@ -562,14 +568,97 @@ export default function PaymentModule() {
 
           {activeSheetIdx === -1 && (
             <div className="space-y-5">
-              {/* Headline figures duplicate the header card + breakdown table, so
-                  they're hidden on mobile to keep the certificate view clean. */}
+              {/* View switcher + PDF actions (matches the design prototype). */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-border bg-bg p-0.5 text-xs font-semibold">
+                  {([["modern", "Modern"], ["ledger", "Ledger / PDF"]] as const).map(([k, l]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setIpcView(k)}
+                      className={`rounded-md px-3 py-1.5 transition ${ipcView === k ? "bg-bg-surface text-txt shadow-sm" : "text-txt-dim hover:text-txt"}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => setIpcPreview(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-surface px-3 py-1.5 text-xs font-semibold text-txt transition hover:bg-bg-hover"
+                >
+                  <Eye size={14} /> Preview PDF
+                </button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    const w = window.open("", "_blank");
+                    if (w) {
+                      w.document.write(buildIpcFormalHtml(activeCert, project, userSignatureProfile, true));
+                      w.document.close();
+                    }
+                  }}
+                >
+                  <FileText size={14} /> Export PDF
+                </Button>
+              </div>
+
+              {ipcView === "ledger" ? (
+                <div className="overflow-hidden rounded-xl border border-border bg-white p-3">
+                  <div className="mb-2 text-center text-[11px] text-txt-muted">
+                    Exact PDF preview (A4 landscape). Edit figures in the <b className="text-txt">Modern</b> view.
+                  </div>
+                  <iframe
+                    title="IPC formal certificate"
+                    className="h-[72vh] w-full rounded-lg border border-border bg-white"
+                    srcDoc={buildIpcFormalHtml(activeCert, project, userSignatureProfile)}
+                  />
+                </div>
+              ) : (
+              <>
+              {/* Contract header — formal "Statement for Payment on Account" block. */}
+              <div className="rounded-2xl border border-border bg-bg-surface p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                      Summary of statement for payment on account
+                    </div>
+                    <h2 className="mt-1 truncate text-lg font-bold tracking-tight text-txt sm:text-xl">{project?.name || "Project"}</h2>
+                  </div>
+                  <div className="flex flex-shrink-0 gap-2">
+                    <div className="rounded-lg border border-border bg-bg px-3 py-2 text-center">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">Certificate</div>
+                      <div className="font-mono text-sm font-semibold text-txt">No. {String(activeCert.number).padStart(2, "0")}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-bg px-3 py-2 text-center">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-txt-dim">Valuation</div>
+                      <div className="font-mono text-sm font-semibold text-txt">{activeCert.date}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 lg:grid-cols-3">
+                  {[
+                    ["Contractor", activeCert.contractorCompany || activeCert.contractorName || "—"],
+                    ["Contract price", project?.contractAmount ? `$ ${currency(project.contractAmount)} ${project?.currency || "USD"}` : "—"],
+                    ["Period", `${activeCert.periodStart || activeCert.date} → ${activeCert.periodEnd || activeCert.date}`],
+                  ].map(([k, v]) => (
+                    <div key={k} className="min-w-0">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">{k}</div>
+                      <div className="mt-0.5 truncate text-sm font-medium text-txt" title={v}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Headline figures — hidden on mobile (the table carries them). */}
               <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
                 {[
                   { label: "1. Valuation this period", value: activeCalcs.curr.grand, color: "accent" },
                   { label: "2. Retention held", value: activeCalcs.total.retentionHeld, color: "err" },
                   { label: "3. Advance recovered", value: activeCalcs.currentAdvanceRecovery, color: "purple" },
-                  { label: "4. Net payable", value: activeCalcs.curr.net, color: "ok" },
+                  { label: "4. Now due to contractor", value: activeCalcs.curr.net, color: "ok" },
                 ].map((card) => (
                   <div key={card.label} className="rounded-xl border border-border bg-bg-surface p-4">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{card.label}</div>
@@ -578,37 +667,87 @@ export default function PaymentModule() {
                 ))}
               </div>
 
+              {/* Formal A–M statement table (UNOPS-style), wired to the live cert. */}
               <div className="data-table-shell overflow-auto">
-                <table className="data-table" style={{ minWidth: 460 }}>
+                <table className="data-table" style={{ minWidth: 520 }}>
                   <thead>
                     <tr>
-                      <th className="w-[132px]">Description</th>
+                      <th className="w-[180px]">Description</th>
                       <th className="text-right">Previous</th>
                       <th className="text-right">Current</th>
                       <th className="text-right">Cumulative</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {([
-                      { label: "Gross valuation", previous: activeCalcs.prev.grand, current: activeCalcs.curr.grand, total: activeCalcs.total.grand, always: true },
-                      { label: "Less retention", previous: activeCalcs.prev.ret, current: activeCalcs.curr.ret, total: activeCalcs.total.retentionHeld },
-                      { label: "Retention released", previous: 0, current: activeCalcs.retentionReleaseAmount, total: activeCalcs.retentionReleaseAmount },
-                      { label: "Less advance recovery", previous: activeCalcs.previousAdvanceRecovered, current: activeCalcs.currentAdvanceRecovery, total: activeCalcs.total.advance },
-                      { label: "Less withholding tax", previous: activeCalcs.prev.wh, current: activeCalcs.curr.wh, total: activeCalcs.prev.wh + activeCalcs.curr.wh },
-                      { label: "Adjustments / variations", previous: 0, current: activeCalcs.additions - activeCalcs.deductions, total: activeCalcs.additions - activeCalcs.deductions },
-                      { label: "Net amount payable", previous: activeCalcs.prev.net, current: activeCalcs.curr.net, total: activeCalcs.total.net, always: true },
-                    ] as Array<{ label: string; previous: number; current: number; total: number; always?: boolean }>)
-                      // A deduction row only appears when it actually applies
-                      // (set / non-zero); gross and net always show.
-                      .filter((row) => row.always || Math.abs(row.previous) > 0.005 || Math.abs(row.current) > 0.005 || Math.abs(row.total) > 0.005)
-                      .map((row) => (
-                        <tr key={row.label}>
-                          <td className="text-sm font-medium">{row.label}</td>
-                          <td className="data-cell-num">$ {currency(row.previous)}</td>
-                          <td className="data-cell-num">$ {currency(row.current)}</td>
-                          <td className="data-cell-num font-bold">$ {currency(row.total)}</td>
-                        </tr>
-                      ))}
+                    {(() => {
+                      const c = activeCalcs;
+                      const varCur = c.additions - c.deductions;
+                      const prevF = c.prev.grand - c.prev.ret - c.prev.wh;
+                      const curF = c.curr.grand + varCur - c.curr.ret - c.curr.wh;
+                      const hasWh = Math.abs(c.prev.wh) + Math.abs(c.curr.wh) > 0.005;
+                      const hasVar = Math.abs(varCur) > 0.005;
+                      const hasAdvance = c.advancePaymentAmount > 0.5 || c.total.advance > 0.5;
+                      type Row = {
+                        code?: string; label: string; prev: number; cur: number; tot: number;
+                        kind?: "group" | "sub" | "due";
+                      };
+                      const rows: Row[] = [
+                        { kind: "group", label: "Work executed", prev: 0, cur: 0, tot: 0 },
+                        { code: "A", label: "Total of work done", prev: c.prev.grand, cur: c.curr.grand, tot: c.total.grand },
+                        ...(hasVar ? [{ code: "C", label: "Variations", prev: 0, cur: varCur, tot: varCur } as Row] : []),
+                        { code: "D", label: "Sub-total", prev: c.prev.grand, cur: c.curr.grand + varCur, tot: c.total.grand + varCur, kind: "sub" },
+                        { kind: "group", label: "Statutory deductions", prev: 0, cur: 0, tot: 0 },
+                        { code: "E", label: "Less retention money", prev: -c.prev.ret, cur: -c.curr.ret, tot: -c.total.retentionHeld },
+                        ...(hasWh ? [{ code: "E", label: "Less withholding tax", prev: -c.prev.wh, cur: -c.curr.wh, tot: -(c.prev.wh + c.curr.wh) } as Row] : []),
+                        { code: "F", label: "Sub-total", prev: prevF, cur: curF, tot: prevF + curF, kind: "sub" },
+                        ...(hasAdvance
+                          ? ([
+                              { kind: "group", label: "Advance & adjustments", prev: 0, cur: 0, tot: 0 },
+                              { code: "G", label: "Advance payment", prev: c.advancePaymentAmount, cur: 0, tot: c.advancePaymentAmount },
+                              { code: "H", label: "Repayment of advance", prev: -c.previousAdvanceRecovered, cur: -c.currentAdvanceRecovery, tot: -c.total.advance },
+                              { code: "I", label: "Balance of advance (G − H)", prev: 0, cur: 0, tot: c.total.advanceBalance },
+                            ] as Row[])
+                          : []),
+                        { code: "M", label: "Total of payment", prev: c.prev.net, cur: c.curr.net, tot: c.total.net, kind: "sub" },
+                        { kind: "due", label: "Now due to contractor", prev: c.prev.net, cur: c.curr.net, tot: c.total.net },
+                      ];
+                      const num = (v: number) => `$ ${currency(v)}`;
+                      return rows.map((r, i) => {
+                        if (r.kind === "group") {
+                          return (
+                            <tr key={`g-${i}`}>
+                              <td colSpan={4} className="bg-bg px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-txt-dim">
+                                {r.label}
+                              </td>
+                            </tr>
+                          );
+                        }
+                        if (r.kind === "due") {
+                          return (
+                            <tr key={`d-${i}`} className="bg-accent/5">
+                              <td className="text-sm font-bold text-txt">{r.label}</td>
+                              <td className="data-cell-num text-txt-muted">{num(r.prev)}<span className="ml-1 text-[10px] uppercase tracking-wide text-txt-dim">prev</span></td>
+                              <td className="data-cell-num" />
+                              <td className="data-cell-num text-base font-bold text-accent">{num(r.cur)}</td>
+                            </tr>
+                          );
+                        }
+                        const sub = r.kind === "sub";
+                        return (
+                          <tr key={`r-${i}`} className={sub ? "bg-bg/60 font-semibold" : undefined}>
+                            <td className="text-sm">
+                              {r.code ? (
+                                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded bg-bg-hover font-mono text-[10px] font-bold text-txt-muted">{r.code}</span>
+                              ) : null}
+                              <span className={sub ? "font-semibold text-txt" : "font-medium text-txt"}>{r.label}</span>
+                            </td>
+                            <td className="data-cell-num">{num(r.prev)}</td>
+                            <td className="data-cell-num">{num(r.cur)}</td>
+                            <td className={`data-cell-num ${sub ? "font-bold" : ""}`}>{num(r.tot)}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -828,6 +967,51 @@ export default function PaymentModule() {
                     </table>
                   </div>
                 )}
+              </div>
+              </>
+              )}
+            </div>
+          )}
+
+          {ipcPreview && (
+            <div
+              className="fixed inset-0 z-[200] flex flex-col items-center overflow-auto bg-[rgba(16,24,38,0.6)] p-4"
+              onClick={() => setIpcPreview(false)}
+            >
+              <div
+                className="mb-3 flex w-full max-w-5xl items-center justify-between text-white"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span className="text-sm font-semibold">PDF preview — A4 landscape</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const w = window.open("", "_blank");
+                      if (w) {
+                        w.document.write(buildIpcFormalHtml(activeCert, project, userSignatureProfile, true));
+                        w.document.close();
+                      }
+                    }}
+                    className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-hover"
+                  >
+                    Save as PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIpcPreview(false)}
+                    className="rounded-lg border border-white/40 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div className="w-full max-w-5xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <iframe
+                  title="IPC formal preview"
+                  className="h-[78vh] w-full border-0 bg-white"
+                  srcDoc={buildIpcFormalHtml(activeCert, project, userSignatureProfile)}
+                />
               </div>
             </div>
           )}
