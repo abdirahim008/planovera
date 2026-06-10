@@ -372,27 +372,75 @@ export default function LeftPanel({
     if (!file) return;
 
     setSvgUploadError(null);
-    const isSvg = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
-    if (!isSvg) {
-      setSvgUploadError("Please upload a .svg file.");
+    const name = file.name.toLowerCase();
+    const isSvg = file.type === "image/svg+xml" || name.endsWith(".svg");
+    const isDxf = name.endsWith(".dxf");
+    const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+    if (!isSvg && !isDxf && !isPdf) {
+      setSvgUploadError("Please upload a .svg, .dxf or .pdf file.");
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onerror = () => setSvgUploadError("Could not read the selected file.");
+    reader.onload = async () => {
+      if (isPdf) {
+        // Convert a vector PDF page to SVG in the browser, then reuse the same
+        // preview / insert / publish-to-library flow.
+        setSvgUploadError("Converting PDF…");
+        try {
+          const { pdfToSvg } = await import("@/lib/drawings/pdfToSvg");
+          const { svg, pageCount } = await pdfToSvg(reader.result as ArrayBuffer);
+          if (!svg || !svg.includes("<svg")) {
+            setSvgUploadError("Could not convert that PDF. It may be a scanned/raster PDF rather than a vector drawing.");
+            return;
+          }
+          setSvgUploadError(pageCount > 1 ? `Imported page 1 of ${pageCount}. Split the PDF to import another page.` : null);
+          setSvgText(svg);
+          setSvgUploadName(file.name);
+          setPublishName(file.name.replace(/\.pdf$/i, "") || publishName);
+          setPublishDescription("Converted from a vector PDF drawing.");
+        } catch {
+          setSvgUploadError("That PDF could not be converted. Make sure it is a vector PDF (exported from CAD), not a scan.");
+        }
+        return;
+      }
+
       const text = typeof reader.result === "string" ? reader.result : "";
+
+      if (isDxf) {
+        // Convert the AutoCAD DXF to SVG in the browser, then reuse the same
+        // preview / insert / publish-to-library flow as a pasted SVG.
+        setSvgUploadError("Converting DXF…");
+        try {
+          const dxfMod: any = await import("dxf");
+          const svg: string = new dxfMod.Helper(text).toSVG();
+          if (!svg || !svg.includes("<svg")) {
+            setSvgUploadError("Could not convert that DXF. Try exporting a clean 2D DXF (explode blocks, keep text as text).");
+            return;
+          }
+          setSvgUploadError(null);
+          setSvgText(svg);
+          setSvgUploadName(file.name);
+          setPublishName(file.name.replace(/\.dxf$/i, "") || publishName);
+          setPublishDescription("Converted from an AutoCAD DXF file.");
+        } catch {
+          setSvgUploadError("That DXF could not be parsed. Make sure it is a 2D ASCII DXF export, not a binary or 3D drawing.");
+        }
+        return;
+      }
+
       if (!text.includes("<svg")) {
         setSvgUploadError("That file does not look like valid SVG markup.");
         return;
       }
-
       setSvgText(text);
       setSvgUploadName(file.name);
       setPublishName(file.name.replace(/\.svg$/i, "") || publishName);
       setPublishDescription("SVG file uploaded into the drawing editor.");
     };
-    reader.onerror = () => setSvgUploadError("Could not read the selected SVG file.");
-    reader.readAsText(file);
+    if (isPdf) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   };
 
   const handleSvgUploadChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1508,13 +1556,13 @@ export default function LeftPanel({
                 <input
                   ref={svgFileInputRef}
                   type="file"
-                  accept=".svg,image/svg+xml"
+                  accept=".svg,.dxf,.pdf,image/svg+xml,application/pdf"
                   className="hidden"
                   onChange={handleSvgUploadChange}
                 />
-                <p className="text-sm font-semibold text-slate-900">Upload SVG file</p>
+                <p className="text-sm font-semibold text-slate-900">Upload SVG, DXF or PDF file</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Choose or drag a .svg file here. The editor will load the markup below so you can review it before inserting.
+                  Choose or drag a .svg, AutoCAD .dxf, or vector .pdf file here. DXF and vector PDF are converted to an editable drawing; review it below, then insert or publish to the library.
                 </p>
                 {svgUploadName ? (
                   <p className="mt-2 text-xs font-semibold text-sky-600">Loaded: {svgUploadName}</p>
@@ -1523,7 +1571,7 @@ export default function LeftPanel({
                   <p className="mt-2 text-xs font-semibold text-red-500">{svgUploadError}</p>
                 ) : null}
                 <button className="btn mt-3" type="button" onClick={() => svgFileInputRef.current?.click()}>
-                  Select SVG file
+                  Select SVG / DXF / PDF file
                 </button>
               </div>
 
