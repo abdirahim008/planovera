@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { useAppStore } from "@/lib/store";
-import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
+import { isSupabaseConfigured } from "@/lib/supabase-browser";
 import { labelsForType, isConstructionProject } from "@/lib/project-labels";
 import {
   ArrowLeft,
@@ -17,7 +16,6 @@ import {
   Home,
   LayoutGrid,
   ListChecks,
-  LogOut,
   Mail,
   MessagesSquare,
   NotebookPen,
@@ -29,6 +27,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import UserProfileMenu from "./UserProfileMenu";
 
 interface SidebarProps {
   isMobile?: boolean;
@@ -45,14 +44,11 @@ export default function Sidebar({
 }: SidebarProps) {
   const router = useRouter();
   const authConfigured = isSupabaseConfigured();
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const {
     project,
     activeModule,
     setActiveModule,
     clearProjectSelection,
-    clearWorkspaceData,
-    setProjects,
     sidebarCollapsed,
   } = useAppStore();
 
@@ -131,21 +127,6 @@ export default function Sidebar({
   const handleBackToPortfolio = () => {
     clearProjectSelection();
     if (isMobile) onCloseMobile?.();
-  };
-
-  const handleSignOut = async () => {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) return;
-
-    setIsSigningOut(true);
-    clearProjectSelection();
-    clearWorkspaceData();
-    setProjects([]);
-
-    await supabase.auth.signOut();
-
-    router.replace("/login");
-    router.refresh();
   };
 
   const desktopWidth = collapsed ? 72 : 240;
@@ -247,8 +228,8 @@ export default function Sidebar({
         })}
       </nav>
 
-      {authConfigured ? (
-        <div className={clsx("border-t border-border", collapsed ? "p-2" : "p-3")}>
+      <div className={clsx("border-t border-border", collapsed ? "p-2" : "p-3")}>
+        {authConfigured ? (
           <a
             href="/organization"
             className={clsx(
@@ -260,21 +241,9 @@ export default function Sidebar({
             <Building2 size={16} />
             {!collapsed ? <span>Organization</span> : null}
           </a>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={isSigningOut}
-            className={clsx(
-              "flex w-full items-center rounded-lg text-[13px] font-medium text-txt-muted transition-colors duration-150 hover:bg-bg-hover hover:text-txt disabled:cursor-not-allowed disabled:opacity-60",
-              collapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2",
-            )}
-            title={collapsed ? "Sign out" : undefined}
-          >
-            <LogOut size={16} />
-            {!collapsed ? <span>{isSigningOut ? "Signing out..." : "Sign out"}</span> : null}
-          </button>
-        </div>
-      ) : null}
+        ) : null}
+        <UserProfileMenu collapsed={collapsed} />
+      </div>
     </div>
   );
 
