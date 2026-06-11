@@ -177,16 +177,220 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
           <div className="relative">
             <div className="absolute -inset-8 rounded-[3rem] bg-blue-500/12 blur-3xl" />
             <div className="relative overflow-hidden rounded-[2rem] border border-border bg-bg-surface p-3 shadow-2xl shadow-black/10">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-amber-400/10" />
-              <Image
-                src="/brand/planovera-hero-dashboard.png"
-                alt="Planovera project controls dashboard preview"
-                width={1536}
-                height={864}
-                sizes="(min-width: 1024px) 58vw, 100vw"
-                className="relative min-h-[420px] w-full rounded-[1.4rem] object-cover object-left-top lg:min-h-[600px]"
-                priority
-              />
+              {/* Hand-built, light-themed mockup of the real project overview so the
+                  hero always matches the actual product UI (the old asset was a
+                  dark-themed screenshot the app never ships). Pure CSS/SVG — no image. */}
+              <div
+                aria-hidden
+                className="pointer-events-none relative flex min-h-[420px] select-none overflow-hidden rounded-[1.4rem] border border-border bg-bg lg:min-h-[560px]"
+              >
+                {/* Sidebar */}
+                <div className="hidden w-[136px] shrink-0 flex-col border-r border-border bg-bg-surface px-3 py-4 sm:flex">
+                  <div className="flex items-center gap-2">
+                    <Image
+                      src="/brand/planovera-mark.png"
+                      alt=""
+                      width={22}
+                      height={22}
+                      className="h-[22px] w-[22px] rounded-md object-contain"
+                    />
+                    <span className="text-[11px] font-bold tracking-tight text-txt">Planovera</span>
+                  </div>
+                  <div className="mt-5 space-y-1">
+                    {["Overview", "BOQ", "Progress", "Payments", "Work Plan", "Drawings", "Documents", "Checklist"].map(
+                      (item, index) => (
+                        <div
+                          key={item}
+                          className={`rounded-md px-2.5 py-1.5 text-[10px] font-medium ${
+                            index === 0 ? "bg-accent/10 text-accent" : "text-txt-muted"
+                          }`}
+                        >
+                          {item}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                {/* Main panel */}
+                <div className="min-w-0 flex-1 p-4 pb-24">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-txt-dim">
+                        SURP2/MOG/P3 · Road rehabilitation
+                      </div>
+                      <div className="mt-0.5 truncate text-[13px] font-bold tracking-tight text-txt">
+                        Package 3 — Saddexda Geed &amp; Hamarweyne Roads
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-ok/20 bg-ok/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-ok">
+                      Active
+                    </span>
+                  </div>
+
+                  {/* KPI tiles */}
+                  <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    {(
+                      [
+                        ["Contract", "USD 962,540", "bg-accent/10 text-accent"],
+                        ["Physical", "46.0%", "bg-ok/10 text-ok"],
+                        ["Certified", "USD 157,209", "bg-accent/10 text-accent"],
+                        ["Remaining", "65.8%", "bg-warn/10 text-warn"],
+                      ] as const
+                    ).map(([label, value, chip]) => (
+                      <div key={label} className="rounded-xl border border-border bg-bg-surface px-2.5 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`h-4 w-4 shrink-0 rounded ${chip}`} />
+                          <span className="truncate text-[8px] font-semibold uppercase tracking-[0.12em] text-txt-dim">
+                            {label}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[11px] font-semibold tabular-nums text-txt">
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 grid gap-2 lg:grid-cols-[1.15fr_0.85fr]">
+                    {/* Progress card with strips + S-curve */}
+                    <div className="rounded-xl border border-border bg-bg-surface p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-semibold text-txt">Progress</span>
+                        <span className="rounded-full border border-warn/25 bg-warn/10 px-1.5 py-0.5 text-[8px] font-semibold text-warn">
+                          -0.4% variance
+                        </span>
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        {(
+                          [
+                            ["Planned (time)", 46.4, "#3b82f6"],
+                            ["Actual", 46.0, "#f59e0b"],
+                            ["Financial (paid)", 16.3, "#3b82f6"],
+                          ] as const
+                        ).map(([label, value, color]) => (
+                          <div key={label}>
+                            <div className="flex items-center justify-between text-[8px] text-txt-muted">
+                              <span>{label}</span>
+                              <span className="font-mono tabular-nums text-txt">{value.toFixed(1)}%</span>
+                            </div>
+                            <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-black/5">
+                              <div
+                                className="h-full rounded-full"
+                                style={{ width: `${value}%`, background: `linear-gradient(90deg, ${color}, ${color}66)` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 border-t border-border pt-1.5">
+                        <div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-txt-dim">
+                          Progress reports — planned vs actual
+                        </div>
+                        <svg viewBox="0 0 240 56" className="mt-1 w-full" preserveAspectRatio="none" style={{ height: 56 }}>
+                          {[14, 28, 42].map((y) => (
+                            <line key={y} x1="0" x2="240" y1={y} y2={y} stroke="rgba(124,135,158,0.14)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                          ))}
+                          <polygon points="0,52 60,40 120,28 180,18 240,12 240,52" fill="#f59e0b" opacity="0.08" />
+                          <polyline
+                            points="0,52 60,38 120,26 180,16 240,10"
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth="1.5"
+                            strokeDasharray="4 3"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <polyline
+                            points="0,52 60,40 120,28 180,18 240,12"
+                            fill="none"
+                            stroke="#f59e0b"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <circle cx="240" cy="12" r="2.5" fill="#f59e0b" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Timeline + work plan card */}
+                    <div className="rounded-xl border border-border bg-bg-surface p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-semibold text-txt">Timeline</span>
+                        <span className="font-mono text-[8px] tabular-nums text-txt-muted">148 of 319 days</span>
+                      </div>
+                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/5">
+                        <div className="h-full w-[46%] rounded-full" style={{ background: "linear-gradient(90deg, #f59e0b, #f59e0b66)" }} />
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-1.5">
+                        {(
+                          [
+                            ["Start", "2026-01-15"],
+                            ["Remaining", "171 days"],
+                            ["Finish", "2026-11-30"],
+                          ] as const
+                        ).map(([label, value]) => (
+                          <div key={label} className="rounded-lg border border-border bg-bg px-1.5 py-1">
+                            <div className="text-[7px] font-semibold uppercase tracking-[0.1em] text-txt-dim">{label}</div>
+                            <div className="mt-0.5 truncate font-mono text-[8px] font-semibold tabular-nums text-txt">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 border-t border-border pt-1.5">
+                        <div className="flex items-center justify-between text-[8px]">
+                          <span className="font-semibold uppercase tracking-[0.12em] text-txt-dim">Work plan</span>
+                          <span className="text-txt-muted">2/10 done</span>
+                        </div>
+                        <div className="mt-1 flex h-1 overflow-hidden rounded-full bg-black/5">
+                          <div className="w-[20%] bg-ok" />
+                          <div className="w-[20%] bg-accent" />
+                        </div>
+                        <div className="mt-1.5 space-y-1">
+                          {(
+                            [
+                              ["Reinforced concrete frame", "bg-accent"],
+                              ["Blockwork and partitions", "bg-accent"],
+                              ["Roofing installation", "bg-black/20"],
+                            ] as const
+                          ).map(([label, dot]) => (
+                            <div key={label} className="flex items-center gap-1.5 rounded-md border border-border bg-bg px-1.5 py-1">
+                              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+                              <span className="truncate text-[8px] text-txt">{label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Commercial bar */}
+                  <div className="mt-2 rounded-xl border border-border bg-bg-surface p-3">
+                    <div className="flex items-center justify-between text-[8px]">
+                      <span className="text-[9px] font-semibold text-txt">Commercial</span>
+                      <span className="font-mono tabular-nums text-txt-muted">Certified 38.9% of contract</span>
+                    </div>
+                    <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-black/5">
+                      <div className="w-[16%] bg-ok" />
+                      <div className="w-[18%] bg-accent" />
+                      <div className="w-[5%] bg-warn" />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[8px] text-txt-muted">
+                      {(
+                        [
+                          ["Paid", "bg-ok"],
+                          ["Approved", "bg-accent"],
+                          ["Submitted", "bg-warn"],
+                          ["Retention", "bg-err"],
+                        ] as const
+                      ).map(([label, dot]) => (
+                        <span key={label} className="inline-flex items-center gap-1">
+                          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div className="absolute inset-x-3 bottom-3 grid gap-3 sm:grid-cols-3">
                 {[
                   ["12", "Active projects"],
