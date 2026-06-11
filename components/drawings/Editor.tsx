@@ -596,7 +596,12 @@ export default function Editor({
       const [{ data: projectRows, error: projectsError }, { data: libraryRows, error: libraryError }] =
         await Promise.all([
           supabase.from("drawing_projects").select("*").order("updated_at", { ascending: false }),
-          supabase.from("drawing_library_items").select("*").order("updated_at", { ascending: false }),
+          // Load only what the library grid needs — the (large) svg column is
+          // fetched lazily on insert via fetchLibrarySvg.
+          supabase
+            .from("drawing_library_items")
+            .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+            .order("updated_at", { ascending: false }),
         ]);
 
       if (projectsError) throw projectsError;
@@ -1715,6 +1720,58 @@ export default function Editor({
     [commitHistory, fabricMod, setMessage],
   );
 
+  // Lazily resolve a library item's full SVG. Seed/demo items already carry it
+  // in memory; admin/DB items are loaded without svg (grid uses the thumbnail)
+  // and fetched by id only when inserted.
+  const fetchLibrarySvg = useCallback(
+    async (id: string): Promise<string> => {
+      const local = libraryItems.find((item) => item.id === id);
+      if (local?.svg) return local.svg;
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        const { data } = await supabase.from("drawing_library_items").select("svg").eq("id", id).single();
+        if (data?.svg) return data.svg as string;
+      }
+      return "";
+    },
+    [libraryItems],
+  );
+
+  // Rasterize an SVG to a small PNG data URL, stored alongside published drawings
+  // so the library grid never needs to load the full svg just to show a preview.
+  const svgToThumbnail = useCallback(async (svg: string): Promise<string> => {
+    if (!svg.trim()) return "";
+    return new Promise<string>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 260;
+        const nw = img.naturalWidth || maxW;
+        const nh = img.naturalHeight || maxW;
+        const scale = Math.min(1, maxW / nw);
+        const w = Math.max(1, Math.round(nw * scale));
+        const h = Math.max(1, Math.round(nh * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve("");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          // WebP keeps line-art thumbnails tiny (~10–20 KB); fall back to PNG.
+          let out = canvas.toDataURL("image/webp", 0.75);
+          if (!out || out.indexOf("image/webp") < 0) out = canvas.toDataURL("image/png");
+          resolve(out);
+        } catch {
+          resolve("");
+        }
+      };
+      img.onerror = () => resolve("");
+      img.src = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    });
+  }, []);
+
   const handleAddParametricBlock = useCallback(
     async (kind: ParametricBlockKind, params?: Partial<ParametricBlockParams>) => {
       const canvas = fabricRef.current;
@@ -2269,10 +2326,11 @@ export default function Editor({
             description,
             tags: tags.length > 0 ? tags : parseTags(cleanName),
             svg: draft.svg,
+            thumbnail: await svgToThumbnail(draft.svg),
             author_id: userId,
             author_name: session.name,
           })
-          .select("*")
+          .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
           .single();
 
         if (error) {
@@ -2307,7 +2365,7 @@ export default function Editor({
       setLibrarySaveDraft(null);
       setMessage(`Saved ${draft.mode} "${item.name}" to your personal library.`);
     },
-    [libraryItems, session, setMessage, userId],
+    [libraryItems, session, setMessage, userId, svgToThumbnail],
   );
 
   const handleSaveProject = useCallback(async () => {
@@ -2479,10 +2537,11 @@ export default function Editor({
           description: payload.description.trim() || "Admin-published SVG drawing.",
           tags: payload.tags.length > 0 ? payload.tags : parseTags(payload.name),
           svg: cleanSvg,
+          thumbnail: await svgToThumbnail(cleanSvg),
           author_id: userId,
           author_name: session.name,
         })
-        .select("*")
+        .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
         .single();
 
       if (error) {
@@ -2497,7 +2556,7 @@ export default function Editor({
       setLibraryItems((previous) => mergeLibraryItems([item, ...previous.filter((entry) => entry.id !== item.id)]));
       setMessage(`Published "${item.name}" to the shared library.`);
     },
-    [libraryItems, session, setMessage, userId],
+    [libraryItems, session, setMessage, userId, svgToThumbnail],
   );
 
   const handleDeleteLibraryItem = useCallback(
@@ -2542,6 +2601,7 @@ export default function Editor({
       const canvas = fabricRef.current;
       if (!supabase || !canvas || session?.role !== "admin") return;
 
+      const canvasSvg = canvas.toSVG();
       const { data, error } = await supabase
         .from("drawing_library_items")
         .insert({
@@ -2549,11 +2609,12 @@ export default function Editor({
           category: payload.category,
           description: payload.description.trim() || "Canvas drawing published from the admin workspace.",
           tags: payload.tags.length > 0 ? payload.tags : parseTags(projectName),
-          svg: canvas.toSVG(),
+          svg: canvasSvg,
+          thumbnail: await svgToThumbnail(canvasSvg),
           author_id: userId,
           author_name: session.name,
         })
-        .select("*")
+        .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
         .single();
 
       if (error) {
@@ -2792,6 +2853,7 @@ export default function Editor({
           setTitleBlockData={(data) => updateCurrentPage({ titleBlockData: data })}
           onAddSvg={handleAddSvg}
           onAddParametricBlock={handleAddParametricBlock}
+          onFetchLibrarySvg={fetchLibrarySvg}
           onUpdateParametricBlock={handleUpdateParametricBlock}
           onApplyTitleBlock={handleApplyTitleBlock}
           onRemoveTitleBlock={handleRemoveTitleBlock}

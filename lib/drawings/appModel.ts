@@ -46,6 +46,10 @@ export interface LibraryItem {
   description: string;
   tags: string[];
   svg: string;
+  // Small raster preview for the library grid. Admin/DB items carry one so the
+  // grid can load without pulling every full SVG; the full `svg` is fetched
+  // lazily on insert (it may be empty until then).
+  thumbnail?: string;
   source: "seed" | "admin" | "personal";
   assetType?: "object" | "drawing";
   author: string;
@@ -87,7 +91,8 @@ export interface LibraryItemRecord {
   category: LibraryCategory;
   description: string;
   tags: string[] | null;
-  svg: string;
+  svg?: string;
+  thumbnail?: string | null;
   author_id: string | null;
   author_name: string | null;
   updated_at: string;
@@ -649,7 +654,8 @@ export function mapLibraryRecord(record: LibraryItemRecord): LibraryItem {
     category: record.category,
     description: record.description,
     tags: record.tags ?? [],
-    svg: record.svg,
+    svg: record.svg ?? "",
+    thumbnail: record.thumbnail ?? undefined,
     source: "admin",
     author: record.author_name || "Admin",
     updatedAt: record.updated_at,

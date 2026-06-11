@@ -307,11 +307,15 @@ create table if not exists public.drawing_library_items (
   description text not null default '',
   tags text[] not null default '{}',
   svg text not null,
+  thumbnail text,
   author_id uuid references public.profiles(id) on delete set null,
   author_name text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+-- Backfill the thumbnail column on databases created before it existed.
+alter table public.drawing_library_items add column if not exists thumbnail text;
 
 create table if not exists public.boq_library_items (
   id uuid primary key default gen_random_uuid(),

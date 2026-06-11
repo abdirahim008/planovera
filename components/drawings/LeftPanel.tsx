@@ -66,6 +66,7 @@ interface LeftPanelProps {
   setTitleBlockData: (data: TitleBlockData) => void;
   onAddSvg: (svg: string) => void;
   onAddParametricBlock: (kind: ParametricBlockKind, params?: Partial<ParametricBlockParams>) => void;
+  onFetchLibrarySvg: (id: string) => Promise<string>;
   onUpdateParametricBlock: (params: Partial<ParametricBlockParams>) => void;
   onApplyTitleBlock: () => void;
   onRemoveTitleBlock: () => void;
@@ -105,13 +106,15 @@ const thumbnailCache = new Map<string, string>();
  * rasterizes the SVG once to a small PNG and caches it — so the DOM only ever
  * holds tiny thumbnails for the cards you actually look at.
  */
-function LibraryThumbnail({ id, svg, alt }: { id: string; svg: string; alt: string }) {
+function LibraryThumbnail({ id, svg, thumbnail, alt }: { id: string; svg: string; thumbnail?: string; alt: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState<string | null>(() => thumbnailCache.get(id) ?? null);
+  // A stored thumbnail (admin/DB items) is used directly — no rasterization and
+  // no need for the full svg. Seed/local items fall back to rasterizing their svg.
+  const [thumb, setThumb] = useState<string | null>(() => thumbnail || thumbnailCache.get(id) || null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (thumb) return;
+    if (thumb || !svg) return;
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") {
       setVisible(true);
@@ -209,6 +212,7 @@ export default function LeftPanel({
   setTitleBlockData,
   onAddSvg,
   onAddParametricBlock,
+  onFetchLibrarySvg,
   onUpdateParametricBlock,
   onApplyTitleBlock,
   onRemoveTitleBlock,
@@ -331,14 +335,17 @@ export default function LeftPanel({
     [favoriteIds, libraryItems, recentIds],
   );
 
-  const handleInsertLibraryItem = (item: LibraryItem) => {
+  const handleInsertLibraryItem = async (item: LibraryItem) => {
     onRecordLibraryUse(item.id);
     if (item.parametricKind) {
       // Insert as an editable parametric block so dimensions can be changed.
       onAddParametricBlock(item.parametricKind, item.parametricParams as Partial<ParametricBlockParams>);
       return;
     }
-    onAddSvg(item.svg);
+    // Admin/DB items load without their svg (the grid uses the thumbnail); fetch
+    // the full drawing only now, when it's actually being inserted.
+    const svg = item.svg || (await onFetchLibrarySvg(item.id));
+    if (svg) onAddSvg(svg);
   };
 
   const updateTitleBlock = <K extends keyof TitleBlockData>(
@@ -1431,7 +1438,7 @@ export default function LeftPanel({
                         Insert
                       </button>
                     </div>
-                    <LibraryThumbnail id={item.id} svg={item.svg} alt={item.name} />
+                    <LibraryThumbnail id={item.id} svg={item.svg} thumbnail={item.thumbnail} alt={item.name} />
                     <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {item.tags.map((tag) => (
