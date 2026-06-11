@@ -7,6 +7,7 @@ import { Menu } from "lucide-react";
 
 import { useAppStore } from "@/lib/store";
 import Sidebar from "@/components/layout/Sidebar";
+import LandingSignOut from "@/components/auth/LandingSignOut";
 import {
   getSupabaseBrowserClient,
   isSupabaseConfigured,
@@ -192,6 +193,9 @@ function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState })
               Contact support
             </a>
           ) : null}
+          {/* Blocked users have no sidebar/profile menu, so this screen must
+              carry its own sign-out or the account is stuck. */}
+          <LandingSignOut className="inline-flex items-center justify-center rounded-lg border border-border bg-bg-raised px-3.5 py-2 text-[13px] font-medium text-txt-muted transition hover:bg-bg-hover hover:text-txt" />
         </div>
       </div>
     </div>

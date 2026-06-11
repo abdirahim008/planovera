@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
-  Building2,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -699,11 +698,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
   const [activeOrgTab, setActiveOrgTab] = useState<OrganizationConsoleTab>("dashboard");
   const [complianceModalOpen, setComplianceModalOpen] = useState(false);
   const [actionModalOpen, setActionModalOpen] = useState(false);
-  const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [programOpen, setProgramOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [orgName, setOrgName] = useState("");
   const [programEditor, setProgramEditor] = useState<ProgramEditorState>(defaultProgramEditor);
   const [categoryEditor, setCategoryEditor] = useState<CategoryEditorState>(defaultCategoryEditor);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -1352,39 +1349,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
     setLoading(false);
   };
 
-  const handleCreateOrganization = async () => {
-    if (!orgName.trim()) {
-      setNotice("Enter an organization name first.");
-      return;
-    }
-
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setNotice("Supabase environment variables are missing.");
-      return;
-    }
-
-    setBusyAction("create-organization");
-    setNotice(null);
-    const { data, error } = await supabase.rpc("create_organization_workspace", {
-      org_name: orgName.trim(),
-    });
-
-    if (error) {
-      setBusyAction(null);
-      setNotice(error.message);
-      return;
-    }
-
-    const createdOrg = Array.isArray(data) ? data[0] : data;
-    setCreateOrgOpen(false);
-    setOrgName("");
-    setSelectedOrgId(createdOrg?.id ?? null);
-    setBusyAction(null);
-    setNotice("Organization workspace created. A platform admin can assign seats and activate access from Billing Ops.");
-    await reloadData();
-  };
-
   const handleInvite = async () => {
     if (!selectedOrganization) return;
     if (!selectedSubscriptionUsable) {
@@ -1890,14 +1854,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
           </div>
 
           <div className="flex flex-wrap justify-end gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => setCreateOrgOpen(true)}
-              title="Create a shared organization workspace. You will become the organization owner and can invite teammates."
-              aria-label="Create a shared organization workspace. You will become the organization owner and can invite teammates."
-            >
-              <Building2 size={15} /> New organization
-            </Button>
             {selectedOrganization && canManageSelectedOrganization ? (
               <>
                 {activeOrgTab === "programs" ? (
@@ -3327,32 +3283,6 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
               </div>
             </>
           )}
-        </div>
-      </Modal>
-
-      <Modal open={createOrgOpen} onClose={() => setCreateOrgOpen(false)} title="Create organization" width={460}>
-        <div className="space-y-4">
-          <div>
-            <label className="label">Organization name</label>
-            <input
-              className="input"
-              value={orgName}
-              onChange={(event) => setOrgName(event.target.value)}
-              placeholder="Engineering company or department"
-            />
-          </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setCreateOrgOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreateOrganization}
-              disabled={busyAction === "create-organization"}
-            >
-              {busyAction === "create-organization" ? "Creating..." : "Create organization"}
-            </Button>
-          </div>
         </div>
       </Modal>
 
