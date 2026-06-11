@@ -1907,10 +1907,13 @@ begin
     and seat_reserved = true;
 
   occupied_seats := active_members + pending_invites;
+  -- Admins allocate seats freely from 1 upward. The only hard floor is the
+  -- seats already occupied (active members + reserved invites) — the plan's
+  -- included_seats is a pricing default, not a minimum.
   next_seat_count := greatest(
-    coalesce(seat_count_param, current_subscription.seat_count, occupied_seats, plan_record.included_seats),
+    coalesce(seat_count_param, current_subscription.seat_count, occupied_seats, 1),
     occupied_seats,
-    plan_record.included_seats
+    1
   );
 
   manual_expires_at := coalesce(

@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CreditCard,
   Hourglass,
+  Pencil,
   Play,
   RefreshCcw,
   Users,
@@ -47,6 +48,8 @@ type EditableSubscription = {
   planCode: string;
   status: OrganizationSubscriptionRecord["status"];
   seatCount: string;
+  originalSeatCount: number;
+  occupiedSeats: number;
   durationPreset: "14" | "30" | "90" | "365" | "custom";
   expiryDate: string;
   isPersonal: boolean;
@@ -228,10 +231,20 @@ export default function BillingAdminPanel() {
       return;
     }
 
+    const seatCountValue = Math.floor(Number(editor.seatCount));
+    if (!editor.isPersonal && Number.isFinite(seatCountValue)) {
+      const seatFloor = Math.max(1, editor.occupiedSeats);
+      if (seatCountValue < seatFloor) {
+        setNotice(
+          `Seat count can't go below ${seatFloor} — ${editor.occupiedSeats} seat(s) are already occupied by active members or reserved invites.`,
+        );
+        return;
+      }
+    }
+
     setBusy(editor.organizationId);
     setNotice(null);
 
-    const seatCountValue = Number(editor.seatCount);
     const { error } = await supabase.rpc("admin_set_organization_subscription", {
       org_uuid: editor.organizationId,
       new_status: editor.status,
@@ -297,17 +310,21 @@ export default function BillingAdminPanel() {
   const renderOrgActions = ({
     organization,
     subscription,
+    occupiedSeats,
   }: {
     organization: OrganizationRecord;
     subscription?: OrganizationSubscriptionRecord;
+    occupiedSeats: number;
   }) => {
     const effectivePlanCode =
       subscription?.plan_code ||
       (organization.personal ? "individual-monthly" : "organization-monthly");
     // Personal workspaces are fixed at a single seat (the owner) — never edit it.
+    // Orgs without a subscription start from the seats actually occupied; the
+    // admin sets the real allocation via Edit.
     const effectiveSeatCount = organization.personal
       ? 1
-      : subscription?.seat_count || 5;
+      : subscription?.seat_count || Math.max(occupiedSeats, 1);
     const orgBusy = busy?.startsWith(`${organization.id}:`);
     return (
       <div className="flex flex-wrap justify-end gap-2">
@@ -343,9 +360,8 @@ export default function BillingAdminPanel() {
         >
           Extend 90d
         </Button>
-        <Button
-          variant="warning"
-          size="sm"
+        <button
+          type="button"
           disabled={orgBusy}
           onClick={() =>
             handleQuickUpdate({
@@ -356,12 +372,12 @@ export default function BillingAdminPanel() {
               days: -1,
             })
           }
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-surface px-2.5 py-1 text-xs font-medium text-warn transition hover:border-warn/40 hover:bg-warn/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Ban size={13} /> Suspend
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
+        </button>
+        <button
+          type="button"
           disabled={orgBusy}
           onClick={() =>
             handleQuickUpdate({
@@ -372,11 +388,12 @@ export default function BillingAdminPanel() {
               days: -1,
             })
           }
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-surface px-2.5 py-1 text-xs font-medium text-err transition hover:border-err/40 hover:bg-err/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Cancel
-        </Button>
+        </button>
         <Button
-          variant="primary"
+          variant="default"
           size="sm"
           onClick={() =>
             setEditor({
@@ -385,13 +402,15 @@ export default function BillingAdminPanel() {
               planCode: effectivePlanCode,
               status: subscription?.status || "trialing",
               seatCount: String(effectiveSeatCount),
+              originalSeatCount: effectiveSeatCount,
+              occupiedSeats,
               durationPreset: "custom",
               expiryDate: subscriptionExpiryInput(subscription),
               isPersonal: organization.personal,
             })
           }
         >
-          Edit
+          <Pencil size={13} /> Edit seats & access
         </Button>
       </div>
     );
@@ -416,49 +435,69 @@ export default function BillingAdminPanel() {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-            <Building2 size={14} className="text-accent" />
-            Organizations
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <Building2 size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+              Organizations
+            </div>
+            <div className="text-xl font-semibold text-txt">{organizations.length}</div>
           </div>
-          <div className="mt-3 text-2xl font-semibold text-txt">{organizations.length}</div>
         </div>
         <button
           type="button"
           onClick={() => setStatusFilter("incomplete")}
-          className={`rounded-2xl border bg-bg-surface p-4 text-left transition hover:border-warn/60 ${
+          className={`flex items-center gap-3 rounded-2xl border bg-bg-surface p-4 text-left transition hover:border-warn/60 ${
             totalPending > 0 ? "border-warn/50" : "border-border"
           }`}
         >
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-            <Hourglass size={14} className="text-warn" />
-            Pending approval
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn">
+            <Hourglass size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+              Pending approval
+            </div>
+            <div className="text-xl font-semibold text-txt">{totalPending}</div>
+            <div className="text-xs text-txt-muted">Awaiting activation</div>
           </div>
-          <div className="mt-3 text-2xl font-semibold text-txt">{totalPending}</div>
-          <div className="mt-1 text-xs text-txt-muted">Awaiting activation</div>
         </button>
-        <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-            <CreditCard size={14} className="text-accent" />
-            Active
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ok/10 text-ok">
+            <CreditCard size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+              Active
+            </div>
+            <div className="text-xl font-semibold text-txt">{totalActive}</div>
           </div>
-          <div className="mt-3 text-2xl font-semibold text-txt">{totalActive}</div>
         </div>
-        <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-            <CalendarClock size={14} className="text-accent" />
-            Trials / expired
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <CalendarClock size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+              Trials / expired
+            </div>
+            <div className="text-xl font-semibold text-txt">{totalTrialing}</div>
+            <div className="text-xs text-txt-muted">{totalExpired} expired</div>
           </div>
-          <div className="mt-3 text-2xl font-semibold text-txt">{totalTrialing}</div>
-          <div className="mt-1 text-xs text-txt-muted">{totalExpired} expired</div>
         </div>
-        <div className="rounded-2xl border border-border bg-bg-surface p-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-            <Users size={14} className="text-accent" />
-            Seats sold
-          </div>
-          <div className="mt-3 text-2xl font-semibold text-txt">
-            {subscriptions.reduce((sum, subscription) => sum + subscription.seat_count, 0)}
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <Users size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+              Seats sold
+            </div>
+            <div className="text-xl font-semibold text-txt">
+              {subscriptions.reduce((sum, subscription) => sum + subscription.seat_count, 0)}
+            </div>
           </div>
         </div>
       </div>
@@ -587,7 +626,7 @@ export default function BillingAdminPanel() {
                       </div>
                     </div>
 
-                    {renderOrgActions({ organization, subscription })}
+                    {renderOrgActions({ organization, subscription, occupiedSeats })}
                   </div>
                 );
               })}
@@ -661,7 +700,7 @@ export default function BillingAdminPanel() {
                             {formatRemaining(daysRemaining)}
                           </div>
                         </td>
-                        <td>{renderOrgActions({ organization, subscription })}</td>
+                        <td>{renderOrgActions({ organization, subscription, occupiedSeats })}</td>
                       </tr>
                     );
                   })}
@@ -734,15 +773,25 @@ export default function BillingAdminPanel() {
                     Individual — 1 user (fixed)
                   </div>
                 ) : (
-                  <input
-                    className="input"
-                    value={editor.seatCount}
-                    onChange={(event) =>
-                      setEditor((current) =>
-                        current ? { ...current, seatCount: event.target.value } : current,
-                      )
-                    }
-                  />
+                  <>
+                    <input
+                      type="number"
+                      min={Math.max(1, editor.occupiedSeats)}
+                      step={1}
+                      className="input"
+                      value={editor.seatCount}
+                      onChange={(event) =>
+                        setEditor((current) =>
+                          current ? { ...current, seatCount: event.target.value } : current,
+                        )
+                      }
+                    />
+                    <p className="mt-1 text-xs leading-5 text-txt-dim">
+                      Any number from {Math.max(1, editor.occupiedSeats)} up —{" "}
+                      {editor.occupiedSeats} seat{editor.occupiedSeats === 1 ? " is" : "s are"}{" "}
+                      already occupied (active members + reserved invites).
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -796,6 +845,39 @@ export default function BillingAdminPanel() {
                 />
               </div>
             </div>
+
+            {(() => {
+              // Seats added mid-term are co-terminous: they inherit the org's
+              // existing expiry so every seat renews together. Billing is
+              // manual, so surface the suggested pro-rated charge here.
+              if (editor.isPersonal) return null;
+              const plan = plans.find((item) => item.code === editor.planCode);
+              const seatDelta = Math.floor(Number(editor.seatCount)) - editor.originalSeatCount;
+              const expiryMs = new Date(`${editor.expiryDate}T00:00:00Z`).getTime();
+              const daysLeft = Math.ceil((expiryMs - Date.now()) / 86_400_000);
+              if (!plan || seatDelta <= 0 || !Number.isFinite(daysLeft) || daysLeft <= 0) {
+                return null;
+              }
+              const intervalDays = plan.billing_interval === "yearly" ? 365 : 30;
+              const proRataCents = Math.round(
+                seatDelta * plan.per_seat_price_cents * (daysLeft / intervalDays),
+              );
+              return (
+                <div className="rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-2.5 text-xs leading-5 text-txt">
+                  Adding <strong>{seatDelta}</strong> seat{seatDelta === 1 ? "" : "s"} mid-term:
+                  the new seats share the current expiry ({editor.expiryDate}) so all seats renew
+                  together.
+                  {plan.per_seat_price_cents > 0 ? (
+                    <>
+                      {" "}
+                      Suggested pro-rata charge: <strong>~{formatMoney(proRataCents)}</strong>{" "}
+                      ({seatDelta} × {formatMoney(plan.per_seat_price_cents)}/seat ×{" "}
+                      {daysLeft} of {intervalDays} days).
+                    </>
+                  ) : null}
+                </div>
+              );
+            })()}
 
             <div className="flex justify-end gap-3">
               <Button variant="ghost" onClick={() => setEditor(null)}>
