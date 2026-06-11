@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { temporal } from "zundo";
 import { v4 as uuid } from "uuid";
 import type {
@@ -2053,6 +2053,51 @@ interface AppState {
 
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+}
+
+// Persisting this large store on every keystroke (serialize + localStorage
+// write) is a real per-interaction cost. This storage coalesces writes: it
+// defers the serialize + write to a short idle window and flushes immediately
+// when the tab is hidden/closed so nothing is lost.
+function createDebouncedStorage<T>(delayMs = 600): PersistStorage<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: { name: string; value: StorageValue<T> } | null = null;
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (!pending) return;
+    try {
+      window.localStorage.setItem(pending.name, JSON.stringify(pending.value));
+    } catch {
+      /* quota or serialization error — keep running */
+    }
+    pending = null;
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
+  }
+  return {
+    getItem: (name) => {
+      if (typeof window === "undefined") return null;
+      const raw = window.localStorage.getItem(name);
+      return raw ? (JSON.parse(raw) as StorageValue<T>) : null;
+    },
+    setItem: (name, value) => {
+      pending = { name, value };
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, delayMs);
+    },
+    removeItem: (name) => {
+      if (typeof window !== "undefined") window.localStorage.removeItem(name);
+      pending = null;
+    },
+  };
 }
 
 export const useAppStore = create<AppState>()(
@@ -4149,6 +4194,7 @@ export const useAppStore = create<AppState>()(
     {
       name: "probuild-storage",
         version: 15,
+      storage: createDebouncedStorage<AppState>(),
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, any>;
         if (version < 2) {
@@ -4345,6 +4391,9 @@ export const useAppStore = create<AppState>()(
     }
   ),
   {
+    // Cap undo history so a long editing session doesn't retain an unbounded
+    // stack of full workspace snapshots (memory grows with every edit otherwise).
+    limit: 50,
     partialize: (state) => {
       const { activeModule, activeSheetIndex, sidebarCollapsed, activeBOQId, activeWorkPlanId, activeSimpleItemsId, activeWorkPlanSheetIndex, ...rest } = state;
       return rest;
