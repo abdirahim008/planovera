@@ -50,7 +50,8 @@ type EditableSubscription = {
   seatCount: string;
   originalSeatCount: number;
   occupiedSeats: number;
-  durationPreset: "14" | "30" | "90" | "365" | "custom";
+  startDate: string;
+  termPreset: "trial-month" | "month" | "year" | "custom";
   expiryDate: string;
   isPersonal: boolean;
 };
@@ -72,13 +73,39 @@ const statusBadge = (status: OrganizationSubscriptionRecord["status"]) => {
 
 const planLabel = (code: string) => code.replace(/-/g, " ");
 
-const durationOptions = [
-  { value: "14", label: "14 days" },
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-  { value: "365", label: "1 year" },
-  { value: "custom", label: "Custom date" },
+const termOptions = [
+  { value: "trial-month", label: "1 month trial" },
+  { value: "month", label: "1 month" },
+  { value: "year", label: "1 year" },
+  { value: "custom", label: "Custom expiry date" },
 ] as const;
+
+// Expiry = start date + term. Calendar-aware (Jan 31 + 1 month = Feb 28/29,
+// leap years handled by Date), computed in UTC to dodge timezone day-shifts.
+const addTermToDateInput = (start: string, term: "trial-month" | "month" | "year") => {
+  const date = new Date(`${start}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return start;
+  if (term === "year") date.setUTCFullYear(date.getUTCFullYear() + 1);
+  else date.setUTCMonth(date.getUTCMonth() + 1);
+  return date.toISOString().slice(0, 10);
+};
+
+const effectiveExpiryInput = (editor: EditableSubscription) =>
+  editor.termPreset === "custom"
+    ? editor.expiryDate
+    : addTermToDateInput(editor.startDate, editor.termPreset);
+
+const formatDateInput = (value: string) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+};
 
 // Human-friendly remaining time: months + days for longer licenses, days for
 // short ones, and a clear overdue/expiry-today state.
@@ -250,7 +277,7 @@ export default function BillingAdminPanel() {
       new_status: editor.status,
       seat_count_param: Number.isFinite(seatCountValue) ? seatCountValue : null,
       plan_code_param: editor.planCode,
-      expires_at_param: isoFromDateInput(editor.expiryDate),
+      expires_at_param: isoFromDateInput(effectiveExpiryInput(editor)),
     });
 
     if (error) {
@@ -395,7 +422,15 @@ export default function BillingAdminPanel() {
         <Button
           variant="default"
           size="sm"
-          onClick={() =>
+          onClick={() => {
+            // A live subscription opens on "custom" holding its current expiry,
+            // so seat-only edits never shift the renewal date (added seats stay
+            // co-terminous). Otherwise default the term to the plan's interval.
+            const existingExpiry =
+              subscription?.current_period_end || subscription?.trial_ends_at;
+            const hasFutureExpiry = existingExpiry
+              ? new Date(existingExpiry).getTime() > Date.now()
+              : false;
             setEditor({
               organizationId: organization.id,
               organizationName: organization.name,
@@ -404,11 +439,16 @@ export default function BillingAdminPanel() {
               seatCount: String(effectiveSeatCount),
               originalSeatCount: effectiveSeatCount,
               occupiedSeats,
-              durationPreset: "custom",
+              startDate: dateInputFromNow(0),
+              termPreset: hasFutureExpiry
+                ? "custom"
+                : effectivePlanCode.includes("yearly")
+                  ? "year"
+                  : "month",
               expiryDate: subscriptionExpiryInput(subscription),
               isPersonal: organization.personal,
-            })
-          }
+            });
+          }}
         >
           <Pencil size={13} /> Edit seats & access
         </Button>
@@ -798,53 +838,76 @@ export default function BillingAdminPanel() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="label">Manual access duration</label>
+                <label className="label">Subscription term</label>
                 <select
                   className="input"
-                  value={editor.durationPreset}
+                  value={editor.termPreset}
                   onChange={(event) => {
-                    const nextPreset = event.target.value as EditableSubscription["durationPreset"];
-                    setEditor((current) =>
-                      current
-                        ? {
-                            ...current,
-                            durationPreset: nextPreset,
-                            expiryDate:
-                              nextPreset === "custom"
-                                ? current.expiryDate
-                                : dateInputFromNow(Number(nextPreset)),
-                          }
-                        : current,
-                    );
+                    const nextTerm = event.target.value as EditableSubscription["termPreset"];
+                    setEditor((current) => {
+                      if (!current) return current;
+                      // Picking a term implies the matching status; the status
+                      // select above stays editable for overrides.
+                      let nextStatus = current.status;
+                      if (nextTerm === "trial-month") {
+                        nextStatus = "trialing";
+                      } else if (
+                        nextTerm !== "custom" &&
+                        current.status !== "active"
+                      ) {
+                        nextStatus = "active";
+                      }
+                      return { ...current, termPreset: nextTerm, status: nextStatus };
+                    });
                   }}
                 >
-                  {durationOptions.map((option) => (
+                  {termOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="label">Access expires</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={editor.expiryDate}
-                  onChange={(event) =>
-                    setEditor((current) =>
-                      current
-                        ? {
-                            ...current,
-                            durationPreset: "custom",
-                            expiryDate: event.target.value,
-                          }
-                        : current,
-                    )
-                  }
-                />
-              </div>
+              {editor.termPreset === "custom" ? (
+                <div>
+                  <label className="label">Access expires</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={editor.expiryDate}
+                    onChange={(event) =>
+                      setEditor((current) =>
+                        current ? { ...current, expiryDate: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Start date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={editor.startDate}
+                    onChange={(event) =>
+                      setEditor((current) =>
+                        current ? { ...current, startDate: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+              )}
             </div>
+
+            {editor.termPreset !== "custom" ? (
+              <div className="rounded-lg border border-border bg-bg-raised px-3.5 py-2.5 text-sm text-txt">
+                Access expires{" "}
+                <strong>{formatDateInput(effectiveExpiryInput(editor))}</strong>
+                <span className="text-txt-muted"> — start date + {
+                  editor.termPreset === "year" ? "1 year" : "1 month"
+                }{editor.termPreset === "trial-month" ? " (trial)" : ""}.</span>
+              </div>
+            ) : null}
 
             {(() => {
               // Seats added mid-term are co-terminous: they inherit the org's
@@ -853,7 +916,8 @@ export default function BillingAdminPanel() {
               if (editor.isPersonal) return null;
               const plan = plans.find((item) => item.code === editor.planCode);
               const seatDelta = Math.floor(Number(editor.seatCount)) - editor.originalSeatCount;
-              const expiryMs = new Date(`${editor.expiryDate}T00:00:00Z`).getTime();
+              const expiryInput = effectiveExpiryInput(editor);
+              const expiryMs = new Date(`${expiryInput}T00:00:00Z`).getTime();
               const daysLeft = Math.ceil((expiryMs - Date.now()) / 86_400_000);
               if (!plan || seatDelta <= 0 || !Number.isFinite(daysLeft) || daysLeft <= 0) {
                 return null;
@@ -865,8 +929,8 @@ export default function BillingAdminPanel() {
               return (
                 <div className="rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-2.5 text-xs leading-5 text-txt">
                   Adding <strong>{seatDelta}</strong> seat{seatDelta === 1 ? "" : "s"} mid-term:
-                  the new seats share the current expiry ({editor.expiryDate}) so all seats renew
-                  together.
+                  the new seats share the current expiry ({formatDateInput(expiryInput)}) so all
+                  seats renew together.
                   {plan.per_seat_price_cents > 0 ? (
                     <>
                       {" "}
