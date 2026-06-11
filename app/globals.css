@@ -332,6 +332,18 @@ body {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  white-space: nowrap;
+}
+
+/* The leading row-number ("#") column is editor chrome — hide it in the tables. */
+.data-table .data-cell-index {
+  display: none;
+}
+
+/* Hide the BOQ row-number gutter (header + body) in the read-only document view. */
+.boq-hide-gutter .row-gutter,
+.boq-hide-gutter .boq-gutter-head {
+  display: none !important;
 }
 
 .data-table td.data-cell-action {

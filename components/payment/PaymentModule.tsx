@@ -382,10 +382,10 @@ export default function PaymentModule() {
                           <td>
                             <Badge color={statusColor(cert.status)}>{cert.status}</Badge>
                           </td>
-                          <td className="data-cell-num">$ {currency(calc.curr.net)}</td>
-                          <td className="data-cell-num">$ {currency(calc.total.net)}</td>
-                          <td className="data-cell-num text-err">$ {currency(calc.total.retentionHeld)}</td>
-                          <td className="data-cell-num text-purple-300">$ {currency(calc.total.advanceBalance)}</td>
+                          <td className="data-cell-num">{currency(calc.curr.net)}</td>
+                          <td className="data-cell-num">{currency(calc.total.net)}</td>
+                          <td className="data-cell-num text-err">{currency(calc.total.retentionHeld)}</td>
+                          <td className="data-cell-num text-purple-300">{currency(calc.total.advanceBalance)}</td>
                           <td className="text-xs text-txt-muted">
                             {lockedCertificate(cert) ? "Locked" : "Editable"}
                           </td>
@@ -420,8 +420,8 @@ export default function PaymentModule() {
                           className="cursor-pointer"
                         >
                           <td className="font-semibold">{formatCertName(cert)}</td>
-                          <td className="data-cell-num">$ {currency(calc.curr.grand)}</td>
-                          <td className="data-cell-num">$ {currency(calc.curr.net)}</td>
+                          <td className="data-cell-num">{currency(calc.curr.grand)}</td>
+                          <td className="data-cell-num">{currency(calc.curr.net)}</td>
                           <td>
                             <Badge color={statusColor(cert.status)}>{cert.status}</Badge>
                           </td>
@@ -691,7 +691,7 @@ export default function PaymentModule() {
                         { code: "M", label: "Total of payment", prev: c.prev.net, cur: c.curr.net, tot: c.total.net, kind: "sub" },
                         { kind: "due", label: "Now due to contractor", prev: c.prev.net, cur: c.curr.net, tot: c.total.net },
                       ];
-                      const num = (v: number) => `$ ${currency(v)}`;
+                      const num = (v: number) => currency(v);
                       return rows.map((r, i) => {
                         if (r.kind === "group") {
                           return (
@@ -1018,13 +1018,13 @@ export default function PaymentModule() {
                               {mobileCertSection === "previous" && (
                                 <>
                                   <td className="data-cell-num">{currency(line.previousQty)}</td>
-                                  <td className="data-cell-num">$ {currency(line.previousAmount)}</td>
+                                  <td className="data-cell-num">{currency(line.previousAmount)}</td>
                                 </>
                               )}
                               {mobileCertSection === "current" && (
                                 <>
                                   <td className="data-cell-num text-txt-muted">{currency(line.currentQty)}</td>
-                                  <td className="data-cell-num">$ {currency(line.currentAmount)}</td>
+                                  <td className="data-cell-num">{currency(line.currentAmount)}</td>
                                   <td className="data-cell-num bg-accent/5">
                                     {isEditMode && !activeLocked ? (
                                       <input
@@ -1046,7 +1046,7 @@ export default function PaymentModule() {
                                 <>
                                   <td className="data-cell-num font-bold text-accent">{currency(line.totalQty)}</td>
                                   <td className={`data-cell-num ${line.balanceQty < 0 ? "text-warn" : "text-txt-muted"}`}>{currency(line.balanceQty)}</td>
-                                  <td className="data-cell-num font-bold text-ok">$ {currency(line.totalAmount)}</td>
+                                  <td className="data-cell-num font-bold text-ok">{currency(line.totalAmount)}</td>
                                 </>
                               )}
                             </tr>
@@ -1057,18 +1057,18 @@ export default function PaymentModule() {
                           return (
                             <tr className="bg-accent/10 font-bold">
                               <td className="data-sticky-col left-0 data-sticky-edge border-t-2 border-t-accent">Sheet total</td>
-                              <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.boq)}</td>
+                              <td className="data-cell-num border-t-2 border-t-accent">{currency(totals.boq)}</td>
                               <td className="border-t-2 border-t-accent" />
                               {mobileCertSection === "previous" && (
                                 <>
                                   <td className="border-t-2 border-t-accent" />
-                                  <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.previous)}</td>
+                                  <td className="data-cell-num border-t-2 border-t-accent">{currency(totals.previous)}</td>
                                 </>
                               )}
                               {mobileCertSection === "current" && (
                                 <>
                                   <td className="border-t-2 border-t-accent" />
-                                  <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.current)}</td>
+                                  <td className="data-cell-num border-t-2 border-t-accent">{currency(totals.current)}</td>
                                   <td className="border-t-2 border-t-accent" />
                                 </>
                               )}
@@ -1076,7 +1076,7 @@ export default function PaymentModule() {
                                 <>
                                   <td className="border-t-2 border-t-accent" />
                                   <td className="border-t-2 border-t-accent" />
-                                  <td className="data-cell-num border-t-2 border-t-accent text-ok">$ {currency(totals.total)}</td>
+                                  <td className="data-cell-num border-t-2 border-t-accent text-ok">{currency(totals.total)}</td>
                                 </>
                               )}
                             </tr>
@@ -1091,7 +1091,7 @@ export default function PaymentModule() {
                   <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: 1500 }}>
                     <thead>
                       <tr>
-                        <th style={{ width: 36 }}>#</th>
+                        <th className="data-cell-index" style={{ width: 36 }}>#</th>
                         <th>Item No.</th>
                         <th>Description</th>
                         <th>Unit</th>
@@ -1121,9 +1121,9 @@ export default function PaymentModule() {
                             <td className="data-cell-num">{currency(line.rate)}</td>
                             <td className="data-cell-num">{currency(line.boqAmount)}</td>
                             <td className="data-cell-num">{currency(line.previousQty)}</td>
-                            <td className="data-cell-num">$ {currency(line.previousAmount)}</td>
+                            <td className="data-cell-num">{currency(line.previousAmount)}</td>
                             <td className="data-cell-num text-txt-muted">{currency(line.currentQty)}</td>
-                            <td className="data-cell-num">$ {currency(line.currentAmount)}</td>
+                            <td className="data-cell-num">{currency(line.currentAmount)}</td>
                             <td className="data-cell-num bg-accent/5">
                               {isEditMode && !activeLocked ? (
                                 <input
@@ -1140,7 +1140,7 @@ export default function PaymentModule() {
                               )}
                             </td>
                             <td className={`data-cell-num ${line.balanceQty < 0 ? "text-warn" : "text-txt-muted"}`}>{currency(line.balanceQty)}</td>
-                            <td className="data-cell-num font-bold text-ok">$ {currency(line.totalAmount)}</td>
+                            <td className="data-cell-num font-bold text-ok">{currency(line.totalAmount)}</td>
                           </tr>
                         );
                       })}
@@ -1149,14 +1149,14 @@ export default function PaymentModule() {
                         return (
                           <tr className="bg-accent/10 font-bold">
                             <td colSpan={6} className="border-t-2 border-t-accent">Sheet total — {sheet.name}</td>
-                            <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.boq)}</td>
+                            <td className="data-cell-num border-t-2 border-t-accent">{currency(totals.boq)}</td>
                             <td className="border-t-2 border-t-accent" />
-                            <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.previous)}</td>
+                            <td className="data-cell-num border-t-2 border-t-accent">{currency(totals.previous)}</td>
                             <td className="border-t-2 border-t-accent" />
-                            <td className="data-cell-num border-t-2 border-t-accent">$ {currency(totals.current)}</td>
+                            <td className="data-cell-num border-t-2 border-t-accent">{currency(totals.current)}</td>
                             <td className="border-t-2 border-t-accent" />
                             <td className="border-t-2 border-t-accent" />
-                            <td className="data-cell-num border-t-2 border-t-accent text-ok">$ {currency(totals.total)}</td>
+                            <td className="data-cell-num border-t-2 border-t-accent text-ok">{currency(totals.total)}</td>
                           </tr>
                         );
                       })()}

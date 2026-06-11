@@ -633,7 +633,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     )}
     <div
       ref={tableContainerRef}
-      className="boq-table-shell relative overflow-auto rounded-2xl border border-border bg-bg-surface"
+      className={`boq-table-shell relative overflow-auto rounded-2xl border border-border bg-bg-surface ${readOnly ? "boq-hide-gutter" : ""}`}
       style={{ maxHeight: "calc(100vh - 310px)" }}
       tabIndex={0}
     >
@@ -645,7 +645,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
       <table className="boq-reference-table w-full select-none table-fixed border-collapse min-w-[660px] sm:min-w-[760px]">
         <thead>
           <tr>
-            <th className="w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 left-0 z-30 text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">#</th>
+            <th className="boq-gutter-head w-8 min-w-[32px] p-1 bg-bg-raised border-b-2 border-b-accent border-r border-r-border sticky top-0 left-0 z-30 text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">#</th>
             {BOQ_COLS.map((col) => {
               const locked = isColumnLocked(col.key);
               const stickyCol = col.key === "description";
@@ -1619,8 +1619,8 @@ export default function BOQModule() {
 
       // Header row
       styleRow(1, {
-        font: { ...baseFont, bold: true, color: { rgb: "FFFFFF" } },
-        fill: { patternType: "solid", fgColor: { rgb: "0D7C66" } },
+        font: { ...baseFont, bold: true, color: { rgb: "28313F" } },
+        fill: { patternType: "solid", fgColor: { rgb: "E7EAEF" } },
         border,
         alignment: { horizontal: "center", vertical: "center", wrapText: true },
       });
@@ -1645,20 +1645,20 @@ export default function BOQModule() {
         const excelRow = idx + 2;
         if (row.type === "header") {
           styleRow(excelRow, {
-            font: { ...baseFont, bold: true, color: { rgb: "FFFFFF" } },
-            fill: { patternType: "solid", fgColor: { rgb: "0D7C66" } },
+            font: { ...baseFont, bold: true, color: { rgb: "28313F" } },
+            fill: { patternType: "solid", fgColor: { rgb: "E7EAEF" } },
             border,
           });
         } else if (row.type === "subtotal") {
           styleRow(excelRow, {
-            font: { ...baseFont, bold: true, color: { rgb: "065F46" } },
-            fill: { patternType: "solid", fgColor: { rgb: "D1FAE5" } },
+            font: { ...baseFont, bold: true, color: { rgb: "28313F" } },
+            fill: { patternType: "solid", fgColor: { rgb: "EEF1F4" } },
             border,
           });
         } else if (row.type === "grandtotal") {
           styleRow(excelRow, {
-            font: { ...baseFont, bold: true, color: { rgb: "FFFFFF" } },
-            fill: { patternType: "solid", fgColor: { rgb: "065F46" } },
+            font: { ...baseFont, bold: true, color: { rgb: "28313F" } },
+            fill: { patternType: "solid", fgColor: { rgb: "D7DCE3" } },
             border,
           });
         } else if (row.type === "specification") {
