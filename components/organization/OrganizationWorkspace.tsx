@@ -2043,40 +2043,79 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                   {activeOrgTab === "team" ? (
                   <div className="grid gap-4 xl:grid-cols-2">
                     <div className="rounded-2xl border border-border bg-bg-surface p-5">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                        <CreditCard size={14} className="text-accent" />
-                        Current plan
-                      </div>
-                      <div className="mt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            <CreditCard size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Current plan
+                          </span>
+                        </div>
                         <Badge color={subscriptionBadgeColor(selectedAccessState)}>
                           {subscriptionStateLabel(selectedAccessState).toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="mt-4 text-xl font-semibold text-txt">
+                      <div className="mt-3 text-xl font-semibold capitalize tracking-tight text-txt">
                         {selectedSubscription
                           ? selectedSubscription.plan_code.replace(/-/g, " ")
                           : "No plan configured"}
                       </div>
-                      <div className="mt-4 text-xs text-txt-dim">
+                      <div className="mt-1 text-xs text-txt-dim">
                         Access expires: {formatSubscriptionExpiry(selectedSubscription)}
                       </div>
                       {!selectedSubscriptionUsable && (
-                        <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs leading-5 text-red-700">
+                        <div className="mt-3 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs leading-5 text-red-700">
                           Workspace access is paused.
                         </div>
                       )}
                     </div>
 
                     <div className="rounded-2xl border border-border bg-bg-surface p-5">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                        <Users size={14} className="text-accent" />
-                        Seats
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            <Users size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Seats
+                          </span>
+                        </div>
+                        <span className="text-[11px] tabular-nums text-txt-muted">
+                          {Math.max(totalSeats - seatsUsed, 0)} available
+                        </span>
                       </div>
-                      <div className="mt-4 text-xl font-semibold text-txt">
-                        {seatsUsed}/{totalSeats}
+                      <div className="mt-3 text-xl font-semibold tracking-tight text-txt">
+                        {seatsUsed}
+                        <span className="text-sm font-medium text-txt-muted"> of {totalSeats} used</span>
                       </div>
-                      <div className="mt-4 text-xs text-txt-dim">
-                        Active members: {activeMembers.length} · Reserved invites: {reservedSeats}
+                      <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-black/5">
+                        {totalSeats > 0 && activeMembers.length > 0 ? (
+                          <div
+                            className="bg-accent"
+                            style={{ width: `${Math.min(100, (activeMembers.length / totalSeats) * 100)}%` }}
+                          />
+                        ) : null}
+                        {totalSeats > 0 && reservedSeats > 0 ? (
+                          <div
+                            className="bg-warn"
+                            style={{ width: `${Math.min(100, (reservedSeats / totalSeats) * 100)}%` }}
+                          />
+                        ) : null}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-txt-muted">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-accent" />
+                          Active <span className="font-semibold tabular-nums text-txt">{activeMembers.length}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-warn" />
+                          Reserved invites <span className="font-semibold tabular-nums text-txt">{reservedSeats}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-black/20" />
+                          Available <span className="font-semibold tabular-nums text-txt">{Math.max(totalSeats - seatsUsed, 0)}</span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -2806,7 +2845,9 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
 
                   {activeOrgTab === "team" ? (
                   <>
-                  <div className="grid gap-6 xl:grid-cols-2">
+                  {/* Full-width stack: the members table carries up to 8 columns and
+                      letter-wraps when squeezed into a half-width column. */}
+                  <div className="grid gap-6">
                     <div className="rounded-2xl border border-border bg-bg-surface p-6">
                       <div className="flex items-center justify-between gap-3">
                         <h2 className="text-xl font-semibold text-txt">Members</h2>
@@ -2937,18 +2978,25 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                                       busyAction === `remove:${member.user_id}`;
                                     return (
                                       <tr key={member.id}>
-                                        <td className="data-cell-wrap font-semibold text-txt">
-                                          {member.profiles?.full_name || member.profiles?.email || "User"}
+                                        <td className="font-semibold text-txt">
+                                          <span
+                                            className="block max-w-[240px] truncate"
+                                            title={member.profiles?.full_name || member.profiles?.email || "User"}
+                                          >
+                                            {member.profiles?.full_name || member.profiles?.email || "User"}
+                                          </span>
                                         </td>
-                                        <td className="data-cell-wrap text-txt-muted">
-                                          {member.profiles?.email || "—"}
+                                        <td className="text-txt-muted">
+                                          <span className="block max-w-[240px] truncate" title={member.profiles?.email || undefined}>
+                                            {member.profiles?.email || "—"}
+                                          </span>
                                         </td>
                                         <td>
                                           <Badge color={roleBadgeColor(member.role)}>
                                             {member.role.toUpperCase()}
                                           </Badge>
                                         </td>
-                                        <td className="text-txt-muted">{formatDate(member.joined_at)}</td>
+                                        <td className="whitespace-nowrap text-txt-muted">{formatDate(member.joined_at)}</td>
                                         <td>
                                           <Badge color={isSuspended ? "warn" : "ok"}>
                                             {member.status.toUpperCase()}
@@ -3031,17 +3079,23 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                               <tbody>
                                 {selectedInvites.map((invite) => (
                                   <tr key={invite.id}>
-                                    <td className="data-cell-wrap font-semibold text-txt">
-                                      {invite.full_name || invite.email}
+                                    <td className="font-semibold text-txt">
+                                      <span className="block max-w-[240px] truncate" title={invite.full_name || invite.email}>
+                                        {invite.full_name || invite.email}
+                                      </span>
                                     </td>
-                                    <td className="data-cell-wrap text-txt-muted">{invite.email}</td>
+                                    <td className="text-txt-muted">
+                                      <span className="block max-w-[240px] truncate" title={invite.email}>
+                                        {invite.email}
+                                      </span>
+                                    </td>
                                     <td>
                                       <Badge color={roleBadgeColor(invite.role)}>
                                         {invite.role.toUpperCase()}
                                       </Badge>
                                     </td>
                                     <td className="text-txt-muted">{invite.delivery_method}</td>
-                                    <td className="text-txt-muted">{formatDate(invite.expires_at)}</td>
+                                    <td className="whitespace-nowrap text-txt-muted">{formatDate(invite.expires_at)}</td>
                                     <td>
                                       <div className="flex flex-wrap justify-end gap-2">
                                         <Button variant="ghost" size="sm" onClick={() => handleCopyLink(invite)}>
