@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Agent Workflow
+- You are the orchestrator. Break tasks into phases.
+- For reasoning-heavy phases (architecture decisions, complex debugging,
+  algorithm design), spawn a subagent using opus model.
+- Handle coordination, file operations, and simple tasks yourself.
+
 ## Commands
 
 - `npm run dev` — Next.js dev server on http://localhost:3000
