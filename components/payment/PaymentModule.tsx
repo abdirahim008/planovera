@@ -552,7 +552,7 @@ export default function PaymentModule() {
               }`}
               onClick={() => setActiveSheetIdx(-1)}
             >
-              IPC Summary Page
+              {activeCert.type === "final" ? "FPC Summary Page" : "IPC Summary Page"}
             </button>
             {activeCert.sheets.map((sheet, index) => (
               <button
@@ -591,7 +591,7 @@ export default function PaymentModule() {
                     Exact PDF preview (A4 landscape). Edit figures in the <b className="text-txt">Modern</b> view.
                   </div>
                   <iframe
-                    title="IPC formal certificate"
+                    title="Formal payment certificate"
                     className="h-[72vh] w-full rounded-lg border border-border bg-white"
                     srcDoc={buildIpcFormalHtml(activeCert, project, userSignatureProfile)}
                   />
@@ -603,7 +603,9 @@ export default function PaymentModule() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-txt-dim">
-                      Summary of statement for payment on account
+                      {activeCert.type === "final"
+                        ? "Summary of final account statement"
+                        : "Summary of statement for payment on account"}
                     </div>
                     <h2 className="mt-1 truncate text-lg font-bold tracking-tight text-txt sm:text-xl">{project?.name || "Project"}</h2>
                   </div>
@@ -636,7 +638,9 @@ export default function PaymentModule() {
               <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
                 {[
                   { label: "1. Valuation this period", value: activeCalcs.curr.grand, color: "accent" },
-                  { label: "2. Retention held", value: activeCalcs.total.retentionHeld, color: "err" },
+                  activeCalcs.retentionReleaseAmount > 0.005
+                    ? { label: "2. Retention released", value: activeCalcs.retentionReleaseAmount, color: "ok" }
+                    : { label: "2. Retention held", value: activeCalcs.total.retentionHeld, color: "err" },
                   { label: "3. Advance recovered", value: activeCalcs.currentAdvanceRecovery, color: "purple" },
                   { label: "4. Now due to contractor", value: activeCalcs.curr.net, color: "ok" },
                 ].map((card) => (
@@ -662,10 +666,12 @@ export default function PaymentModule() {
                     {(() => {
                       const c = activeCalcs;
                       const varCur = c.additions - c.deductions;
+                      const release = c.retentionReleaseAmount;
                       const prevF = c.prev.grand - c.prev.ret - c.prev.wh;
-                      const curF = c.curr.grand + varCur - c.curr.ret - c.curr.wh;
+                      const curF = c.curr.grand + varCur + release - c.curr.ret - c.curr.wh;
                       const hasWh = Math.abs(c.prev.wh) + Math.abs(c.curr.wh) > 0.005;
                       const hasVar = Math.abs(varCur) > 0.005;
+                      const hasRelease = release > 0.005;
                       const hasAdvance = c.advancePaymentAmount > 0.5 || c.total.advance > 0.5;
                       type Row = {
                         code?: string; label: string; prev: number; cur: number; tot: number;
@@ -679,6 +685,7 @@ export default function PaymentModule() {
                         { kind: "group", label: "Statutory deductions", prev: 0, cur: 0, tot: 0 },
                         { code: "E", label: "Less retention money", prev: -c.prev.ret, cur: -c.curr.ret, tot: -c.total.retentionHeld },
                         ...(hasWh ? [{ code: "E", label: "Less withholding tax", prev: -c.prev.wh, cur: -c.curr.wh, tot: -(c.prev.wh + c.curr.wh) } as Row] : []),
+                        ...(hasRelease ? [{ code: "E", label: "Add retention released", prev: 0, cur: release, tot: release } as Row] : []),
                         { code: "F", label: "Sub-total", prev: prevF, cur: curF, tot: prevF + curF, kind: "sub" },
                         ...(hasAdvance
                           ? ([

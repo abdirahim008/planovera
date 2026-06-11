@@ -85,6 +85,7 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
       ["E. Less 5% tax", d.prev.tax, d.cur.tax, d.total.tax],
       ["E. Less retention money", d.prev.retention, d.cur.retention, d.total.retention],
       ["E. Less withholding tax", d.prev.wh, d.cur.wh, d.total.wh],
+      ["E. Add retention released", d.prev.release, d.cur.release, d.total.release],
       ["F. Sub-total", d.prev.F, d.cur.F, d.total.F],
       ["G. Advance payment", d.prev.advance, d.cur.advance, d.total.advance],
       ["H. Repayment of advance", d.prev.repay, d.cur.repay, d.total.repay],
@@ -113,12 +114,12 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
     (
       [
         [8, d.total.workDone], [9, d.total.material], [10, d.total.variations],
-        [12, d.total.tax], [13, d.total.retention], [14, d.total.wh],
-        [16, d.total.advance], [17, d.total.repay], [19, d.total.J], [20, d.total.K], [21, d.total.L],
+        [12, d.total.tax], [13, d.total.retention], [14, d.total.wh], [15, d.total.release],
+        [17, d.total.advance], [18, d.total.repay], [20, d.total.J], [21, d.total.K], [22, d.total.L],
       ] as Array<[number, number]>
     ).forEach(([r, total]) => sumF(r, 3, `B${r}+C${r}`, total));
     sumF(11, 1, "B8+B9+B10", d.prev.D); sumF(11, 2, "C8+C9+C10", d.cur.D); sumF(11, 3, "D8+D9+D10", d.total.D);
-    sumF(15, 1, "B11-B12-B13-B14", d.prev.F); sumF(15, 2, "C11-C12-C13-C14", d.cur.F); sumF(15, 3, "D11-D12-D13-D14", d.total.F);
+    sumF(16, 1, "B11-B12-B13-B14+B15", d.prev.F); sumF(16, 2, "C11-C12-C13-C14+C15", d.cur.F); sumF(16, 3, "D11-D12-D13-D14+D15", d.total.F);
 
     styleRow(ws, 1, 4, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
     styleRow(ws, 2, 4, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
@@ -127,8 +128,8 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
       styleRow(ws, row, 4, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
     }
     // Bold the sub-total / total / now-due lines (D, F, M, Now due).
-    [11, 15, 22, 24].forEach((r) => styleRow(ws, r, 4, { font: { ...baseFont, bold: true } }));
-    XLSX.utils.book_append_sheet(wb, ws, "IPC Summary");
+    [11, 16, 23, 25].forEach((r) => styleRow(ws, r, 4, { font: { ...baseFont, bold: true } }));
+    XLSX.utils.book_append_sheet(wb, ws, cert.type === "final" ? "FPC Summary" : "IPC Summary");
 
     // Per-sheet BOQ line-item detail — written with live formulas so editing a
     // quantity or rate recalculates the amounts, cumulative and bill totals.

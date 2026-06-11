@@ -37,18 +37,21 @@ export function buildIpcDocData(
   const savedSig = signatureProfile?.imageDataUrl || "";
   const sigImg = (src: "saved" | "none" | undefined) => (src === "saved" ? savedSig : "");
 
-  const col = (g: number, ret: number, wh: number, varr: number, advance: number, repay: number) => {
+  const col = (g: number, ret: number, wh: number, varr: number, advance: number, repay: number, release = 0) => {
     const workDone = g;
     const D = workDone + varr;
     const tax = 0; // government tax removed from the model; row kept at 0 for fidelity
-    const F = D - tax - ret - wh;
-    return { workDone, material: 0, variations: varr, D, tax, retention: ret, wh, F, advance, repay, balanceI: Math.max(0, advance - repay), J: 0, K: 0, L: 0 };
+    const F = D - tax - ret - wh + release;
+    return { workDone, material: 0, variations: varr, D, tax, retention: ret, wh, release, F, advance, repay, balanceI: Math.max(0, advance - repay), J: 0, K: 0, L: 0 };
   };
 
+  // Retention released (auto on final certificates, or an explicit release) is
+  // credited in this certificate, so it sits in the "This Certificate" column —
+  // without it the M total would not reconcile with the visible rows.
   const prev = col(c.prev.grand, c.prev.ret, c.prev.wh, 0, c.advancePaymentAmount, c.previousAdvanceRecovered);
-  const cur = col(c.curr.grand, c.curr.ret, c.curr.wh, variationsThis, 0, c.currentAdvanceRecovery);
+  const cur = col(c.curr.grand, c.curr.ret, c.curr.wh, variationsThis, 0, c.currentAdvanceRecovery, c.retentionReleaseAmount);
   const total: Record<string, number> = {};
-  ["workDone", "material", "variations", "D", "tax", "retention", "wh", "F", "advance", "repay", "J", "K", "L"].forEach((k) => {
+  ["workDone", "material", "variations", "D", "tax", "retention", "wh", "release", "F", "advance", "repay", "J", "K", "L"].forEach((k) => {
     total[k] = (prev as Record<string, number>)[k] + (cur as Record<string, number>)[k];
   });
   total.balanceI = c.total.advanceBalance;
@@ -58,7 +61,10 @@ export function buildIpcDocData(
   const periodLabel = `${cert.periodStart || cert.date} → ${cert.periodEnd || cert.date}`;
   return {
     header: {
-      title: "SUMMARY OF STATEMENT FOR PAYMENT ON ACCOUNT",
+      title:
+        cert.type === "final"
+          ? "SUMMARY OF FINAL ACCOUNT STATEMENT"
+          : "SUMMARY OF STATEMENT FOR PAYMENT ON ACCOUNT",
       projectTitle: project?.name || "Project",
       certificateNo: String(cert.number ?? 1).padStart(2, "0"),
       contractNo: (cert.boqName || "—").toUpperCase(),
@@ -180,6 +186,7 @@ export function ipcDocInnerHtml(d: IpcDocData): string {
       ${row("E", "LESS 5% tax", 1, prev.tax, cur.tax, total.tax)}
       ${row("E", "LESS RETENTION MONEY", 1, prev.retention, cur.retention, total.retention)}
       ${row("E", "LESS WITHHOLDING TAX", 1, prev.wh, cur.wh, total.wh)}
+      ${row("E", "ADD RETENTION RELEASED", 1, prev.release, cur.release, total.release)}
       ${row("F", "SUB-TOTAL", 1, prev.F, cur.F, total.F, true)}
       ${row("G", "ADVANCE PAYMENT", 2, prev.advance, cur.advance, total.advance)}
       ${row("H", "REPAYMENT OF ADVANCE", 2, prev.repay, cur.repay, total.repay)}
@@ -236,5 +243,5 @@ export function buildIpcFormalHtml(
 ): string {
   const d = buildIpcDocData(cert, project, signatureProfile);
   const detail = ipcSheetsHtml(cert, d.header.currency);
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>IPC ${esc(d.header.certificateNo)} — ${esc(d.header.projectTitle)}</title><style>${IPC_DOC_CSS}</style></head><body>${ipcDocInnerHtml(d)}${detail}${autoPrint ? "<script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>" : ""}</body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${cert.type === "final" ? "FPC" : "IPC"} ${esc(d.header.certificateNo)} — ${esc(d.header.projectTitle)}</title><style>${IPC_DOC_CSS}</style></head><body>${ipcDocInnerHtml(d)}${detail}${autoPrint ? "<script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>" : ""}</body></html>`;
 }
