@@ -466,6 +466,10 @@ export interface GeneratedDocument {
   /** Per-section presentation format. Defaults to "table" when unset. */
   reportItemFormat?: ReportItemFormat;
   reportWorkPlanFormat?: ReportWorkPlanFormat;
+  /** Optional window for the work-plan section. Activities whose dates don't
+      overlap [start, end] are trimmed from the report; empty = full plan. */
+  reportWorkPlanStart?: string;
+  reportWorkPlanEnd?: string;
   /** Milestone invoice extras (only used when templateType === "milestone-invoice"). */
   invoiceLines?: InvoiceLine[];
   /** Tax % applied to the subtotal on the invoice (numeric string for partial entry). */
@@ -504,6 +508,9 @@ export type ReportSectionId =
   | "workPlan"
   | "paymentCertificates"
   | "actionPoints"
+  | "riskRegister"
+  | "siteNotes"
+  | "correspondenceLog"
   | "photos"
   | "forecast"
   | "signoff";
@@ -522,6 +529,11 @@ export const DEFAULT_PROGRESS_REPORT_SECTIONS: ReportSectionToggles = {
   workPlan: true,
   paymentCertificates: true,
   actionPoints: true,
+  // Risk register renders only when the project has non-closed risks, so it is
+  // safe to default on; site notes and correspondence can be long, so opt-in.
+  riskRegister: true,
+  siteNotes: false,
+  correspondenceLog: false,
   photos: false,
   forecast: true,
   signoff: true,

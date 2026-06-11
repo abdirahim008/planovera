@@ -16,6 +16,8 @@ import {
 import { useAppStore, currency, getLiveMeetingActionItems } from "@/lib/store";
 import { sanitizeRichTextHtml } from "@/lib/richText";
 import type {
+  CorrespondenceRecord,
+  CorrespondenceType,
   DocumentTemplateType,
   GeneratedDocument,
   MeetingMinute,
@@ -23,7 +25,9 @@ import type {
   ProgressReport,
   Project,
   ReportSectionToggles,
+  Risk,
   SavedWorkPlan,
+  SiteNote,
   SiteNotePhoto,
   UserSignatureProfile,
 } from "@/lib/supabase";
@@ -132,6 +136,9 @@ const PROGRESS_REPORT_SECTION_META: Array<{
   { id: "workPlan", label: "Work plan", description: "Activities, durations and status from the saved work plan" },
   { id: "paymentCertificates", label: "Financial progress (IPCs)", description: "Payment certificates and net certified amounts" },
   { id: "actionPoints", label: "Open action points", description: "Outstanding actions for this project across all meeting minutes" },
+  { id: "riskRegister", label: "Risk register", description: "Open and mitigated risks with owners and mitigation measures" },
+  { id: "siteNotes", label: "Site notes & inspections", description: "Site notes recorded within the reporting period" },
+  { id: "correspondenceLog", label: "Correspondence log", description: "Instructions, RFIs, submittals and claims within the period" },
   { id: "forecast", label: "Forecast & recovery", description: "Next period plan and recovery actions" },
   { id: "signoff", label: "Sign-off", description: "Signature blocks at the end" },
 ];
@@ -1829,11 +1836,36 @@ function inPeriod(dateIso: string | undefined, start?: string, end?: string) {
   return true;
 }
 
-function progressWorkPlanHtml(workPlans: SavedWorkPlan[], projectId: string) {
+/**
+ * Whether a work-plan activity overlaps the optional report window. Activities
+ * with no dates at all can't be placed on a timeline, so they are kept (the
+ * gantt view lists them under "Unscheduled" and the table shows "—").
+ */
+function activityInWindow(
+  activity: { startDate: string; endDate: string },
+  windowStart?: string,
+  windowEnd?: string,
+) {
+  if (!windowStart && !windowEnd) return true;
+  const start = activity.startDate || activity.endDate;
+  const end = activity.endDate || activity.startDate;
+  if (!start || !end) return true;
+  if (windowStart && end < windowStart) return false;
+  if (windowEnd && start > windowEnd) return false;
+  return true;
+}
+
+function progressWorkPlanHtml(
+  workPlans: SavedWorkPlan[],
+  projectId: string,
+  windowStart?: string,
+  windowEnd?: string,
+) {
   const activities = workPlans
     .filter((plan) => plan.project_id === projectId)
     .flatMap((plan) => plan.sheets.flatMap((sheet) => sheet.activities))
-    .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description);
+    .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description)
+    .filter((activity) => activityInWindow(activity, windowStart, windowEnd));
 
   if (activities.length === 0) return "";
 
@@ -2007,11 +2039,17 @@ function parseDateSafe(iso?: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function progressWorkPlanGanttHtml(workPlans: SavedWorkPlan[], projectId: string) {
+function progressWorkPlanGanttHtml(
+  workPlans: SavedWorkPlan[],
+  projectId: string,
+  windowStart?: string,
+  windowEnd?: string,
+) {
   const activities = workPlans
     .filter((plan) => plan.project_id === projectId)
     .flatMap((plan) => plan.sheets.flatMap((sheet) => sheet.activities))
-    .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description);
+    .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description)
+    .filter((activity) => activityInWindow(activity, windowStart, windowEnd));
 
   if (activities.length === 0) return "";
 
@@ -2027,15 +2065,19 @@ function progressWorkPlanGanttHtml(workPlans: SavedWorkPlan[], projectId: string
 
   if (dated.length === 0) {
     // No dated activities — fall back to the table format.
-    return progressWorkPlanHtml(workPlans, projectId);
+    return progressWorkPlanHtml(workPlans, projectId, windowStart, windowEnd);
   }
 
   const unscheduled = activities.filter(
     (a) => !parseDateSafe(a.startDate) || !parseDateSafe(a.endDate),
   );
 
-  const minTime = Math.min(...dated.map((r) => r.start.getTime()));
-  const maxTime = Math.max(...dated.map((r) => r.end.getTime()));
+  // When a window is set, the axis spans the window so bars that run past it
+  // are clipped at the edges; otherwise span the full data range.
+  const minTime =
+    parseDateSafe(windowStart)?.getTime() ?? Math.min(...dated.map((r) => r.start.getTime()));
+  const maxTime =
+    parseDateSafe(windowEnd)?.getTime() ?? Math.max(...dated.map((r) => r.end.getTime()));
   const spanMs = Math.max(1, maxTime - minTime);
   const spanDays = spanMs / (1000 * 60 * 60 * 24);
 
@@ -2079,8 +2121,11 @@ function progressWorkPlanGanttHtml(workPlans: SavedWorkPlan[], projectId: string
 
   const rowsHtml = dated
     .map((row) => {
-      const leftPct = ((row.start.getTime() - minTime) / spanMs) * 100;
-      const widthPct = Math.max(0.6, ((row.end.getTime() - row.start.getTime()) / spanMs) * 100);
+      // Clamp to the axis so bars overflowing a set window are clipped.
+      const rawLeft = ((row.start.getTime() - minTime) / spanMs) * 100;
+      const rawRight = ((row.end.getTime() - minTime) / spanMs) * 100;
+      const leftPct = Math.min(100, Math.max(0, rawLeft));
+      const widthPct = Math.max(0.6, Math.min(100, rawRight) - leftPct);
       const status = row.activity.status || "pending";
       return `
         <div class="gantt-row">
@@ -2182,6 +2227,177 @@ function progressActionPointsHtml(meetingMinutes: MeetingMinute[], projectId: st
   `;
 }
 
+function progressRiskRegisterHtml(risks: Risk[], projectId: string) {
+  const levelRank: Record<Risk["likelihood"], number> = { high: 2, medium: 1, low: 0 };
+  const projectRisks = risks
+    .filter((risk) => risk.project_id === projectId && risk.status !== "closed")
+    .sort(
+      (a, b) =>
+        levelRank[b.impact] + levelRank[b.likelihood] - (levelRank[a.impact] + levelRank[a.likelihood]) ||
+        a.reference.localeCompare(b.reference),
+    );
+
+  if (projectRisks.length === 0) return "";
+
+  const levelColor: Record<Risk["likelihood"], string> = {
+    high: "#991b1b",
+    medium: "#b45309",
+    low: "#047857",
+  };
+  const levelLabel = (level: Risk["likelihood"]) => level.charAt(0).toUpperCase() + level.slice(1);
+  const statusLabel: Record<Risk["status"], string> = {
+    open: "Open",
+    mitigated: "Mitigated",
+    accepted: "Accepted",
+    closed: "Closed",
+  };
+  const categoryLabel = (category: string) =>
+    category.charAt(0).toUpperCase() + category.slice(1).replace(/-/g, " ");
+
+  const rows = projectRisks
+    .map(
+      (risk) => `
+        <tr>
+          <td>${escapeHtml(risk.reference || "—")}</td>
+          <td>${escapeHtml(risk.title)}</td>
+          <td>${escapeHtml(categoryLabel(risk.category))}</td>
+          <td style="color:${levelColor[risk.likelihood]}; font-weight:500">${escapeHtml(levelLabel(risk.likelihood))}</td>
+          <td style="color:${levelColor[risk.impact]}; font-weight:500">${escapeHtml(levelLabel(risk.impact))}</td>
+          <td>${escapeHtml(risk.owner || "—")}</td>
+          <td>${escapeHtml(risk.mitigation || "—")}</td>
+          <td>${escapeHtml(statusLabel[risk.status] || risk.status)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:9%">Ref</th>
+          <th style="width:22%">Risk</th>
+          <th style="width:11%">Category</th>
+          <th style="width:9%">Likelihood</th>
+          <th style="width:9%">Impact</th>
+          <th style="width:11%">Owner</th>
+          <th>Mitigation</th>
+          <th style="width:9%">Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function progressSiteNotesHtml(
+  siteNotes: SiteNote[],
+  projectId: string,
+  periodStart?: string,
+  periodEnd?: string,
+) {
+  const notes = siteNotes
+    .filter((note) => note.project_id === projectId)
+    .filter((note) => inPeriod(note.noteDate, periodStart, periodEnd))
+    .sort((a, b) => (a.noteDate || "").localeCompare(b.noteDate || ""));
+
+  if (notes.length === 0) return "";
+
+  const trim = (text: string, max = 240) =>
+    text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+  const categoryLabel = (category: string) =>
+    category.charAt(0).toUpperCase() + category.slice(1).replace(/-/g, " ");
+
+  const rows = notes
+    .map(
+      (note, index) => `
+        <tr>
+          <td class="num">${index + 1}</td>
+          <td>${escapeHtml(note.noteDate || "—")}</td>
+          <td>${escapeHtml(note.title || "Untitled note")}</td>
+          <td>${escapeHtml(categoryLabel(note.category || "general"))}</td>
+          <td>${escapeHtml(note.weather || "—")}</td>
+          <td style="font-size:10px; color:#334155">${escapeHtml(trim(note.observationText || "—"))}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:5%">#</th>
+          <th style="width:12%">Date</th>
+          <th style="width:22%">Title</th>
+          <th style="width:12%">Category</th>
+          <th style="width:11%">Weather</th>
+          <th>Observation</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function progressCorrespondenceLogHtml(
+  records: CorrespondenceRecord[],
+  projectId: string,
+  periodStart?: string,
+  periodEnd?: string,
+) {
+  const projectRecords = records
+    .filter((record) => record.project_id === projectId)
+    .filter((record) => inPeriod(record.date, periodStart, periodEnd))
+    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.number - b.number);
+
+  if (projectRecords.length === 0) return "";
+
+  const typeLabel: Record<CorrespondenceType, string> = {
+    instruction: "Instruction",
+    rfi: "RFI",
+    submittal: "Submittal",
+    "meeting-minute": "Meeting minute",
+    "claim-notice": "Claim notice",
+    "variation-order": "Variation order",
+  };
+  const statusLabel = (status: CorrespondenceRecord["status"]) =>
+    status.charAt(0).toUpperCase() + status.slice(1).replace(/-/g, " ");
+
+  const rows = projectRecords
+    .map(
+      (record, index) => `
+        <tr>
+          <td class="num">${index + 1}</td>
+          <td>${escapeHtml(record.referenceNo || "—")}</td>
+          <td>${escapeHtml(record.date || "—")}</td>
+          <td>${escapeHtml(typeLabel[record.type] || record.type)}</td>
+          <td>${escapeHtml(record.subject || "—")}</td>
+          <td>${escapeHtml([record.from, record.to].filter(Boolean).join(" → ") || "—")}</td>
+          <td>${escapeHtml(statusLabel(record.status))}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  return `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:5%">#</th>
+          <th style="width:13%">Reference</th>
+          <th style="width:11%">Date</th>
+          <th style="width:13%">Type</th>
+          <th>Subject</th>
+          <th style="width:18%">From / To</th>
+          <th style="width:10%">Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function renderProgressReportBody(
   doc: GeneratedDocument,
   project: Project | null,
@@ -2189,6 +2405,9 @@ function renderProgressReportBody(
   workPlans: SavedWorkPlan[] = [],
   certificates: PaymentCertificate[] = [],
   meetingMinutes: MeetingMinute[] = [],
+  risks: Risk[] = [],
+  siteNotes: SiteNote[] = [],
+  correspondenceRecords: CorrespondenceRecord[] = [],
 ) {
   const toggles = resolveReportSections(doc);
   const metrics = progressReport ? progressMetrics(progressReport) : null;
@@ -2252,13 +2471,19 @@ function renderProgressReportBody(
 
   if (toggles.workPlan && project?.id) {
     const useGantt = (doc.reportWorkPlanFormat || "table") === "gantt";
+    const windowStart = doc.reportWorkPlanStart || "";
+    const windowEnd = doc.reportWorkPlanEnd || "";
     const wpHtml = useGantt
-      ? progressWorkPlanGanttHtml(workPlans, project.id)
-      : progressWorkPlanHtml(workPlans, project.id);
+      ? progressWorkPlanGanttHtml(workPlans, project.id, windowStart, windowEnd)
+      : progressWorkPlanHtml(workPlans, project.id, windowStart, windowEnd);
+    const windowLabel =
+      windowStart || windowEnd
+        ? ` <span style="font-weight:400; font-size:10px; color:#64748b">(${escapeHtml(windowStart || "start")} → ${escapeHtml(windowEnd || "end")})</span>`
+        : "";
     if (wpHtml) {
       blocks.push(`
         <section class="report-section section-fluid">
-          <div class="report-section-title">Work plan</div>
+          <div class="report-section-title">Work plan${windowLabel}</div>
           ${wpHtml}
         </section>
       `);
@@ -2295,6 +2520,52 @@ function renderProgressReportBody(
     }
   }
 
+  if (toggles.riskRegister && project?.id) {
+    const risksHtml = progressRiskRegisterHtml(risks, project.id);
+    if (risksHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Risk register</div>
+          ${risksHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.siteNotes && project?.id) {
+    const notesHtml = progressSiteNotesHtml(
+      siteNotes,
+      project.id,
+      doc.reportPeriodStart,
+      doc.reportPeriodEnd,
+    );
+    if (notesHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Site notes &amp; inspections</div>
+          ${notesHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.correspondenceLog && project?.id) {
+    const logHtml = progressCorrespondenceLogHtml(
+      correspondenceRecords,
+      project.id,
+      doc.reportPeriodStart,
+      doc.reportPeriodEnd,
+    );
+    if (logHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Correspondence log</div>
+          ${logHtml}
+        </section>
+      `);
+    }
+  }
+
   if (toggles.forecast) {
     const forecast = doc.forecastNarrative?.trim();
     if (forecast) {
@@ -2318,6 +2589,9 @@ function renderBodyHtml(
   workPlans: SavedWorkPlan[] = [],
   allCertificates: PaymentCertificate[] = [],
   meetingMinutes: MeetingMinute[] = [],
+  risks: Risk[] = [],
+  siteNotes: SiteNote[] = [],
+  correspondenceRecords: CorrespondenceRecord[] = [],
 ) {
   const linkedMetrics = progressReport ? progressMetrics(progressReport) : null;
   const certValue = certificate ? certificateNet(certificate) : null;
@@ -2325,7 +2599,17 @@ function renderBodyHtml(
   if (doc.layoutStyle === "report") {
     // Progress report uses the new section-driven composer.
     if (doc.templateType === "progress-report") {
-      return renderProgressReportBody(doc, project, progressReport, workPlans, allCertificates, meetingMinutes);
+      return renderProgressReportBody(
+        doc,
+        project,
+        progressReport,
+        workPlans,
+        allCertificates,
+        meetingMinutes,
+        risks,
+        siteNotes,
+        correspondenceRecords,
+      );
     }
     return `
       <div class="report-summary">
@@ -3315,6 +3599,9 @@ function buildDocumentPrintHtml(
   workPlans: SavedWorkPlan[] = [],
   allCertificates: PaymentCertificate[] = [],
   meetingMinutes: MeetingMinute[] = [],
+  risks: Risk[] = [],
+  siteNotes: SiteNote[] = [],
+  correspondenceRecords: CorrespondenceRecord[] = [],
 ) {
   const mergedDoc = hydrateGeneratedDocument(doc, project, progressReport, certificate);
   if (mergedDoc.templateType === "commencement-letter") {
@@ -3491,7 +3778,7 @@ function buildDocumentPrintHtml(
                   `
                   : isProgressReport
                   ? `
-                    ${renderBodyHtml(mergedDoc, project, progressReport, certificate, workPlans, allCertificates, meetingMinutes)}
+                    ${renderBodyHtml(mergedDoc, project, progressReport, certificate, workPlans, allCertificates, meetingMinutes, risks, siteNotes, correspondenceRecords)}
                   `
                   : `
                     <div class="brand-shell">
@@ -3567,6 +3854,9 @@ function openDocumentPdf(
   workPlans: SavedWorkPlan[] = [],
   allCertificates: PaymentCertificate[] = [],
   meetingMinutes: MeetingMinute[] = [],
+  risks: Risk[] = [],
+  siteNotes: SiteNote[] = [],
+  correspondenceRecords: CorrespondenceRecord[] = [],
 ) {
   const printWindow = window.open("", "_blank");
   if (!printWindow) return;
@@ -3580,6 +3870,9 @@ function openDocumentPdf(
       workPlans,
       allCertificates,
       meetingMinutes,
+      risks,
+      siteNotes,
+      correspondenceRecords,
     ),
   );
   printWindow.document.close();
@@ -3928,6 +4221,9 @@ export default function DocumentsModule() {
     certificates,
     savedWorkPlans,
     meetingMinutes,
+    risks,
+    siteNotes,
+    correspondenceRecords,
     userSignatureProfile,
     setUserSignatureProfile,
     clearUserSignatureProfile,
@@ -4172,7 +4468,7 @@ export default function DocumentsModule() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              openDocumentPdf(hydratedDoc, project, linkedListProgress, linkedListCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes);
+                              openDocumentPdf(hydratedDoc, project, linkedListProgress, linkedListCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes, risks, siteNotes, correspondenceRecords);
                             }}
                             className="data-row-action"
                             aria-label="Print or save as PDF"
@@ -4342,7 +4638,7 @@ export default function DocumentsModule() {
           <Button
             size="sm"
             variant="default"
-              onClick={() => openDocumentPdf(activeDocument, project, linkedProgress, linkedCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes)}
+              onClick={() => openDocumentPdf(activeDocument, project, linkedProgress, linkedCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes, risks, siteNotes, correspondenceRecords)}
           >
             <Printer size={14} /> Print / Save PDF
           </Button>
@@ -4830,32 +5126,82 @@ export default function DocumentsModule() {
                           </div>
                         ) : null}
                         {section.id === "workPlan" && enabled ? (
-                          <div className="mt-2 flex items-center gap-2 text-[11px] text-txt-muted">
-                            <span>Format:</span>
-                            {(["table", "gantt"] as const).map((fmt) => {
-                              const current = activeDocument.reportWorkPlanFormat || "table";
-                              return (
+                          <>
+                            <div className="mt-2 flex items-center gap-2 text-[11px] text-txt-muted">
+                              <span>Format:</span>
+                              {(["table", "gantt"] as const).map((fmt) => {
+                                const current = activeDocument.reportWorkPlanFormat || "table";
+                                return (
+                                  <button
+                                    key={fmt}
+                                    type="button"
+                                    disabled={!isEditMode}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      updateGeneratedDocument(activeDocument.id, {
+                                        reportWorkPlanFormat: fmt,
+                                      });
+                                    }}
+                                    className={`rounded border px-2 py-0.5 text-[11px] font-medium transition ${
+                                      current === fmt
+                                        ? "border-accent bg-accent/15 text-accent"
+                                        : "border-border bg-bg-surface text-txt-muted hover:border-accent/30"
+                                    } ${!isEditMode ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                                  >
+                                    {fmt === "table" ? "Table" : "Gantt"}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-txt-muted">
+                              <span>Window:</span>
+                              <input
+                                type="date"
+                                value={activeDocument.reportWorkPlanStart || ""}
+                                disabled={!isEditMode}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(e) =>
+                                  updateGeneratedDocument(activeDocument.id, {
+                                    reportWorkPlanStart: e.target.value,
+                                  })
+                                }
+                                className="rounded border border-border bg-bg-surface px-1.5 py-0.5 text-[11px] text-txt outline-none focus:border-accent [color-scheme:light] disabled:opacity-70"
+                                aria-label="Work plan window start"
+                              />
+                              <span>→</span>
+                              <input
+                                type="date"
+                                value={activeDocument.reportWorkPlanEnd || ""}
+                                disabled={!isEditMode}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(e) =>
+                                  updateGeneratedDocument(activeDocument.id, {
+                                    reportWorkPlanEnd: e.target.value,
+                                  })
+                                }
+                                className="rounded border border-border bg-bg-surface px-1.5 py-0.5 text-[11px] text-txt outline-none focus:border-accent [color-scheme:light] disabled:opacity-70"
+                                aria-label="Work plan window end"
+                              />
+                              {isEditMode && (activeDocument.reportWorkPlanStart || activeDocument.reportWorkPlanEnd) ? (
                                 <button
-                                  key={fmt}
                                   type="button"
-                                  disabled={!isEditMode}
                                   onClick={(event) => {
                                     event.preventDefault();
                                     updateGeneratedDocument(activeDocument.id, {
-                                      reportWorkPlanFormat: fmt,
+                                      reportWorkPlanStart: "",
+                                      reportWorkPlanEnd: "",
                                     });
                                   }}
-                                  className={`rounded border px-2 py-0.5 text-[11px] font-medium transition ${
-                                    current === fmt
-                                      ? "border-accent bg-accent/15 text-accent"
-                                      : "border-border bg-bg-surface text-txt-muted hover:border-accent/30"
-                                  } ${!isEditMode ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                                  className="cursor-pointer rounded border border-border bg-bg-surface px-2 py-0.5 text-[11px] font-medium text-txt-muted transition hover:border-err/40 hover:text-err"
                                 >
-                                  {fmt === "table" ? "Table" : "Gantt"}
+                                  Clear
                                 </button>
-                              );
-                            })}
-                          </div>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-[10px] leading-snug text-txt-dim">
+                              Only activities overlapping the window are included — leave empty for the full plan.
+                            </div>
+                          </>
                         ) : null}
                       </div>
                     </label>
