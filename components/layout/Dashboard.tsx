@@ -248,6 +248,21 @@ type ChecklistMetrics = {
   verified: number;
 };
 
+type WorkPlanSnapshot = {
+  total: number;
+  completed: number;
+  inProgress: number;
+  delayed: number;
+  pending: number;
+  /** Activities needing attention next: delayed first, then in-progress, then upcoming pending. */
+  next: Array<{
+    description: string;
+    startDate: string;
+    endDate: string;
+    status: "pending" | "in-progress" | "completed" | "delayed";
+  }>;
+};
+
 type ProjectSummary = {
   project: Project;
   physical: number;
@@ -263,6 +278,7 @@ type ProjectSummary = {
   actionItems: MeetingActionSnapshot[];
   checklistItems: ChecklistItem[];
   checklistMetrics: ChecklistMetrics;
+  workPlan: WorkPlanSnapshot;
   timeline: ReturnType<typeof getTimelineProgress>;
   progressHistory: Array<{ label: string; planned: number; actual: number; earned: number }>;
   commercialHistory: Array<{ label: string; net: number }>;
@@ -461,6 +477,43 @@ function computePhysicalProgress(projectId: string, savedWorkPlans: SavedWorkPla
   return Math.round((completed / activities.length) * 100);
 }
 
+function computeWorkPlanSnapshot(projectId: string, savedWorkPlans: SavedWorkPlan[]): WorkPlanSnapshot {
+  const activities = savedWorkPlans
+    .filter((workPlan) => workPlan.project_id === projectId)
+    .flatMap((workPlan) => workPlan.sheets.flatMap((sheet) => sheet.activities))
+    .filter((activity) => (activity.rowType || "activity") !== "section");
+
+  const countByStatus = (status: WorkPlanSnapshot["next"][number]["status"]) =>
+    activities.filter((activity) => activity.status === status).length;
+
+  // Surface what needs attention now: delayed activities first, then what's
+  // running, then the next pending ones in start-date order.
+  const attentionRank = { delayed: 0, "in-progress": 1, pending: 2, completed: 3 } as const;
+  const next = activities
+    .filter((activity) => activity.status !== "completed")
+    .sort(
+      (a, b) =>
+        attentionRank[a.status] - attentionRank[b.status] ||
+        (a.startDate || "9999-12-31").localeCompare(b.startDate || "9999-12-31")
+    )
+    .slice(0, 3)
+    .map((activity) => ({
+      description: activity.description,
+      startDate: activity.startDate,
+      endDate: activity.endDate,
+      status: activity.status,
+    }));
+
+  return {
+    total: activities.length,
+    completed: countByStatus("completed"),
+    inProgress: countByStatus("in-progress"),
+    delayed: countByStatus("delayed"),
+    pending: countByStatus("pending"),
+    next,
+  };
+}
+
 function computeCommercialSnapshot(projectId: string, certificates: PaymentCertificate[]): CommercialSnapshot {
   const projectCertificates = certificates.filter((certificate) => certificate.project_id === projectId);
   if (projectCertificates.length === 0) {
@@ -575,6 +628,7 @@ function buildProjectSummary(
     actionItems: projectActionItems,
     checklistItems: projectChecklistItems,
     checklistMetrics: computeChecklistMetrics(projectChecklistItems),
+    workPlan: computeWorkPlanSnapshot(currentProject.id, savedWorkPlans),
     timeline: getTimelineProgress(currentProject),
     progressHistory: projectReports.map((report) => ({
       label: report.name,
@@ -749,45 +803,86 @@ function MetricCard({
   );
 }
 
-function CompactGauge({
-  value,
-  label,
-  tone = "accent",
+/**
+ * S-curve style planned-vs-actual chart across progress reports. Both series
+ * are anchored at 0 (project start) so even a single report draws a line.
+ */
+function ProgressTrendChart({
+  history,
+  tone = "ok",
 }: {
-  value: number;
-  label: string;
+  history: Array<{ label: string; planned: number; actual: number }>;
   tone?: Tone;
 }) {
   const style = toneStyles[tone];
-  const radius = 38;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - clamp(value) / 100);
+  const planned = [0, ...history.map((entry) => clamp(entry.planned))];
+  const actual = [0, ...history.map((entry) => clamp(entry.actual))];
+  const max = Math.max(...planned, ...actual, 10);
+
+  const W = 240;
+  const H = 88;
+  const PAD_TOP = 6;
+  const PAD_BOTTOM = 6;
+  const plotHeight = H - PAD_TOP - PAD_BOTTOM;
+  const x = (index: number) => (index / Math.max(planned.length - 1, 1)) * W;
+  const y = (value: number) => PAD_TOP + plotHeight - (value / max) * plotHeight;
+  const toPoints = (values: number[]) =>
+    values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+
+  const latest = history.at(-1);
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-[22px] border border-border bg-bg p-4 text-center">
-      <div className="relative h-[104px] w-[104px]">
-        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-          <circle cx="50" cy="50" r={radius} stroke="rgba(124, 135, 158, 0.14)" strokeWidth="9" fill="none" />
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            stroke={style.hex}
-            strokeWidth="9"
-            fill="none"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 96 }} preserveAspectRatio="none">
+        {[0.25, 0.5, 0.75].map((fraction) => (
+          <line
+            key={fraction}
+            x1="0"
+            x2={W}
+            y1={PAD_TOP + plotHeight * fraction}
+            y2={PAD_TOP + plotHeight * fraction}
+            stroke="rgba(124, 135, 158, 0.14)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
           />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <div className="text-2xl font-black" style={{ color: style.hex }}>
-            {clamp(value).toFixed(0)}
-          </div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-txt-dim">%</div>
-        </div>
+        ))}
+        <polygon
+          points={`0,${y(0)} ${toPoints(actual)} ${W},${y(0)}`}
+          fill={style.hex}
+          opacity="0.1"
+        />
+        <polyline
+          fill="none"
+          stroke={toneStyles.accent.hex}
+          strokeWidth="2"
+          strokeDasharray="5 4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          points={toPoints(planned)}
+        />
+        <polyline
+          fill="none"
+          stroke={style.hex}
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          points={toPoints(actual)}
+        />
+        <circle cx={x(planned.length - 1)} cy={y(planned.at(-1) || 0)} r="3" fill={toneStyles.accent.hex} />
+        <circle cx={x(actual.length - 1)} cy={y(actual.at(-1) || 0)} r="3.5" fill={style.hex} />
+      </svg>
+      <div className="mt-1.5 flex items-center justify-between text-[11px] text-txt-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-0 w-4 border-t-2 border-dashed border-accent" />
+          Planned {(latest?.planned ?? 0).toFixed(1)}%
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-0 w-4 border-t-2" style={{ borderColor: style.hex }} />
+          Actual {(latest?.actual ?? 0).toFixed(1)}%
+        </span>
       </div>
-      <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.16em] text-txt-muted">{label}</div>
     </div>
   );
 }
@@ -2229,6 +2324,7 @@ function ProjectOverviewDashboard({
     actionItems,
     checklistItems,
     checklistMetrics,
+    workPlan,
     timeline,
     progressHistory,
     commercialHistory,
@@ -2364,13 +2460,32 @@ function ProjectOverviewDashboard({
             </span>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div className="space-y-3">
               <ProgressStrip label="Planned (time)" value={timePercent} tone="accent" />
               <ProgressStrip label="Actual" value={progress.actual} tone={timeVariance >= 0 ? "ok" : "warn"} />
+              <ProgressStrip label="Financial (paid vs contract)" value={financial} tone="accent" />
             </div>
-            <div className="grid grid-cols-1 gap-3">
-              <CompactGauge value={financial} label="Financial" tone="accent" />
+
+            <div className="border-t border-border pt-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                  Progress reports — planned vs actual
+                </span>
+                <span className="text-[11px] text-txt-muted">
+                  {progressHistory.length} report{progressHistory.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {progressHistory.length > 0 ? (
+                <ProgressTrendChart
+                  history={progressHistory}
+                  tone={timeVariance >= 0 ? "ok" : "warn"}
+                />
+              ) : (
+                <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-[12px] text-txt-muted">
+                  Create progress reports to see the planned-vs-actual trend here.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2401,6 +2516,83 @@ function ProjectOverviewDashboard({
               Set project start and finish dates to activate timeline tracking.
             </div>
           )}
+
+          <div className="mt-5 border-t border-border pt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Work plan</span>
+              {workPlan.total > 0 ? (
+                <span className="text-[11px] text-txt-muted">
+                  {workPlan.completed}/{workPlan.total} activities done
+                </span>
+              ) : null}
+            </div>
+
+            {workPlan.total > 0 ? (
+              <>
+                <div className="flex h-2 overflow-hidden rounded-full bg-black/5">
+                  {([
+                    [workPlan.completed, "bg-ok"],
+                    [workPlan.inProgress, "bg-accent"],
+                    [workPlan.delayed, "bg-err"],
+                  ] as const).map(([count, color], index) =>
+                    count > 0 ? (
+                      <div
+                        key={index}
+                        className={color}
+                        style={{ width: `${(count / workPlan.total) * 100}%` }}
+                      />
+                    ) : null
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-txt-muted">
+                  {([
+                    ["Done", workPlan.completed, "bg-ok"],
+                    ["In progress", workPlan.inProgress, "bg-accent"],
+                    ["Delayed", workPlan.delayed, "bg-err"],
+                    ["Pending", workPlan.pending, "bg-black/20"],
+                  ] as const).map(([label, count, dot]) => (
+                    <span key={label} className="inline-flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                      {label} <span className="font-semibold tabular-nums text-txt">{count}</span>
+                    </span>
+                  ))}
+                </div>
+
+                {workPlan.next.length > 0 ? (
+                  <div className="mt-3 space-y-1.5">
+                    {workPlan.next.map((activity, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2.5 rounded-lg border border-border bg-bg px-3 py-1.5"
+                      >
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${
+                            activity.status === "delayed"
+                              ? "bg-err"
+                              : activity.status === "in-progress"
+                                ? "bg-accent"
+                                : "bg-black/20"
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-txt">
+                          {activity.description || "Untitled activity"}
+                        </span>
+                        <span className="shrink-0 text-[11px] tabular-nums text-txt-muted">
+                          {activity.status === "pending"
+                            ? activity.startDate || "—"
+                            : activity.endDate || activity.startDate || "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-[12px] text-txt-muted">
+                Create a work plan to see activity status and what&apos;s up next.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2455,30 +2647,85 @@ function ProjectOverviewDashboard({
         })}
       </div>
 
-      <div className="mt-5">
+      <div className="mt-4">
         <div className="rounded-2xl border border-border bg-bg-surface p-5">
-          <h3 className="mb-4 text-sm font-semibold text-txt">Commercial</h3>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-txt">Commercial</h3>
+            <span className="text-[11px] text-txt-muted">
+              {commercialHistory.length} certificate{commercialHistory.length === 1 ? "" : "s"}
+            </span>
+          </div>
 
-          <div className="space-y-1.5">
-            {([
-              ["Submitted", commercial.submitted, "bg-warn"],
-              ["Approved", commercial.approved, "bg-accent"],
-              ["Paid", commercial.paid, "bg-ok"],
-              ["Retention Held", commercial.retentionHeld, "bg-err"],
-            ] as const).map(([label, amount, dot]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between rounded-lg border border-border bg-bg px-3 py-2"
-              >
-                <span className="inline-flex items-center gap-2 text-[13px] text-txt-muted">
-                  <span className={`h-2 w-2 rounded-full ${dot}`} />
-                  {label}
-                </span>
-                <span className="font-mono text-sm font-semibold tabular-nums text-txt">
-                  {project.currency || "USD"} {currency(amount)}
-                </span>
+          {(() => {
+            const contractValue = parseAmount(project.contractAmount);
+            // The per-status figures are cumulative nets, so the bar segments
+            // are the increments: paid, approved-not-yet-paid, submitted-not-
+            // yet-approved — measured against the contract value.
+            const paidSeg = commercial.paid;
+            const approvedSeg = Math.max(0, commercial.approved - commercial.paid);
+            const submittedSeg = Math.max(0, commercial.submitted - Math.max(commercial.approved, commercial.paid));
+            const certified = paidSeg + approvedSeg + submittedSeg;
+            const barBase = contractValue > 0 ? contractValue : Math.max(certified, 1);
+            const pct = (value: number) => clamp((value / barBase) * 100);
+
+            return (
+              <>
+                <div className="flex h-2.5 overflow-hidden rounded-full bg-black/5">
+                  {([
+                    [paidSeg, "bg-ok"],
+                    [approvedSeg, "bg-accent"],
+                    [submittedSeg, "bg-warn"],
+                  ] as const).map(([amount, color], index) =>
+                    amount > 0 ? (
+                      <div key={index} className={color} style={{ width: `${pct(amount)}%` }} />
+                    ) : null
+                  )}
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-[11px] text-txt-muted">
+                  <span>
+                    Certified {contractValue > 0 ? `${pct(certified).toFixed(1)}% of contract` : "to date"}
+                  </span>
+                  <span className="tabular-nums">
+                    {project.currency || "USD"} {currency(certified)}
+                    {contractValue > 0 ? ` / ${currency(contractValue)}` : ""}
+                  </span>
+                </div>
+              </>
+            );
+          })()}
+
+          <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_240px]">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+              {([
+                ["Submitted", commercial.submitted, "bg-warn"],
+                ["Approved", commercial.approved, "bg-accent"],
+                ["Paid", commercial.paid, "bg-ok"],
+                ["Retention Held", commercial.retentionHeld, "bg-err"],
+              ] as const).map(([label, amount, dot]) => (
+                <div key={label} className="rounded-lg border border-border bg-bg px-3 py-2">
+                  <div className="flex items-center gap-1.5 text-[11px] text-txt-muted">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+                    <span className="truncate">{label}</span>
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-sm font-semibold tabular-nums text-txt">
+                    {project.currency || "USD"} {currency(amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {commercialHistory.length > 1 ? (
+              <div className="rounded-lg border border-border bg-bg px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                  Net per certificate
+                </div>
+                <MiniTrendChart values={commercialHistory.map((entry) => entry.net)} tone="ok" height={42} />
+                <div className="truncate text-[11px] text-txt-muted">
+                  {commercialHistory.at(-1)?.label}: {project.currency || "USD"}{" "}
+                  {currency(commercialHistory.at(-1)?.net || 0)}
+                </div>
               </div>
-            ))}
+            ) : null}
           </div>
         </div>
       </div>
