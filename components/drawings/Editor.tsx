@@ -375,6 +375,9 @@ export default function Editor({
   // the pointer's screen position. Consumed by the zoom effect right after the
   // canvas resizes, so the point under the cursor stays put.
   const wheelAnchorRef = useRef({ active: false, clientX: 0, clientY: 0, paperX: 0, paperY: 0 });
+  // Coalesce rapid wheel ticks into one zoom update per animation frame, so a
+  // fast scroll doesn't trigger a React render + canvas resize for every event.
+  const zoomRafRef = useRef<{ factor: number; raf: number | null }>({ factor: 1, raf: null });
   const historyRef = useRef<CanvasHistory>({
     past: [],
     future: [],
@@ -1220,7 +1223,18 @@ export default function Editor({
         anchor.paperY = (event.clientY - rect.top) / appliedZoom;
       }
 
-      setZoom((oldZoom) => Math.max(0.1, Math.min(4, oldZoom * (0.999 ** event.deltaY))));
+      // Accumulate the zoom factor and apply it once on the next frame instead
+      // of running a render + resize per wheel event.
+      const zr = zoomRafRef.current;
+      zr.factor *= 0.999 ** event.deltaY;
+      if (zr.raf === null) {
+        zr.raf = requestAnimationFrame(() => {
+          const factor = zr.factor;
+          zr.factor = 1;
+          zr.raf = null;
+          setZoom((oldZoom) => Math.max(0.1, Math.min(4, oldZoom * factor)));
+        });
+      }
 
       event.preventDefault();
       event.stopPropagation();
@@ -1637,6 +1651,10 @@ export default function Editor({
     }, 50);
 
     return () => {
+      if (zoomRafRef.current.raf !== null) {
+        cancelAnimationFrame(zoomRafRef.current.raf);
+        zoomRafRef.current.raf = null;
+      }
       canvas.dispose();
       fabricRef.current = null;
     };
