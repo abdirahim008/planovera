@@ -451,7 +451,9 @@ export default function PaymentModule() {
               />
               {activeLocked && <Badge color="err"><Lock size={11} className="mr-1" /> Locked</Badge>}
               {activeCalcs.unresolvedWarnings > 0 && (
-                <Badge color="warn">{activeCalcs.unresolvedWarnings} unresolved warning{activeCalcs.unresolvedWarnings === 1 ? "" : "s"}</Badge>
+                <span title="One or more line items are certified beyond their BOQ quantity (over-certified). Reduce the cumulative quantity, or add a note on the line explaining the over-certification (e.g. an approved variation) to clear it.">
+                  <Badge color="warn">{activeCalcs.unresolvedWarnings} unresolved warning{activeCalcs.unresolvedWarnings === 1 ? "" : "s"}</Badge>
+                </span>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">

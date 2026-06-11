@@ -171,16 +171,16 @@ body {
 
 .boq-table-shell tr.row-header td,
 .boq-table-shell tr.row-header .row-gutter {
-  background: #0d7c66 !important;
-  color: #ffffff !important;
-  border-color: #0b6e5a !important;
+  background: #e7eaef !important;
+  color: #28313f !important;
+  border-color: #d4dae2 !important;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .boq-table-shell tr.row-header td:first-child,
 .boq-table-shell tr.row-header .row-gutter {
-  box-shadow: inset 4px 0 0 #0d9488;
+  box-shadow: inset 4px 0 0 #94a3b8;
 }
 
 .boq-table-shell tr.row-notes td,

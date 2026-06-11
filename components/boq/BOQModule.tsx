@@ -82,7 +82,7 @@ const formatBOQCellDisplay = (
 ) => {
   const rowRecord = row as unknown as Record<string, string | number | null | undefined>;
   if (row.type === "header" && blankNonItemBOQColumns.has(key)) return "";
-  if ((row.type === "subtotal" || row.type === "sheettotal" || row.type === "grandtotal") && key !== "amount") return "";
+  if ((row.type === "subtotal" || row.type === "sheettotal" || row.type === "grandtotal") && key !== "amount" && key !== "description") return "";
   if ((row.type === "subtotal" || row.type === "sheettotal" || row.type === "grandtotal") && key === "amount") {
     return formatBOQNumberDisplay(row.amount, sheets);
   }
@@ -699,9 +699,11 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                       />
                     ) : (
                       <div className="flex gap-3 whitespace-pre-wrap break-words leading-6 text-txt-muted">
-                        <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full border border-accent/25 bg-accent/10 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent not-italic">
-                          {row.type === "specification" ? "Spec" : "Note"}
-                        </span>
+                        {row.type !== "specification" ? (
+                          <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full border border-accent/25 bg-accent/10 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent not-italic">
+                            Note
+                          </span>
+                        ) : null}
                         <span>{row.description || (row.type === "specification" ? "Double-click to add a specification" : "Double-click to add a note")}</span>
                       </div>
                     )}
