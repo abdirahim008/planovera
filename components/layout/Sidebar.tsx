@@ -50,6 +50,7 @@ export default function Sidebar({
     setActiveModule,
     clearProjectSelection,
     sidebarCollapsed,
+    toggleSidebar,
   } = useAppStore();
 
   const hasProject = Boolean(project);
@@ -169,14 +170,34 @@ export default function Sidebar({
                 <X size={16} />
               </button>
             ) : (
-              <PanelLeftClose size={16} className="ml-auto flex-shrink-0 text-txt-dim" />
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSidebar();
+                }}
+                className="ml-auto inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-txt-dim transition hover:bg-bg-hover hover:text-txt"
+                aria-label="Collapse sidebar"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose size={16} />
+              </button>
             )}
           </>
         )}
         {collapsed && !isMobile && (
-          <div className="hidden">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleSidebar();
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-txt-dim transition hover:bg-bg-hover hover:text-txt"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
             <PanelLeft size={16} />
-          </div>
+          </button>
         )}
       </div>
 
