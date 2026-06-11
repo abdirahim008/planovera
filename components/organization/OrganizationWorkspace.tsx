@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
+  Filter,
   Copy,
   CreditCard,
   DollarSign,
@@ -2093,14 +2094,22 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       </Badge>
                     </div>
 
-                    <div className="mt-5 rounded-2xl border border-border bg-bg-raised p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
-                        <label className="space-y-2">
+                    <div className="mt-5 rounded-2xl border border-border bg-bg-raised p-3.5">
+                      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
+                          <Filter size={12} /> Filters
+                        </span>
+                        <span className="text-[11px] tabular-nums text-txt-muted">
+                          Showing {filteredProjects.length} of {selectedProjects.length} projects
+                        </span>
+                      </div>
+                      <div className="grid gap-2.5 md:grid-cols-3 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
+                        <label className="space-y-1.5">
                           <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             User
                           </span>
                           <select
-                            className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm font-semibold text-txt outline-none focus:border-accent"
+                            className="w-full rounded-lg border border-border bg-bg-input px-2.5 py-2 text-xs font-medium text-txt outline-none transition focus:border-accent"
                             value={portfolioFilters.userId}
                             onChange={(event) =>
                               setPortfolioFilters((prev) => ({ ...prev, userId: event.target.value }))
@@ -2114,12 +2123,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             ))}
                           </select>
                         </label>
-                        <label className="space-y-2">
+                        <label className="space-y-1.5">
                           <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Program
                           </span>
                           <select
-                            className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm font-semibold text-txt outline-none focus:border-accent"
+                            className="w-full rounded-lg border border-border bg-bg-input px-2.5 py-2 text-xs font-medium text-txt outline-none transition focus:border-accent"
                             value={portfolioFilters.programId}
                             onChange={(event) =>
                               setPortfolioFilters((prev) => ({ ...prev, programId: event.target.value }))
@@ -2136,12 +2145,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             ) : null}
                           </select>
                         </label>
-                        <label className="space-y-2">
+                        <label className="space-y-1.5">
                           <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Category
                           </span>
                           <select
-                            className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm font-semibold text-txt outline-none focus:border-accent"
+                            className="w-full rounded-lg border border-border bg-bg-input px-2.5 py-2 text-xs font-medium text-txt outline-none transition focus:border-accent"
                             value={portfolioFilters.categoryId}
                             onChange={(event) =>
                               setPortfolioFilters((prev) => ({ ...prev, categoryId: event.target.value }))
@@ -2160,12 +2169,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             ) : null}
                           </select>
                         </label>
-                        <label className="space-y-2">
+                        <label className="space-y-1.5">
                           <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Location
                           </span>
                           <select
-                            className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm font-semibold text-txt outline-none focus:border-accent"
+                            className="w-full rounded-lg border border-border bg-bg-input px-2.5 py-2 text-xs font-medium text-txt outline-none transition focus:border-accent"
                             value={portfolioFilters.location}
                             onChange={(event) =>
                               setPortfolioFilters((prev) => ({ ...prev, location: event.target.value }))
@@ -2179,12 +2188,12 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                             ))}
                           </select>
                         </label>
-                        <label className="space-y-2">
+                        <label className="space-y-1.5">
                           <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
                             Client
                           </span>
                           <select
-                            className="w-full rounded-xl border border-border bg-bg-input px-3 py-2.5 text-sm font-semibold text-txt outline-none focus:border-accent"
+                            className="w-full rounded-lg border border-border bg-bg-input px-2.5 py-2 text-xs font-medium text-txt outline-none transition focus:border-accent"
                             value={portfolioFilters.client}
                             onChange={(event) =>
                               setPortfolioFilters((prev) => ({ ...prev, client: event.target.value }))
@@ -2217,10 +2226,8 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-txt-muted">
-                        <span className="rounded-full border border-border bg-bg px-3 py-1">
-                          Showing {filteredProjects.length} of {selectedProjects.length} projects
-                        </span>
+                      {activeFilterCount > 0 ? (
+                      <div className="mt-2.5 flex flex-wrap gap-2 text-xs text-txt-muted">
                         {portfolioFilters.userId ? (
                           <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-accent">
                             User:{" "}
@@ -2256,24 +2263,29 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                           </span>
                         ) : null}
                       </div>
+                      ) : null}
                     </div>
 
                     {/* Top KPI strip — 4 high-signal numbers, each clickable to
                         open a filtered drill-down table with a live total. */}
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <button
                         type="button"
                         onClick={() => setDrillMode("contract")}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60"
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60 hover:shadow-sm"
                       >
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <DollarSign size={14} className="text-accent" />
-                          Contract value
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            <DollarSign size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Contract value
+                          </span>
                         </div>
-                        <div className="mt-3 text-2xl font-semibold text-txt">
+                        <div className="mt-2.5 text-xl font-semibold tracking-tight text-txt">
                           {formatCurrency(portfolioTotals.contract, portfolioCurrency)}
                         </div>
-                        <div className="mt-1 text-xs text-txt-muted">
+                        <div className="mt-0.5 text-xs text-txt-muted">
                           across {filteredProjects.length} project{filteredProjects.length === 1 ? "" : "s"}
                         </div>
                       </button>
@@ -2281,16 +2293,20 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       <button
                         type="button"
                         onClick={() => setDrillMode("paid")}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-ok/60"
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-ok/60 hover:shadow-sm"
                       >
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <CheckCircle2 size={14} className="text-ok" />
-                          Paid to date
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ok/10 text-ok">
+                            <CheckCircle2 size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Paid to date
+                          </span>
                         </div>
-                        <div className="mt-3 text-2xl font-semibold text-txt">
+                        <div className="mt-2.5 text-xl font-semibold tracking-tight text-txt">
                           {formatCurrency(portfolioTotals.paid, portfolioCurrency)}
                         </div>
-                        <div className="mt-1 text-xs text-txt-muted">
+                        <div className="mt-0.5 text-xs text-txt-muted">
                           {portfolioTotals.contract > 0
                             ? `${((portfolioTotals.paid / portfolioTotals.contract) * 100).toFixed(1)}% of contract`
                             : "—"}
@@ -2300,16 +2316,20 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       <button
                         type="button"
                         onClick={() => setDrillMode("outstanding")}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-warn/60"
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-warn/60 hover:shadow-sm"
                       >
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <Wallet size={14} className="text-warn" />
-                          Outstanding
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn">
+                            <Wallet size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Outstanding
+                          </span>
                         </div>
-                        <div className="mt-3 text-2xl font-semibold text-txt">
+                        <div className="mt-2.5 text-xl font-semibold tracking-tight text-txt">
                           {formatCurrency(portfolioTotals.outstanding, portfolioCurrency)}
                         </div>
-                        <div className="mt-1 text-xs text-txt-muted">
+                        <div className="mt-0.5 text-xs text-txt-muted">
                           {portfolioTotals.contract > 0
                             ? `${((portfolioTotals.outstanding / portfolioTotals.contract) * 100).toFixed(1)}% remaining`
                             : "—"}
@@ -2319,87 +2339,116 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       <button
                         type="button"
                         onClick={() => setDrillMode("delayed")}
-                        className={`rounded-2xl border bg-bg-raised p-4 text-left transition ${
+                        className={`rounded-2xl border bg-bg-raised p-4 text-left transition hover:shadow-sm ${
                           portfolioTotals.delayed.length > 0
                             ? "border-err/40 hover:border-err"
                             : "border-border hover:border-ok/60"
                         }`}
                       >
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <AlertTriangle
-                            size={14}
-                            className={portfolioTotals.delayed.length > 0 ? "text-err" : "text-ok"}
-                          />
-                          Delayed projects
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                              portfolioTotals.delayed.length > 0 ? "bg-err/10 text-err" : "bg-ok/10 text-ok"
+                            }`}
+                          >
+                            <AlertTriangle size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Delayed projects
+                          </span>
                         </div>
                         <div
-                          className={`mt-3 text-2xl font-semibold ${
+                          className={`mt-2.5 text-xl font-semibold tracking-tight ${
                             portfolioTotals.delayed.length > 0 ? "text-err" : "text-txt"
                           }`}
                         >
                           {portfolioTotals.delayed.length}
                         </div>
-                        <div className="mt-1 text-xs text-txt-muted">
+                        <div className="mt-0.5 text-xs text-txt-muted">
                           actual &lt; planned by more than 5%
                         </div>
                       </button>
                     </div>
 
-                    {/* Single visual: Plan vs Actual at the portfolio level. */}
-                    <div className="mt-5 rounded-2xl border border-border bg-bg-raised p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <TrendingUp size={14} className="text-accent" />
-                          Plan vs Actual
-                        </div>
-                        <div className="font-mono text-xs tabular-nums text-txt-dim">
-                          <span className="text-accent">Planned {portfolio.planned.toFixed(1)}%</span>
-                          {" · "}
-                          <span className={portfolio.variance >= -0.5 ? "text-ok" : "text-warn"}>
-                            Actual {portfolio.actual.toFixed(1)}%
+                    {/* Plan vs Actual beside the two register KPIs — one compact row. */}
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.6fr_1fr_1fr]">
+                      <div className="rounded-2xl border border-border bg-bg-raised p-4 sm:col-span-2 xl:col-span-1">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            <TrendingUp size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Plan vs Actual
                           </span>
                         </div>
-                      </div>
-                      <div className="mt-3 space-y-1.5">
-                        <div className="h-2 overflow-hidden rounded-full bg-black/30">
-                          <div
-                            className="h-full rounded-full bg-accent transition-[width] duration-300"
-                            style={{ width: `${Math.min(Math.max(portfolio.planned, 0), 100)}%` }}
-                          />
+                        <div className="mt-3 space-y-2.5">
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-[11px] text-txt-muted">
+                              <span>Planned</span>
+                              <span className="font-mono tabular-nums text-txt">{portfolio.planned.toFixed(1)}%</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-black/5">
+                              <div
+                                className="h-full rounded-full transition-[width] duration-300"
+                                style={{
+                                  width: `${Math.min(Math.max(portfolio.planned, 0), 100)}%`,
+                                  background: "linear-gradient(90deg, #3b82f6 0%, rgba(59, 130, 246, 0.45) 100%)",
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-[11px] text-txt-muted">
+                              <span>Actual</span>
+                              <span
+                                className={`font-mono tabular-nums ${
+                                  portfolio.variance >= -0.5 ? "text-ok" : "text-warn"
+                                }`}
+                              >
+                                {portfolio.actual.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-black/5">
+                              <div
+                                className="h-full rounded-full transition-[width] duration-300"
+                                style={{
+                                  width: `${Math.min(Math.max(portfolio.actual, 0), 100)}%`,
+                                  background:
+                                    portfolio.variance >= -0.5
+                                      ? "linear-gradient(90deg, #22c55e 0%, rgba(34, 197, 94, 0.45) 100%)"
+                                      : "linear-gradient(90deg, #f59e0b 0%, rgba(245, 158, 11, 0.45) 100%)",
+                                }}
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-black/30">
-                          <div
-                            className={`h-full rounded-full transition-[width] duration-300 ${
-                              portfolio.variance >= -0.5 ? "bg-ok" : "bg-warn"
-                            }`}
-                            style={{ width: `${Math.min(Math.max(portfolio.actual, 0), 100)}%` }}
-                          />
-                        </div>
                       </div>
-                    </div>
 
-                    {/* Secondary KPIs (these already open their own drill modals). */}
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <button
                         type="button"
                         onClick={() => setComplianceModalOpen(true)}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60"
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60 hover:shadow-sm"
                       >
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <ClipboardCheck
-                            size={14}
-                            className={portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-ok"}
-                          />
-                          Checklist
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                              portfolio.overdueChecklistItems.length > 0 ? "bg-err/10 text-err" : "bg-ok/10 text-ok"
+                            }`}
+                          >
+                            <ClipboardCheck size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Checklist
+                          </span>
                         </div>
                         <div
-                          className={`mt-3 text-2xl font-semibold ${
+                          className={`mt-2.5 text-xl font-semibold tracking-tight ${
                             portfolio.overdueChecklistItems.length > 0 ? "text-err" : "text-txt"
                           }`}
                         >
                           {portfolio.overdueChecklistItems.length}
                         </div>
-                        <div className="mt-1 text-xs text-txt-muted">
+                        <div className="mt-0.5 text-xs text-txt-muted">
                           overdue from {portfolio.checklistItems.length} required
                         </div>
                       </button>
@@ -2407,30 +2456,35 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       <button
                         type="button"
                         onClick={() => setActionModalOpen(true)}
-                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60"
+                        className="rounded-2xl border border-border bg-bg-raised p-4 text-left transition hover:border-accent/60 hover:shadow-sm"
                       >
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                          <CheckCircle2
-                            size={14}
-                            className={portfolio.overdueActions > 0 ? "text-err" : "text-ok"}
-                          />
-                          Action points
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                              portfolio.overdueActions > 0 ? "bg-err/10 text-err" : "bg-ok/10 text-ok"
+                            }`}
+                          >
+                            <CheckCircle2 size={15} />
+                          </span>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Action points
+                          </span>
                         </div>
                         <div
-                          className={`mt-3 text-2xl font-semibold ${
+                          className={`mt-2.5 text-xl font-semibold tracking-tight ${
                             portfolio.overdueActions > 0 ? "text-err" : "text-txt"
                           }`}
                         >
                           {portfolio.overdueActions}
                         </div>
-                        <div className="mt-1 text-xs text-txt-muted">
+                        <div className="mt-0.5 text-xs text-txt-muted">
                           overdue from {portfolio.openActions} open
                         </div>
                       </button>
                     </div>
 
                     {/* Map collapsed by default — keep status check uncluttered. */}
-                    <div className="mt-5">
+                    <div className="mt-4">
                       <button
                         type="button"
                         onClick={() => setPortfolioMapOpen((open) => !open)}
@@ -2449,7 +2503,7 @@ export default function OrganizationWorkspace({ joined = false }: { joined?: boo
                       ) : null}
                     </div>
 
-                    <div className="mt-6 overflow-hidden rounded-2xl border border-border">
+                    <div className="mt-4 overflow-hidden rounded-2xl border border-border">
                       <div className="space-y-3 p-3 lg:hidden">
                         {portfolio.projectCards.length === 0 ? (
                           <div className="rounded-2xl border border-border bg-bg-raised/50 px-4 py-6 text-sm text-txt-muted">
