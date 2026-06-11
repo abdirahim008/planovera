@@ -1546,13 +1546,67 @@ export default function BOQModule() {
     };
     const baseFont = { name: "Times New Roman", sz: 11, color: { rgb: "111827" } };
 
+    // Live-formula export: qty/rate are written as numbers, amount as =qty*rate,
+    // subtotals as =SUM(section), and sheet/grand totals as SUMs (cross-sheet
+    // where needed) so the spreadsheet stays editable.
+    const toNum = (v: unknown): number | null => {
+      const n = parseFloat(String(v ?? "").replace(/,/g, ""));
+      return Number.isFinite(n) ? n : null;
+    };
+    const quoteSheetRef = (name: string) => `'${name.replace(/'/g, "''")}'`;
+    const sheetTotalRefs: string[] = [];
+    const grandTotalTargets: Array<{ ws: XLSX.WorkSheet; excelRow: number; itemRefs: string[]; value: number }> = [];
+
     exportSheets.forEach((sheet) => {
+      const sheetName = (sheet.name || "Sheet").slice(0, 31);
       const aoa: Array<(string | number)>[] = [cols];
       sheet.rows.forEach((r) => {
-        aoa.push([r.itemNo, r.description, r.unit, r.qty, r.rate, r.amount]);
+        // qty/rate/amount get written as numbers/formulas below.
+        aoa.push([r.itemNo, r.description, r.unit, "", "", ""]);
       });
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws["!cols"] = [{ wch: 12 }, { wch: 56 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+
+      const setCell = (excelRow: number, col: number, cell: XLSX.CellObject) => {
+        ws[XLSX.utils.encode_cell({ r: excelRow - 1, c: col })] = cell;
+      };
+      const itemRowsExcel: number[] = [];
+      let sectionStart: number | null = null;
+      sheet.rows.forEach((row, idx) => {
+        const er = idx + 2; // 1-based Excel row (row 1 is the header)
+        if (row.type === "item") {
+          const q = toNum(row.qty);
+          const rate = toNum(row.rate);
+          if (q !== null) setCell(er, 3, { t: "n", v: q });
+          if (rate !== null) setCell(er, 4, { t: "n", v: rate });
+          // Formula cells must carry a cached value (v) or the writer drops them.
+          const amountVal = resolveBOQItemAmount(row, boqSheets);
+          const isFormula = typeof row.amount === "string" && row.amount.startsWith("=");
+          if (!isFormula && q !== null && rate !== null) {
+            setCell(er, 5, { t: "n", f: `D${er}*E${er}`, v: amountVal });
+          } else if (amountVal) {
+            setCell(er, 5, { t: "n", v: amountVal });
+          }
+          itemRowsExcel.push(er);
+          if (sectionStart === null) sectionStart = er;
+        } else if (row.type === "subtotal") {
+          const val = resolveBOQNumber(row.amount, boqSheets);
+          const isFormula = typeof row.amount === "string" && row.amount.startsWith("=");
+          if (!isFormula && sectionStart !== null && er - 1 >= sectionStart) {
+            setCell(er, 5, { t: "n", f: `SUM(F${sectionStart}:F${er - 1})`, v: val });
+          } else {
+            setCell(er, 5, { t: "n", v: val });
+          }
+          sectionStart = null;
+        } else if (row.type === "sheettotal") {
+          const refs = itemRowsExcel.map((r) => `F${r}`);
+          const val = resolveBOQNumber(row.amount, boqSheets);
+          setCell(er, 5, refs.length ? { t: "n", f: `SUM(${refs.join(",")})`, v: val } : { t: "n", v: val });
+          sheetTotalRefs.push(`${quoteSheetRef(sheetName)}!F${er}`);
+        } else if (row.type === "grandtotal") {
+          grandTotalTargets.push({ ws, excelRow: er, itemRefs: itemRowsExcel.map((r) => `F${r}`), value: resolveBOQNumber(row.amount, boqSheets) });
+        }
+      });
 
       const styleRow = (rowNumber: number, style: Record<string, any>) => {
         for (let c = 0; c < 6; c++) {
@@ -1616,7 +1670,17 @@ export default function BOQModule() {
         }
       });
 
-      XLSX.utils.book_append_sheet(wb, ws, (sheet.name || "Sheet").slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
+    // Resolve Grand Total(s) once every sheet's total cell address is known: sum
+    // the per-sheet totals across sheets, or this sheet's items if there are none.
+    grandTotalTargets.forEach(({ ws, excelRow, itemRefs, value }) => {
+      const addr = XLSX.utils.encode_cell({ r: excelRow - 1, c: 5 });
+      const existingStyle = (ws[addr] as Record<string, unknown> | undefined)?.s;
+      const formula = sheetTotalRefs.length > 0 ? `SUM(${sheetTotalRefs.join(",")})` : itemRefs.length > 0 ? `SUM(${itemRefs.join(",")})` : null;
+      ws[addr] = (formula ? { t: "n", f: formula, v: value } : { t: "n", v: value }) as XLSX.CellObject;
+      if (existingStyle) (ws[addr] as Record<string, unknown>).s = existingStyle;
     });
 
     const safeName = `${activeBoqName || "BOQ"}-export.xlsx`.replace(/[<>:"/\\|?*]+/g, "-");

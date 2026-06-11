@@ -103,6 +103,23 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
       { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
       { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
     ];
+    // Make the statement's derivations live (formula cells carry a cached value
+    // so the writer keeps them): D = A+B+C, F = D − deductions, and the Total
+    // column = Previous + This for the additive lines. Balance/M/now-due stay as
+    // computed values since they aren't simple additions.
+    const sumF = (r1: number, c0: number, f: string, v: number) => {
+      ws[XLSX.utils.encode_cell({ r: r1 - 1, c: c0 })] = { t: "n", f, v };
+    };
+    (
+      [
+        [8, d.total.workDone], [9, d.total.material], [10, d.total.variations],
+        [12, d.total.tax], [13, d.total.retention], [14, d.total.wh],
+        [16, d.total.advance], [17, d.total.repay], [19, d.total.J], [20, d.total.K], [21, d.total.L],
+      ] as Array<[number, number]>
+    ).forEach(([r, total]) => sumF(r, 3, `B${r}+C${r}`, total));
+    sumF(11, 1, "B8+B9+B10", d.prev.D); sumF(11, 2, "C8+C9+C10", d.cur.D); sumF(11, 3, "D8+D9+D10", d.total.D);
+    sumF(15, 1, "B11-B12-B13-B14", d.prev.F); sumF(15, 2, "C11-C12-C13-C14", d.cur.F); sumF(15, 3, "D11-D12-D13-D14", d.total.F);
+
     styleRow(ws, 1, 4, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
     styleRow(ws, 2, 4, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
     styleRow(ws, 7, 4, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
@@ -113,39 +130,59 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
     [11, 15, 22, 24].forEach((r) => styleRow(ws, r, 4, { font: { ...baseFont, bold: true } }));
     XLSX.utils.book_append_sheet(wb, ws, "IPC Summary");
 
-    // Per-sheet BOQ line-item detail.
+    // Per-sheet BOQ line-item detail — written with live formulas so editing a
+    // quantity or rate recalculates the amounts, cumulative and bill totals.
+    // Columns: A# B"Item No" C"Desc" D"Unit" E"BOQ Qty" F"Rate" G"BOQ Amount"
+    // H"Prev Qty" I"Curr Qty" J"Cum Qty" K"Balance" L"Curr Amount" M"Cum Amount" N"Note".
     (cert.sheets || []).forEach((sheet) => {
       const detailRows: Array<Array<string | number>> = [
         ["#", "Item No.", "Description", "Unit", "BOQ Qty", "Rate", "BOQ Amount", "Previous Qty", "Current Qty", "Cumulative Qty", "Balance Qty", "Current Amount", "Cumulative Amount", "Warning / Note"],
       ];
+      const lines = sheet.items.map((item) => paymentLineState(item));
       sheet.items.forEach((item, index) => {
-        const line = paymentLineState(item);
+        const line = lines[index];
         detailRows.push([
-          index + 1,
-          item.billNo,
-          item.description,
-          item.unit,
-          line.boqQty,
-          line.rate,
-          line.boqAmount,
-          line.previousQty,
-          line.currentQty,
-          line.totalQty,
-          line.balanceQty,
-          line.currentAmount,
-          line.totalAmount,
+          index + 1, item.billNo, item.description, item.unit,
+          line.boqQty, line.rate, line.boqAmount,
+          line.previousQty, line.currentQty, line.totalQty, line.balanceQty,
+          line.currentAmount, line.totalAmount,
           item.overrideNote || (line.warningStatus === "over-certified" ? "Over BOQ quantity" : ""),
         ]);
       });
+      const itemCount = sheet.items.length;
+      const sumOf = (sel: (l: (typeof lines)[number]) => number) => lines.reduce((s, l) => s + sel(l), 0);
+      detailRows.push(["", "", "Bill total", "", "", "", sumOf((l) => l.boqAmount), "", "", "", "", sumOf((l) => l.currentAmount), sumOf((l) => l.totalAmount), ""]);
+
       const dws = XLSX.utils.aoa_to_sheet(detailRows);
       dws["!cols"] = [
         { wch: 5 }, { wch: 12 }, { wch: 46 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 14 },
         { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 15 }, { wch: 16 }, { wch: 28 },
       ];
+      const setF = (r1: number, c0: number, f: string, v: number) => {
+        dws[XLSX.utils.encode_cell({ r: r1 - 1, c: c0 })] = { t: "n", f, v };
+      };
+      sheet.items.forEach((_, idx) => {
+        const er = idx + 2;
+        const line = lines[idx];
+        setF(er, 6, `E${er}*F${er}`, line.boqAmount); // BOQ Amount = BOQ Qty × Rate
+        setF(er, 9, `H${er}+I${er}`, line.totalQty); // Cumulative Qty = Prev + Current
+        setF(er, 10, `E${er}-J${er}`, line.balanceQty); // Balance = BOQ Qty − Cumulative
+        setF(er, 11, `I${er}*F${er}`, line.currentAmount); // Current Amount = Current Qty × Rate
+        setF(er, 12, `J${er}*F${er}`, line.totalAmount); // Cumulative Amount = Cum Qty × Rate
+      });
+      if (itemCount > 0) {
+        const totalRow = itemCount + 2;
+        const last = itemCount + 1;
+        setF(totalRow, 6, `SUM(G2:G${last})`, sumOf((l) => l.boqAmount));
+        setF(totalRow, 11, `SUM(L2:L${last})`, sumOf((l) => l.currentAmount));
+        setF(totalRow, 12, `SUM(M2:M${last})`, sumOf((l) => l.totalAmount));
+      }
+
       styleRow(dws, 1, 14, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
       for (let row = 2; row <= detailRows.length; row++) {
         styleRow(dws, row, 14, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
       }
+      if (itemCount > 0) styleRow(dws, itemCount + 2, 14, { font: { ...baseFont, bold: true } });
       XLSX.utils.book_append_sheet(wb, dws, safeSheetName(sheet.name, "Sheet"));
     });
 
