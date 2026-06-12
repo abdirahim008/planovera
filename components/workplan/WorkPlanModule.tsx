@@ -438,8 +438,10 @@ function WorkPlanTable({
         <table className="data-table data-table-sticky min-w-[430px] sm:min-w-[780px]">
           <thead>
             <tr>
-              <th style={{ width: 40 }} className="data-sticky-col left-0 text-center hidden sm:table-cell">#</th>
-              <th className="data-sticky-col left-0 sm:left-10 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%]">Description</th>
+              {/* The body "#" gutter is hidden globally (.data-cell-index → display:none),
+                  so the header must hide too or thead/tbody columns shift out of alignment. */}
+              <th className="hidden" aria-hidden="true" />
+              <th className="data-sticky-col left-0 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%]">Description</th>
               <th className="text-center w-[46px] sm:w-[110px]">
                 <span className="sm:hidden">Days</span>
                 <span className="hidden sm:inline">Duration (days)</span>
@@ -462,8 +464,8 @@ function WorkPlanTable({
                 onContextMenu={(e) => handleContextMenu(e, act.id)}
                 onClick={(e) => handleRowClick(e, act.id)}
               >
-                <td className="data-cell-index data-sticky-col left-0 hidden sm:table-cell">{isSection ? "" : activityOrdinal}</td>
-                <td className={`data-cell-wrap data-sticky-col left-0 sm:left-10 data-sticky-edge transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className="data-cell-index" aria-hidden="true">{isSection ? "" : activityOrdinal}</td>
+                <td className={`data-cell-wrap data-sticky-col left-0 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%] transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "description")} onMouseEnter={() => handleMouseEnter(i, "description")}>
                   {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
                     : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
