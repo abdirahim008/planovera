@@ -687,6 +687,9 @@ function documentPrintStyles() {
     .cover .page-inner {
       padding: 0;
       min-height: 297mm;
+      /* Hard-bound the cover to exactly one A4 page so nothing spills over. */
+      max-height: 297mm;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       position: relative;
@@ -742,7 +745,11 @@ function documentPrintStyles() {
     }
     .cover-image-frame img {
       max-width: 100%;
-      max-height: 100%;
+      /* Absolute cap (not %) — a percentage can't resolve against the frame's
+         indefinite flex height, so a large source image would render at its
+         natural height and push the meta band onto a second page. This keeps
+         the cover to a single page regardless of the uploaded image size. */
+      max-height: 112mm;
       width: auto;
       height: auto;
       object-fit: contain;
@@ -1666,6 +1673,8 @@ function documentPrintStyles() {
       .cover .page-inner {
         padding: 0;
         min-height: 297mm;
+        max-height: 297mm;
+        overflow: hidden;
       }
       .certificate-page .page-inner {
         min-height: 297mm;
@@ -2485,6 +2494,27 @@ function renderProgressReportBody(
         <section class="report-section section-fluid">
           <div class="report-section-title">Work plan${windowLabel}</div>
           ${wpHtml}
+        </section>
+      `);
+    } else {
+      // The section is enabled but produced nothing. Rather than silently drop
+      // it (which looks like a bug), explain why so the user can fix it — the
+      // usual cause is a date window that excludes every activity, or a work
+      // plan that was never saved for this project.
+      const projectActivities = workPlans
+        .filter((plan) => plan.project_id === project.id)
+        .flatMap((plan) => plan.sheets.flatMap((sheet) => sheet.activities))
+        .filter((activity) => (activity.rowType || "activity") !== "section" && activity.description);
+      const emptyNote =
+        projectActivities.length === 0
+          ? "No saved work plan was found for this project. Build a work plan and save it to include it here."
+          : windowStart || windowEnd
+            ? `None of the ${projectActivities.length} work-plan activities fall within the selected window (${escapeHtml(windowStart || "start")} → ${escapeHtml(windowEnd || "end")}). Clear or widen the date window to include them.`
+            : "No work-plan activities to display.";
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Work plan${windowLabel}</div>
+          <p style="margin:0; font-size:11px; color:#64748b; font-style:italic">${emptyNote}</p>
         </section>
       `);
     }
