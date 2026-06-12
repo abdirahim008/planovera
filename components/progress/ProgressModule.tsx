@@ -453,6 +453,7 @@ export default function ProgressModule() {
   const [newReportName, setNewReportName] = useState("");
   const [newReportInputMode, setNewReportInputMode] = useState<ProgressInputMode>("quantity");
   const [showColumns, setShowColumns] = useState(false);
+  const columnsMenuRef = useRef<HTMLDivElement>(null);
   const [showMetricsSummary, setShowMetricsSummary] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<ProgressColumnKey[]>(
     progressColumnPresets.quantity.simple
@@ -460,6 +461,26 @@ export default function ProgressModule() {
   const [columnDraft, setColumnDraft] = useState<ProgressColumnKey[]>(progressColumnPresets.quantity.simple);
   const [progressViewMode, setProgressViewMode] = useState<ProgressViewMode>("table");
   const [visualRowMode, setVisualRowMode] = useState<ProgressVisualRowMode>("all");
+
+  // Dismiss the column presets popover on outside-click or Escape (discarding the
+  // draft) so the user isn't forced to hit Apply to get out.
+  useEffect(() => {
+    if (!showColumns) return;
+    const handlePointer = (event: MouseEvent) => {
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(event.target as Node)) {
+        setShowColumns(false);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowColumns(false);
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [showColumns]);
 
   const projectReports = progressReports.filter((report) => report.project_id === project?.id);
   const isConstruction = project?.type === "construction";
@@ -813,7 +834,7 @@ export default function ProgressModule() {
 
     if (column === "description") {
       return (
-        <td className="data-cell-wrap data-sticky-col left-0 sm:left-10 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto">
+        <td className="data-cell-wrap data-sticky-col left-0 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto">
           {item.description}
         </td>
       );
@@ -1163,7 +1184,7 @@ export default function ProgressModule() {
                 </select>
               )}
               {progressViewMode === "table" && (
-              <div className="relative">
+              <div className="relative" ref={columnsMenuRef}>
                 <Button
                   size="sm"
                   variant="default"
@@ -1229,6 +1250,14 @@ export default function ProgressModule() {
                       </Button>
                       <Button
                         size="sm"
+                        variant="default"
+                        className="flex-1 justify-center"
+                        onClick={() => setShowColumns(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="primary"
                         className="flex-1 justify-center"
                         onClick={() => {
@@ -1252,13 +1281,15 @@ export default function ProgressModule() {
             <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: Math.max(360, displayColumns.length * 116) }}>
               <thead>
                 <tr>
-                  <th style={{ width: 40 }} className="data-sticky-col left-0 text-center hidden sm:table-cell">#</th>
+                  {/* Body "#" gutter is hidden globally (.data-cell-index → display:none),
+                      so the header must hide too or thead/tbody columns shift. */}
+                  <th className="hidden" aria-hidden="true" />
                   {displayColumns.map((column) => (
                     <th
                       key={column}
                       className={
                         column === "description"
-                          ? "data-sticky-col left-0 sm:left-10 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto"
+                          ? "data-sticky-col left-0 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto"
                           : ""
                       }
                     >
@@ -1270,7 +1301,7 @@ export default function ProgressModule() {
               <tbody>
                 {activeReport.sheets[activeSheetIdx]?.items.map((item, index) => (
                   <tr key={item.id}>
-                    <td className="data-cell-index data-sticky-col left-0 hidden sm:table-cell">{index + 1}</td>
+                    <td className="data-cell-index" aria-hidden="true">{index + 1}</td>
                     {displayColumns.map((column) => (
                       <Fragment key={column}>{renderProgressCell(item, column)}</Fragment>
                     ))}
