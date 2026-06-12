@@ -196,6 +196,9 @@ export interface WorkPlanActivity {
   startDate: string;
   endDate: string;
   status: "pending" | "in-progress" | "completed" | "delayed";
+  /** User-flagged key milestone. An activity milestone is "achieved" when its
+   *  status is completed; a section milestone when all its child activities are. */
+  isMilestone?: boolean;
 }
 
 export interface WorkPlanSheet {

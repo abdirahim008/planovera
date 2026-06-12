@@ -2026,6 +2026,7 @@ interface AppState {
   renameWorkPlanSheet: (idx: number, name: string) => void;
   addActivity: () => void;
   updateActivity: (id: string, key: string, value: string) => void;
+  toggleActivityMilestone: (id: string) => void;
   deleteActivity: (id: string) => void;
   deleteActivities: (ids: string[]) => void;
   insertActivityAt: (anchorId: string, position: "above" | "below") => void;
@@ -3919,6 +3920,13 @@ export const useAppStore = create<AppState>()(
             });
             return recalcWorkPlanSections(mapped);
           }),
+        })),
+
+      toggleActivityMilestone: (id) =>
+        set((s) => ({
+          workPlanSheets: mapActiveWPSheet(s.workPlanSheets, s.activeWorkPlanSheetIndex, (acts) =>
+            acts.map((a) => (a.id === id ? { ...a, isMilestone: !a.isMilestone } : a))
+          ),
         })),
 
       deleteActivity: (id) =>

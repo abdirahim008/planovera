@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -21,7 +21,10 @@ import {
   FileText,
   FileSpreadsheet,
   CalendarRange,
+  Flag,
+  CheckCircle2,
 } from "lucide-react";
+import { isWorkPlanRowAchieved } from "@/lib/work-plan-milestones";
 import { useAppStore } from "@/lib/store";
 import { labelsForType } from "@/lib/project-labels";
 import Button from "@/components/ui/Button";
@@ -240,6 +243,7 @@ function WorkPlanTable({
     workPlanSheets,
     activeWorkPlanSheetIndex,
     updateActivity,
+    toggleActivityMilestone,
     deleteActivity,
     pasteWorkPlanRows,
     clearWorkPlanRange,
@@ -250,6 +254,15 @@ function WorkPlanTable({
   } = useAppStore();
 
   const activities = workPlanSheets[activeWorkPlanSheetIndex]?.activities || [];
+  // Precompute which flagged milestones are achieved once per render so each row
+  // is an O(1) Set lookup rather than re-scanning the activity list.
+  const achievedMilestoneIds = useMemo(() => {
+    const ids = new Set<string>();
+    activities.forEach((activity, index) => {
+      if (activity.isMilestone && isWorkPlanRowAchieved(activities, index)) ids.add(activity.id);
+    });
+    return ids;
+  }, [activities]);
   const isSectionSummary = summaryMode === "sections";
   const visibleActivities = isSectionSummary
     ? activities.filter((activity) => (activity.rowType || "activity") === "section")
@@ -393,6 +406,21 @@ function WorkPlanTable({
       disabled: readOnly || isSectionSummary || selectedRowIds.length !== 1 || !primaryAct,
     },
     { divider: true },
+    {
+      label: primaryAct?.isMilestone ? "Remove Milestone" : "Mark as Milestone",
+      icon: <Flag size={14} />,
+      action: () => primaryAct && toggleActivityMilestone(primaryAct.id),
+      disabled: readOnly || selectedRowIds.length !== 1 || !primaryAct,
+    },
+    {
+      label: primaryAct?.status === "completed" ? "Reopen (in progress)" : "Mark Completed",
+      icon: <CheckCircle2 size={14} />,
+      action: () =>
+        primaryAct &&
+        updateActivity(primaryAct.id, "status", primaryAct.status === "completed" ? "in-progress" : "completed"),
+      disabled: readOnly || isSectionSummary || selectedRowIds.length !== 1 || !primaryAct,
+    },
+    { divider: true },
     { label: selectedRowIds.length > 1 ? `Copy ${selectedRowIds.length} Activities` : "Copy Activity", icon: <Copy size={14} />, action: copyRow },
     { label: "Paste Activities Above", icon: <ClipboardPaste size={14} />, action: () => selectedRowIds.length > 0 && pasteActivityAt(selectedRowIds[0], "above", clipboard), disabled: !clipboard.length || readOnly || isSectionSummary },
     { label: "Paste Activities Below", icon: <ClipboardPaste size={14} />, action: () => selectedRowIds.length > 0 && pasteActivityAt(selectedRowIds[selectedRowIds.length - 1], "below", clipboard), disabled: !clipboard.length || readOnly || isSectionSummary },
@@ -467,9 +495,20 @@ function WorkPlanTable({
                 <td className="data-cell-index" aria-hidden="true">{isSection ? "" : activityOrdinal}</td>
                 <td className={`data-cell-wrap data-sticky-col left-0 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%] transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "description")} onMouseEnter={() => handleMouseEnter(i, "description")}>
-                  {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
-                    : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
-                        rows={2} onChange={(e) => updateActivity(act.id, "description", e.target.value)} onPaste={(e) => handlePaste(i, "description", e)} placeholder={isSection ? "Section title" : "Activity description"} />}
+                  <div className="flex items-start gap-1.5">
+                    {act.isMilestone ? (
+                      achievedMilestoneIds.has(act.id) ? (
+                        <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-ok" aria-label="Milestone achieved" />
+                      ) : (
+                        <Flag size={13} className="mt-0.5 shrink-0 text-accent" aria-label="Milestone (not yet achieved)" />
+                      )
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
+                        : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
+                            rows={2} onChange={(e) => updateActivity(act.id, "description", e.target.value)} onPaste={(e) => handlePaste(i, "description", e)} placeholder={isSection ? "Section title" : "Activity description"} />}
+                    </div>
+                  </div>
                 </td>
                 <td className={`text-center transition-colors ${isInSelection(i, "duration") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "duration")} onMouseEnter={() => handleMouseEnter(i, "duration")}>

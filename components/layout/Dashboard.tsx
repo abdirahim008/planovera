@@ -8,11 +8,13 @@ import {
   Activity,
   BarChart3,
   Building2,
+  CheckCircle2,
   ClipboardList,
   Coins,
   DatabaseZap,
   DollarSign,
   FileText,
+  Flag,
   LayoutGrid,
   Lock,
   Mail,
@@ -28,6 +30,11 @@ import {
   X,
 } from "lucide-react";
 import { currency, getLiveMeetingActionItems, type MeetingActionSnapshot, useAppStore } from "@/lib/store";
+import {
+  collectAchievedMilestones,
+  countFlaggedMilestones,
+  type AchievedMilestone,
+} from "@/lib/work-plan-milestones";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -261,6 +268,10 @@ type WorkPlanSnapshot = {
     endDate: string;
     status: "pending" | "in-progress" | "completed" | "delayed";
   }>;
+  /** Achieved milestones, most recent first. */
+  milestones: AchievedMilestone[];
+  /** Total flagged milestones (achieved or not) for "X of Y" copy. */
+  milestonesFlagged: number;
 };
 
 type ProjectSummary = {
@@ -511,6 +522,8 @@ function computeWorkPlanSnapshot(projectId: string, savedWorkPlans: SavedWorkPla
     delayed: countByStatus("delayed"),
     pending: countByStatus("pending"),
     next,
+    milestones: collectAchievedMilestones(savedWorkPlans, projectId),
+    milestonesFlagged: countFlaggedMilestones(savedWorkPlans, projectId),
   };
 }
 
@@ -2594,6 +2607,62 @@ function ProjectOverviewDashboard({
             )}
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-border bg-bg-surface p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-txt">
+            <Flag size={15} className="text-accent" /> Milestones
+          </h3>
+          {workPlan.milestonesFlagged > 0 ? (
+            <span className="text-[11px] text-txt-muted">
+              {workPlan.milestones.length} of {workPlan.milestonesFlagged} achieved
+            </span>
+          ) : null}
+        </div>
+        {workPlan.milestonesFlagged === 0 ? (
+          <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-[12px] text-txt-muted">
+            Flag key activities or sections as milestones in the Work Plan
+            (right-click a row → <span className="font-medium text-txt">Mark as milestone</span>) to track them here.
+          </div>
+        ) : workPlan.milestones.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-[12px] text-txt-muted">
+            {workPlan.milestonesFlagged} milestone{workPlan.milestonesFlagged === 1 ? "" : "s"} flagged —
+            none completed yet.
+          </div>
+        ) : (
+          <>
+            <ol className="space-y-1.5">
+              {workPlan.milestones.slice(0, 5).map((milestone) => (
+                <li
+                  key={milestone.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-bg px-3 py-2"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ok/12 text-ok">
+                    <CheckCircle2 size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-txt" title={milestone.description}>
+                    {milestone.description}
+                    {milestone.isSection ? (
+                      <span className="ml-1.5 rounded bg-bg-raised px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-txt-dim">
+                        Section
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-txt-muted">
+                    {milestone.date || "—"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            {workPlan.milestones.length > 5 ? (
+              <div className="mt-2 text-[11px] text-txt-dim">
+                +{workPlan.milestones.length - 5} earlier milestone
+                {workPlan.milestones.length - 5 === 1 ? "" : "s"} achieved
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
