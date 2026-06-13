@@ -130,7 +130,7 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
         </header>
 
         <section className="grid items-center gap-10 py-12 lg:grid-cols-[0.82fr_1.18fr] lg:py-16">
-          <div className="max-w-2xl">
+          <div className="min-w-0 max-w-2xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-accent">
               <span className="h-2 w-2 rounded-full bg-blue-400" />
               Built for project delivery teams
@@ -174,7 +174,7 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
             </div>
           </div>
 
-          <div className="relative">
+          <div className="relative min-w-0">
             <div className="absolute -inset-8 rounded-[3rem] bg-blue-500/12 blur-3xl" />
             <div className="relative overflow-hidden rounded-[2rem] border border-border bg-bg-surface p-3 shadow-2xl shadow-black/10">
               {/* Hand-built, light-themed mockup of the real project overview so the
