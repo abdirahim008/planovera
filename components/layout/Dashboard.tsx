@@ -927,7 +927,7 @@ function ReferenceMetricTile({
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">{title}</div>
-          <div className="mt-0.5 truncate text-base font-semibold leading-tight tracking-tight text-txt">
+          <div className="mt-0.5 truncate text-[13.5px] font-semibold leading-tight tracking-tight text-txt xl:text-base">
             {value}
           </div>
         </div>
@@ -2451,13 +2451,13 @@ function ProjectOverviewDashboard({
           }))}
         />
       </div>
-      <div className="hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-4">
+      <div className="hidden gap-3 sm:grid sm:grid-cols-2 md:grid-cols-4">
         {metricCards.map((card) => (
           <ReferenceMetricTile key={card.title} {...card} />
         ))}
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-border bg-bg-surface p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-txt">Progress</h3>
