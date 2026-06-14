@@ -27,7 +27,9 @@ import {
   ListPlus,
   AlertTriangle,
 } from "lucide-react";
-import * as XLSX from "xlsx-js-style";
+// Type-only import (erased at build); the ~430 KB runtime library is loaded on
+// demand inside exportBOQToExcel so it never ships in the BOQ module's chunk.
+import type * as XLSXNS from "xlsx-js-style";
 import { useAppStore, emptyRow, headerRow, subtotalRow, sheetTotalRow, grandtotalRow, noteRow, specificationRow, recalcRows, currency, resolveCellValue, resolveBOQItemAmount } from "@/lib/store";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import { mapBOQLibraryItemRecord } from "@/lib/supabase";
@@ -1533,9 +1535,10 @@ export default function BOQModule() {
     }
   }, [boqSheets, selectedExportSheetIds.size]);
 
-  const exportBOQToExcel = () => {
+  const exportBOQToExcel = async () => {
     const exportSheets = boqSheets.filter((s) => selectedExportSheetIds.has(s.id));
     if (!exportSheets.length) return;
+    const XLSX = await import("xlsx-js-style");
     const wb = XLSX.utils.book_new();
     const cols = ["Item No.", "Description", "Unit", "Quantity", "Rate", "Amount"];
     const border = {
@@ -1555,7 +1558,7 @@ export default function BOQModule() {
     };
     const quoteSheetRef = (name: string) => `'${name.replace(/'/g, "''")}'`;
     const sheetTotalRefs: string[] = [];
-    const grandTotalTargets: Array<{ ws: XLSX.WorkSheet; excelRow: number; itemRefs: string[]; value: number }> = [];
+    const grandTotalTargets: Array<{ ws: XLSXNS.WorkSheet; excelRow: number; itemRefs: string[]; value: number }> = [];
 
     exportSheets.forEach((sheet) => {
       const sheetName = (sheet.name || "Sheet").slice(0, 31);
@@ -1567,7 +1570,7 @@ export default function BOQModule() {
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws["!cols"] = [{ wch: 12 }, { wch: 56 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
 
-      const setCell = (excelRow: number, col: number, cell: XLSX.CellObject) => {
+      const setCell = (excelRow: number, col: number, cell: XLSXNS.CellObject) => {
         ws[XLSX.utils.encode_cell({ r: excelRow - 1, c: col })] = cell;
       };
       const itemRowsExcel: number[] = [];
@@ -1679,7 +1682,7 @@ export default function BOQModule() {
       const addr = XLSX.utils.encode_cell({ r: excelRow - 1, c: 5 });
       const existingStyle = (ws[addr] as Record<string, unknown> | undefined)?.s;
       const formula = sheetTotalRefs.length > 0 ? `SUM(${sheetTotalRefs.join(",")})` : itemRefs.length > 0 ? `SUM(${itemRefs.join(",")})` : null;
-      ws[addr] = (formula ? { t: "n", f: formula, v: value } : { t: "n", v: value }) as XLSX.CellObject;
+      ws[addr] = (formula ? { t: "n", f: formula, v: value } : { t: "n", v: value }) as XLSXNS.CellObject;
       if (existingStyle) (ws[addr] as Record<string, unknown>).s = existingStyle;
     });
 

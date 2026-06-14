@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import * as XLSX from "xlsx-js-style";
+// Type-only import (erased at build); the ~430 KB runtime library is loaded on
+// demand inside exportToExcel so it never ships in the payment module's chunk.
+import type * as XLSXNS from "xlsx-js-style";
 import { Eye, FileText, FileSpreadsheet } from "lucide-react";
 import type { PaymentCertificate, Project } from "@/lib/supabase";
 import { useAppStore } from "@/lib/store";
@@ -49,9 +51,15 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
   const baseFont = { name: "Arial", sz: 10, color: { rgb: "111827" } };
   const headerFill = { patternType: "solid", fgColor: { rgb: "E2E8F0" } };
 
-  const styleRow = (ws: XLSX.WorkSheet, rowNumber: number, colCount: number, style: Record<string, any>) => {
+  const styleRow = (
+    xlsx: typeof import("xlsx-js-style"),
+    ws: XLSXNS.WorkSheet,
+    rowNumber: number,
+    colCount: number,
+    style: Record<string, any>,
+  ) => {
     for (let c = 0; c < colCount; c++) {
-      const addr = XLSX.utils.encode_cell({ r: rowNumber - 1, c });
+      const addr = xlsx.utils.encode_cell({ r: rowNumber - 1, c });
       const cell = ws[addr];
       if (!cell) continue;
       (cell as any).s = {
@@ -64,7 +72,8 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
     }
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const XLSX = await import("xlsx-js-style");
     const wb = XLSX.utils.book_new();
     const d = buildIpcDocData(cert, project, userSignatureProfile);
     const H = d.header;
@@ -121,14 +130,14 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
     sumF(11, 1, "B8+B9+B10", d.prev.D); sumF(11, 2, "C8+C9+C10", d.cur.D); sumF(11, 3, "D8+D9+D10", d.total.D);
     sumF(16, 1, "B11-B12-B13-B14+B15", d.prev.F); sumF(16, 2, "C11-C12-C13-C14+C15", d.cur.F); sumF(16, 3, "D11-D12-D13-D14+D15", d.total.F);
 
-    styleRow(ws, 1, 4, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
-    styleRow(ws, 2, 4, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
-    styleRow(ws, 7, 4, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+    styleRow(XLSX, ws, 1, 4, { font: { ...baseFont, bold: true, sz: 14 }, alignment: { horizontal: "center" } });
+    styleRow(XLSX, ws, 2, 4, { font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+    styleRow(XLSX, ws, 7, 4, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
     for (let row = 8; row <= rows.length; row++) {
-      styleRow(ws, row, 4, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
+      styleRow(XLSX, ws, row, 4, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
     }
     // Bold the sub-total / total / now-due lines (D, F, M, Now due).
-    [11, 16, 23, 25].forEach((r) => styleRow(ws, r, 4, { font: { ...baseFont, bold: true } }));
+    [11, 16, 23, 25].forEach((r) => styleRow(XLSX, ws, r, 4, { font: { ...baseFont, bold: true } }));
     XLSX.utils.book_append_sheet(wb, ws, cert.type === "final" ? "FPC Summary" : "IPC Summary");
 
     // Per-sheet BOQ line-item detail — written with live formulas so editing a
@@ -179,11 +188,11 @@ export default function CertificatePrint({ cert, project }: CertificatePrintProp
         setF(totalRow, 12, `SUM(M2:M${last})`, sumOf((l) => l.totalAmount));
       }
 
-      styleRow(dws, 1, 14, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
+      styleRow(XLSX, dws, 1, 14, { fill: headerFill, font: { ...baseFont, bold: true }, alignment: { horizontal: "center" } });
       for (let row = 2; row <= detailRows.length; row++) {
-        styleRow(dws, row, 14, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
+        styleRow(XLSX, dws, row, 14, { alignment: { vertical: "top", wrapText: true }, numFmt: "#,##0.00" });
       }
-      if (itemCount > 0) styleRow(dws, itemCount + 2, 14, { font: { ...baseFont, bold: true } });
+      if (itemCount > 0) styleRow(XLSX, dws, itemCount + 2, 14, { font: { ...baseFont, bold: true } });
       XLSX.utils.book_append_sheet(wb, dws, safeSheetName(sheet.name, "Sheet"));
     });
 

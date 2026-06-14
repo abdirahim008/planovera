@@ -3,7 +3,8 @@
 // ------------------------------------------------------------------
 
 import type * as FabricNS from "fabric";
-import { jsPDF } from "jspdf";
+// jsPDF (~150 KB) is loaded on demand inside exportPagesToPDF so it doesn't
+// ship in the drawing-studio route's first-load bundle.
 import type { PaperSizeKey, Orientation } from "./paper";
 import { TITLE_BLOCK_KEY, TB_FIELD_KEY, buildTitleBlock } from "./titleBlocks";
 
@@ -147,6 +148,8 @@ export async function exportPagesToPDF(
   filename: string = "drawing.pdf"
 ): Promise<void> {
   if (pages.length === 0) return;
+
+  const { jsPDF } = await import("jspdf");
 
   // Create document with first page settings
   const pdf = new jsPDF({
