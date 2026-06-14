@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import Toolbar from "./Toolbar";
 import LeftPanel, { type DrawingPanelTab } from "./LeftPanel";
+import { FileText, Plus } from "lucide-react";
 import ContextMenu from "./ContextMenu";
 import { getPaperDimensions } from "@/lib/drawings/paper";
 import {
@@ -1961,6 +1962,43 @@ export default function Editor({
     [currentPageIndex, pages.length, saveCurrentPage],
   );
 
+  // ── Bottom sheet-tab bar: rename / duplicate / right-click menu ──────────
+  const [sheetMenu, setSheetMenu] = useState<{ visible: boolean; x: number; y: number; index: number }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    index: 0,
+  });
+  const [renamingSheet, setRenamingSheet] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  const handleRenamePage = useCallback((index: number, name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    setPages((previous) => previous.map((page, i) => (i === index ? { ...page, name: clean } : page)));
+  }, []);
+
+  const handleDuplicatePage = useCallback(
+    async (index: number) => {
+      // Capture the latest canvas of the active sheet before cloning.
+      const saved = await saveCurrentPage();
+      const source = saved[index];
+      if (!source) return;
+      const copy: Page = {
+        ...source,
+        id: `page-${Math.random().toString(36).slice(2, 10)}`,
+        name: `${source.name} copy`,
+        titleBlockData: { ...source.titleBlockData },
+        json: source.json ? JSON.parse(JSON.stringify(source.json)) : undefined,
+      };
+      const next = syncSheetLabels([...saved.slice(0, index + 1), copy, ...saved.slice(index + 1)]);
+      setPages(next);
+      setCurrentPageIndex(index + 1);
+      setMessage("Sheet duplicated.");
+    },
+    [saveCurrentPage, setMessage],
+  );
+
   const handleDuplicate = useCallback(async () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -2903,6 +2941,80 @@ export default function Editor({
         </main>
       </div>
 
+      <div className="flex items-center gap-1 overflow-x-auto border-t border-[color:var(--df-border)] bg-[color:var(--df-surface)] px-2 py-1.5">
+        <span className="mr-1 inline-flex shrink-0 items-center gap-1.5 px-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--df-text-muted)]">
+          <FileText className="h-3.5 w-3.5" /> Sheets
+        </span>
+        {pages.map((page, index) => {
+          const active = index === currentPageIndex;
+          if (renamingSheet === index) {
+            return (
+              <input
+                key={page.id}
+                autoFocus
+                value={renameDraft}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onBlur={() => {
+                  handleRenamePage(index, renameDraft);
+                  setRenamingSheet(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    handleRenamePage(index, renameDraft);
+                    setRenamingSheet(null);
+                  } else if (event.key === "Escape") {
+                    setRenamingSheet(null);
+                  }
+                }}
+                className="w-32 shrink-0 rounded-md border border-[color:var(--df-accent)] bg-[color:var(--df-bg)] px-2 py-1 text-xs text-[color:var(--df-text)] outline-none"
+              />
+            );
+          }
+          return (
+            <button
+              key={page.id}
+              type="button"
+              onClick={() => void handleSwitchPage(index)}
+              onDoubleClick={() => {
+                setRenameDraft(page.name);
+                setRenamingSheet(index);
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setSheetMenu({ visible: true, x: event.clientX, y: event.clientY, index });
+              }}
+              title="Click to open · double-click to rename · right-click for more"
+              className="group inline-flex shrink-0 items-center gap-1.5 rounded-md border-t-2 px-3 py-1.5 text-xs font-medium transition"
+              style={{
+                borderTopColor: active ? "var(--df-accent)" : "transparent",
+                background: active ? "var(--df-surface-3)" : "transparent",
+                color: active ? "var(--df-text)" : "var(--df-text-dim)",
+              }}
+            >
+              <span className={active ? "font-semibold" : ""}>{page.name}</span>
+              <span
+                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase"
+                style={{
+                  background: active ? "var(--df-accent)" : "rgba(255,255,255,0.08)",
+                  color: active ? "#1b1c20" : "var(--df-text-dim)",
+                }}
+              >
+                {page.paperSize}
+              </span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => void handleAddPage()}
+          title="Add sheet"
+          aria-label="Add sheet"
+          className="ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-dashed border-[color:var(--df-border)] text-[color:var(--df-text-dim)] transition hover:border-[color:var(--df-accent)] hover:text-[color:var(--df-accent)]"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+
       <footer className="drawflow-statusbar">
         <span className="drawflow-statusbar-item"><span className="drawflow-statusbar-dot" /> Ready</span>
         <span className="drawflow-statusbar-item">Sheet {currentPageIndex + 1} / {pages.length}</span>
@@ -2923,6 +3035,29 @@ export default function Editor({
             onClick: item.onClick,
             danger: item.danger,
           }))}
+        />
+      ) : null}
+
+      {sheetMenu.visible ? (
+        <ContextMenu
+          x={sheetMenu.x}
+          y={sheetMenu.y}
+          onClose={() => setSheetMenu((previous) => ({ ...previous, visible: false }))}
+          items={[
+            {
+              label: "Rename sheet",
+              onClick: () => {
+                setRenameDraft(pages[sheetMenu.index]?.name ?? "");
+                setRenamingSheet(sheetMenu.index);
+              },
+            },
+            { label: "Duplicate sheet", onClick: () => void handleDuplicatePage(sheetMenu.index) },
+            {
+              label: "Delete sheet",
+              onClick: () => void handleDeletePage(sheetMenu.index),
+              danger: true,
+            },
+          ]}
         />
       ) : null}
 
