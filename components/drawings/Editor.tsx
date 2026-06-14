@@ -1724,7 +1724,10 @@ export default function Editor({
         workspace.scrollTop += rect.top + anchor.paperY * zoom - anchor.clientY;
       }
     }
-  }, [applyZoom, currentPage, zoom]);
+    // Depend on the paper geometry + zoom only — not the whole currentPage
+    // object, which changes on every sheet edit and would otherwise re-resize
+    // the canvas needlessly.
+  }, [applyZoom, currentPage?.paperSize, currentPage?.orientation, zoom]);
 
   const getPaperCenter = useCallback(() => {
     if (!currentPage) return { width: 800, height: 600, centerX: 400, centerY: 300 };
