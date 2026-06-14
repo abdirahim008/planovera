@@ -2,7 +2,15 @@
 
 // Drawing studio left panel: library browser, parametric editors, tools, admin publishing.
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
-import { Layers3 } from "lucide-react";
+import {
+  Layers3,
+  SlidersHorizontal,
+  Library as LibraryIcon,
+  Wrench,
+  FolderOpen,
+  UploadCloud,
+  type LucideIcon,
+} from "lucide-react";
 import type { TitleBlockData } from "@/lib/drawings/fabricHelpers";
 import { PATTERNS, PatternType } from "@/lib/drawings/patterns";
 import { TITLE_BLOCK_TEMPLATES } from "@/lib/drawings/titleBlocks";
@@ -228,12 +236,12 @@ export default function LeftPanel({
   onDeleteLibraryItem,
 }: LeftPanelProps) {
   const isAdmin = session.role === "admin";
-  const tabs: Array<{ id: DrawingPanelTab; label: string; short: string }> = [
-    { id: "library", label: "Library", short: "Lib" },
-    { id: "properties", label: "Properties", short: "Prop" },
-    { id: "details", label: "Tools", short: "Tool" },
-    { id: "projects", label: "Projects", short: "Proj" },
-    ...(isAdmin ? [{ id: "admin" as const, label: "Publish", short: "Pub" }] : []),
+  const tabs: Array<{ id: DrawingPanelTab; label: string; short: string; icon: LucideIcon; subtitle: string }> = [
+    { id: "properties", label: "Properties", short: "Prop", icon: SlidersHorizontal, subtitle: "Selection & style" },
+    { id: "library", label: "Library", short: "Lib", icon: LibraryIcon, subtitle: "Reusable drawings & objects" },
+    { id: "details", label: "Tools", short: "Tool", icon: Wrench, subtitle: "Drafting, import & title block" },
+    { id: "projects", label: "Projects", short: "Proj", icon: FolderOpen, subtitle: "Saved drawing packages" },
+    ...(isAdmin ? [{ id: "admin" as const, label: "Publish", short: "Pub", icon: UploadCloud, subtitle: "Publish to the shared library" }] : []),
   ];
 
   const [localActiveTray, setLocalActiveTray] = useState<DrawingPanelTab | null>(
@@ -590,7 +598,9 @@ export default function LeftPanel({
     setSvgUploadError(null);
   };
 
-  const activeTabLabel = tabs.find((item) => item.id === activeTrayValue)?.label ?? "Drawing tools";
+  const activeTab = tabs.find((item) => item.id === activeTrayValue);
+  const activeTabLabel = activeTab?.label ?? "Drawing tools";
+  const activeTabSubtitle = activeTab?.subtitle ?? "Drafting, import and project tools";
   const isSideLayout = layout === "side";
 
   const updateTemplateDraft = (key: string, value: number | string) => {
@@ -883,6 +893,33 @@ export default function LeftPanel({
           : "relative z-30 border-b border-slate-200/80 bg-white/90 px-4 py-2 shadow-[0_10px_30px_rgba(15,23,42,0.05)] backdrop-blur-xl"
       }
     >
+      {isSideLayout ? (
+        <div className="flex shrink-0 border-b border-[color:var(--df-border)]">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            const active = activeTrayValue === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTray(item.id)}
+                title={item.label}
+                aria-pressed={active}
+                className="group flex flex-1 flex-col items-center gap-1.5 py-3 text-[10px] font-semibold tracking-wide transition"
+                style={{ color: active ? "var(--df-accent)" : "var(--df-text-dim)" }}
+              >
+                <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                <span>{item.label}</span>
+                <span
+                  className="mt-0.5 h-[2px] w-6 rounded-full transition"
+                  style={{ background: active ? "var(--df-accent)" : "transparent" }}
+                />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className={isSideLayout ? "hidden" : "flex flex-wrap items-center gap-2"}>
         <div className={isSideLayout ? "mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500" : "mr-2 hidden items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500 lg:flex"}>
           Drawing trays
@@ -934,12 +971,12 @@ export default function LeftPanel({
         >
           <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500">
-                {activeTabLabel}
+              <h2 className="text-base font-semibold text-slate-900">{activeTabLabel}</h2>
+              <p className="text-[11px] text-slate-500">
+                {isSideLayout
+                  ? activeTabSubtitle
+                  : isAdmin ? "Drafting, SVG import, projects, and publishing" : "Drafting, SVG import, library, and project tools"}
               </p>
-              <h2 className="text-sm font-semibold text-slate-900">
-                {isAdmin ? "Drafting, SVG import, projects, and publishing" : "Drafting, SVG import, library, and project tools"}
-              </h2>
             </div>
             <button
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:border-sky-500/60 hover:bg-sky-500/15 hover:text-sky-300"
