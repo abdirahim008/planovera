@@ -310,6 +310,18 @@ body {
   white-space: nowrap;
 }
 
+/* Numeric / centered headers must follow their column's alignment. Without
+   these, the default `text-align: left` above (specificity 0,1,2) overrides the
+   `text-right` / `text-center` utility classes (0,1,0), so headers like
+   Previous / Current / Cumulative sit at the left edge of wide right-aligned
+   number columns and look misaligned with the cells beneath them. */
+.data-table thead th.text-right {
+  text-align: right;
+}
+.data-table thead th.text-center {
+  text-align: center;
+}
+
 .data-table tbody tr {
   border-bottom: 1px solid var(--color-border-light);
 }
