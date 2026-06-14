@@ -379,6 +379,8 @@ export default function Editor({
   // Coalesce rapid wheel ticks into one zoom update per animation frame, so a
   // fast scroll doesn't trigger a React render + canvas resize for every event.
   const zoomRafRef = useRef<{ factor: number; raf: number | null }>({ factor: 1, raf: null });
+  // Pending debounced history snapshot (see commitHistory). Flushed before undo/redo.
+  const historyCommitTimerRef = useRef<number | null>(null);
   const historyRef = useRef<CanvasHistory>({
     past: [],
     future: [],
@@ -475,7 +477,13 @@ export default function Editor({
     [refreshHistoryState, serializeCanvasHistory],
   );
 
-  const commitHistory = useCallback(() => {
+  // Immediate snapshot. Keeping a shallower stack (25 vs 80) bounds the memory
+  // held for a complex drawing — each snapshot is a full JSON of the canvas.
+  const commitHistoryNow = useCallback(() => {
+    if (historyCommitTimerRef.current !== null) {
+      window.clearTimeout(historyCommitTimerRef.current);
+      historyCommitTimerRef.current = null;
+    }
     const canvas = fabricRef.current;
     const history = historyRef.current;
     if (!canvas || !history.initialized || history.isRestoring) return;
@@ -483,10 +491,22 @@ export default function Editor({
     const snapshot = serializeCanvasHistory(canvas);
     if (history.past[history.past.length - 1] === snapshot) return;
 
-    history.past = [...history.past, snapshot].slice(-80);
+    history.past = [...history.past, snapshot].slice(-25);
     history.future = [];
     refreshHistoryState();
   }, [refreshHistoryState, serializeCanvasHistory]);
+
+  // Coalesce bursts of edits into a single serialize on the next idle tick so
+  // dragging/resizing stays smooth instead of stringifying the whole canvas on
+  // every event. Undo/redo flush this first (commitHistoryNow) so they never
+  // miss the latest edit.
+  const commitHistory = useCallback(() => {
+    if (historyCommitTimerRef.current !== null) window.clearTimeout(historyCommitTimerRef.current);
+    historyCommitTimerRef.current = window.setTimeout(() => {
+      historyCommitTimerRef.current = null;
+      commitHistoryNow();
+    }, 220);
+  }, [commitHistoryNow]);
 
   const restoreHistorySnapshot = useCallback(
     async (snapshot: string, message: string) => {
@@ -510,6 +530,7 @@ export default function Editor({
   );
 
   const handleUndo = useCallback(async () => {
+    commitHistoryNow(); // flush any pending debounced edit so undo sees it
     const history = historyRef.current;
     if (history.past.length <= 1) {
       setMessage("Nothing to undo.");
@@ -520,9 +541,10 @@ export default function Editor({
     if (current) history.future = [current, ...history.future];
     const previous = history.past[history.past.length - 1];
     if (previous) await restoreHistorySnapshot(previous, "Undo completed.");
-  }, [restoreHistorySnapshot, setMessage]);
+  }, [commitHistoryNow, restoreHistorySnapshot, setMessage]);
 
   const handleRedo = useCallback(async () => {
+    commitHistoryNow(); // flush any pending debounced edit first
     const history = historyRef.current;
     const next = history.future.shift();
     if (!next) {
@@ -532,7 +554,7 @@ export default function Editor({
 
     history.past = [...history.past, next];
     await restoreHistorySnapshot(next, "Redo completed.");
-  }, [restoreHistorySnapshot, setMessage]);
+  }, [commitHistoryNow, restoreHistorySnapshot, setMessage]);
 
   const resetWorkspaceState = useCallback(() => {
     setProjectName(getDrawingPackageName(linkedProject));
@@ -833,6 +855,10 @@ export default function Editor({
       backgroundColor: "#ffffff",
       preserveObjectStacking: true,
       selection: true,
+      // Render at 1x instead of devicePixelRatio. On hi-dpi screens this is ~4x
+      // less pixel work per frame, which keeps pan/zoom/drag smooth on large
+      // drawings — at the cost of slightly softer lines on retina displays.
+      enableRetinaScaling: false,
     });
 
     fabricRef.current = canvas;
@@ -1655,6 +1681,10 @@ export default function Editor({
       if (zoomRafRef.current.raf !== null) {
         cancelAnimationFrame(zoomRafRef.current.raf);
         zoomRafRef.current.raf = null;
+      }
+      if (historyCommitTimerRef.current !== null) {
+        window.clearTimeout(historyCommitTimerRef.current);
+        historyCommitTimerRef.current = null;
       }
       canvas.dispose();
       fabricRef.current = null;
