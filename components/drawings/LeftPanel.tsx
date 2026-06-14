@@ -1440,53 +1440,47 @@ export default function LeftPanel({
               {filteredItems.map((item) => {
                 const isFavorite = favoriteIds.includes(item.id);
                 return (
-                  <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
-                          <button
-                            type="button"
-                            onClick={() => onToggleFavorite(item.id)}
-                            className={`shrink-0 text-base leading-none transition ${
-                              isFavorite ? "text-amber-500 hover:text-amber-600" : "text-slate-300 hover:text-amber-500"
-                            }`}
-                            aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                            title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                          >
-                            {isFavorite ? "★" : "☆"}
-                          </button>
-                        </div>
-                        <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">
-                          {item.category} · {item.assetType === "drawing" ? "Template" : "Object"} ·{" "}
-                          {item.source === "personal"
-                            ? "My library"
-                            : item.source === "admin"
-                              ? "Shared admin library"
-                              : "System starter"}
-                        </div>
-                        {item.parametricKind ? (
-                          <div className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                            Editable dimensions
-                          </div>
-                        ) : null}
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)]"
+                    // Keep the card lean — name + thumbnail. The category, tags,
+                    // source and updated-by metadata live in this hover tooltip
+                    // (and are still searchable) rather than cluttering every card.
+                    title={[
+                      item.name,
+                      `${item.category} · ${item.assetType === "drawing" ? "Template" : "Object"} · ${
+                        item.source === "personal"
+                          ? "My library"
+                          : item.source === "admin"
+                            ? "Shared admin library"
+                            : "System starter"
+                      }${item.parametricKind ? " · Editable dimensions" : ""}`,
+                      item.tags.length ? `Tags: ${item.tags.join(", ")}` : "",
+                      `Updated ${new Date(item.updatedAt).toLocaleDateString()} by ${item.author}`,
+                    ]
+                      .filter(Boolean)
+                      .join("\n")}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                        <button
+                          type="button"
+                          onClick={() => onToggleFavorite(item.id)}
+                          className={`shrink-0 text-base leading-none transition ${
+                            isFavorite ? "text-amber-500 hover:text-amber-600" : "text-slate-300 hover:text-amber-500"
+                          }`}
+                          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                          title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        >
+                          {isFavorite ? "★" : "☆"}
+                        </button>
                       </div>
                       <button className="btn btn-primary shrink-0" onClick={() => handleInsertLibraryItem(item)}>
                         Insert
                       </button>
                     </div>
                     <LibraryThumbnail id={item.id} svg={item.svg} thumbnail={item.thumbnail} alt={item.name} />
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {item.tags.map((tag) => (
-                        <span key={`${item.id}-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="mt-3 text-xs text-slate-500">
-                      Updated {new Date(item.updatedAt).toLocaleDateString()} by {item.author}
-                    </div>
                   </div>
                 );
               })}
