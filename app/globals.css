@@ -715,41 +715,80 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 249, 0.94));
 }
 
-/* Planovera Studio dark reference skin */
+/* Planovera Studio — "Graphite Pro" dark skin (warm graphite + amber accent). */
 .drawflow-studio {
-  --df-bg: #0d1117;
-  --df-surface: #161b27;
-  --df-surface-2: #1e2433;
-  --df-surface-3: #252d3e;
-  --df-border: #2a3347;
-  --df-border-soft: #1f2840;
-  --df-text: #cdd9f0;
-  --df-text-dim: #6b7a99;
-  --df-text-muted: #46536f;
-  --df-accent: #3b82f6;
-  --df-accent-soft: rgba(59, 130, 246, 0.14);
+  --df-bg: #141519;
+  --df-surface: #1b1c20;
+  --df-surface-2: #232429;
+  --df-surface-3: #2c2d34;
+  --df-border: rgba(255, 255, 255, 0.08);
+  --df-border-soft: rgba(255, 255, 255, 0.05);
+  --df-text: #e8e8ec;
+  --df-text-dim: #9a9aa4;
+  --df-text-muted: #6b6b76;
+  --df-accent: #f0a13a;
+  --df-accent-soft: rgba(240, 161, 58, 0.16);
   color: var(--df-text);
 }
 
 .drawflow-studio .workspace-panel {
-  background-color: #e8ecf4;
+  background-color: #2a2b30;
   background-image:
-    radial-gradient(circle at 18% 12%, rgba(59, 130, 246, 0.12), transparent 24%),
-    radial-gradient(circle at 78% 18%, rgba(34, 197, 94, 0.08), transparent 22%),
-    linear-gradient(rgba(100, 116, 139, 0.14) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(100, 116, 139, 0.14) 1px, transparent 1px),
-    linear-gradient(135deg, #eef2f8 0%, #dde5f2 100%);
-  background-size: auto, auto, 24px 24px, 24px 24px, auto;
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px;
 }
 
 .drawflow-studio .paper-frame {
   border-radius: 2px;
   padding: 0;
-  background: #ffffff;
+  background: #f3f4f2;
   box-shadow:
-    0 4px 6px rgba(0, 0, 0, 0.04),
-    0 18px 52px rgba(15, 23, 42, 0.22),
-    0 0 0 1px rgba(15, 23, 42, 0.12);
+    0 4px 6px rgba(0, 0, 0, 0.18),
+    0 18px 52px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+/* Dark chrome surfaces (toolbar / studio root / overlays) onto the graphite ramp.
+   The self-selector also catches the root, which carries bg-slate-950 itself. */
+.drawflow-studio[class*="bg-slate-950"],
+.drawflow-studio [class*="bg-slate-950"] {
+  background-color: var(--df-bg) !important;
+}
+.drawflow-studio [class*="bg-slate-900"] {
+  background-color: var(--df-surface) !important;
+}
+.drawflow-studio [class*="bg-slate-800"] {
+  background-color: var(--df-surface-2) !important;
+}
+.drawflow-studio [class*="bg-slate-700"] {
+  background-color: var(--df-surface-3) !important;
+}
+.drawflow-studio [class*="border-slate-700"],
+.drawflow-studio [class*="border-slate-800"],
+.drawflow-studio [class*="border-slate-900"],
+.drawflow-studio [class*="border-slate-300"] {
+  border-color: var(--df-border) !important;
+}
+
+/* Blue accent → Graphite Pro amber, everywhere it appears in the studio. */
+.drawflow-studio [class*="bg-sky-500"],
+.drawflow-studio [class*="bg-blue-500"] {
+  background-color: var(--df-accent) !important;
+  color: #1b1c20 !important;
+}
+.drawflow-studio [class*="bg-sky-50"],
+.drawflow-studio [class*="bg-sky-100"] {
+  background-color: var(--df-accent-soft) !important;
+}
+.drawflow-studio [class*="text-sky-"],
+.drawflow-studio [class*="text-blue-"] {
+  color: var(--df-accent) !important;
+}
+.drawflow-studio [class*="border-sky-"],
+.drawflow-studio [class*="border-blue-"],
+.drawflow-studio [class*="ring-sky-"] {
+  border-color: rgba(240, 161, 58, 0.42) !important;
 }
 
 .drawflow-studio .upper-canvas,
@@ -805,7 +844,7 @@ body {
 .drawflow-studio .input:focus {
   border-color: var(--df-accent);
   background: var(--df-bg);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgba(240, 161, 58, 0.18);
 }
 
 .drawflow-studio .label {
@@ -829,8 +868,8 @@ body {
 .drawflow-studio .btn-primary {
   border-color: var(--df-accent);
   background: var(--df-accent);
-  color: #ffffff !important;
-  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.24);
+  color: #1b1c20 !important;
+  box-shadow: 0 12px 24px rgba(240, 161, 58, 0.24);
 }
 
 .drawflow-studio .btn-danger {
