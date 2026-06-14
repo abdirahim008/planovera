@@ -282,10 +282,18 @@ async function buildStrip(fabric: FabricMod, canvas: FabricCanvas, d: TitleBlock
   // Consultant
   t("CONSULTANT", 4, ySec[3] + 4, 7, { bold: true, color: "#666" });
   t(v(d.consultant, "Consulting Engineers"), 4, ySec[3] + 13, 8, { bold: true, field: "consultant" });
-  // Drawing identity (bottom)
+  // Drawing identity (bottom). The drawing title can wrap to several lines, so
+  // measure its rendered height and flow the label/value grid beneath it rather
+  // than using fixed offsets — a long title would otherwise overlap the grid.
   const b = ySec[4];
   t("DRAWING TITLE", 4, b + 4, 7, { bold: true, color: "#666" });
-  t(v(d.drawingTitle), 4, b + 12, 9, { bold: true, field: "drawingTitle" });
+  const titleValue = makeText(fabric, v(d.drawingTitle), 4, b + 12, 9, {
+    bold: true,
+    field: "drawingTitle",
+    width: SW - 8,
+  });
+  texts.push(titleValue);
+  const titleHeight = (titleValue as unknown as { height?: number }).height ?? 11;
   const col = SW * 0.5;
   const pair = (l1: string, v1: string, f1: keyof TitleBlockData | undefined, l2: string, v2: string, f2: keyof TitleBlockData | undefined, ry: number) => {
     t(l1, 4, ry, 6.5, { bold: true, color: "#666", width: col - 6 });
@@ -293,11 +301,15 @@ async function buildStrip(fabric: FabricMod, canvas: FabricCanvas, d: TitleBlock
     t(l2, col + 4, ry, 6.5, { bold: true, color: "#666", width: col - 6 });
     t(v2, col + 4, ry + 7, 8, { field: f2, width: col - 6 });
   };
-  pair("DRAWING No.", v(d.drawingNo), "drawingNo", "REV", v(d.revision), "revision", b + 30);
-  pair("SCALE", v(d.scale), "scale", "DATE", v(d.date), "date", b + 48);
-  pair("DESIGNED", v(d.designedBy), "designedBy", "DRAWN", v(d.drawnBy), "drawnBy", b + 66);
-  pair("CHECKED", v(d.checkedBy), "checkedBy", "APPROVED", v(d.approvedBy), "approvedBy", b + 84);
-  pair("JOB No.", v(d.jobNo), "jobNo", "STATUS", v(d.status), "status", b + 102);
+  const rowGap = 18;
+  // First grid row starts below the title; never above the original baseline so
+  // short titles keep the familiar spacing.
+  let ry = Math.max(b + 30, b + 12 + Math.max(11, titleHeight) + 6);
+  pair("DRAWING No.", v(d.drawingNo), "drawingNo", "REV", v(d.revision), "revision", ry);
+  pair("SCALE", v(d.scale), "scale", "DATE", v(d.date), "date", (ry += rowGap));
+  pair("DESIGNED", v(d.designedBy), "designedBy", "DRAWN", v(d.drawnBy), "drawnBy", (ry += rowGap));
+  pair("CHECKED", v(d.checkedBy), "checkedBy", "APPROVED", v(d.approvedBy), "approvedBy", (ry += rowGap));
+  pair("JOB No.", v(d.jobNo), "jobNo", "STATUS", v(d.status), "status", (ry += rowGap));
 
   const group = new fabric.Group([...lines, ...texts], { left: x, top, subTargetCheck: false, lockRotation: true });
   canvas.add(tag(group));
