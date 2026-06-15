@@ -114,6 +114,13 @@ const thumbnailCache = new Map<string, string>();
  * rasterizes the SVG once to a small PNG and caches it — so the DOM only ever
  * holds tiny thumbnails for the cards you actually look at.
  */
+
+// Library drawing titles are all prefixed "Standard Details" — strip that
+// boilerplate for display so the card shows the actual subject of the drawing.
+// The full name is kept for the tooltip and search.
+const displayLibraryName = (name: string) =>
+  name.replace(/^\s*standard details\s*[,:–-]?\s*/i, "").trim() || name;
+
 function LibraryThumbnail({ id, svg, thumbnail, alt }: { id: string; svg: string; thumbnail?: string; alt: string }) {
   const ref = useRef<HTMLDivElement>(null);
   // A stored thumbnail (admin/DB items) is used directly — no rasterization and
@@ -1393,7 +1400,7 @@ export default function LeftPanel({
                       className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-left transition hover:bg-amber-50"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                        <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
                         <div className="truncate text-[11px] text-slate-500">
                           {item.category} · {item.assetType === "drawing" ? "Template" : "Object"}
                         </div>
@@ -1419,7 +1426,7 @@ export default function LeftPanel({
                       className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                        <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
                         <div className="truncate text-[11px] text-slate-500">
                           {item.category} · {item.assetType === "drawing" ? "Template" : "Object"}
                         </div>
@@ -1463,7 +1470,7 @@ export default function LeftPanel({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-1.5">
-                        <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                        <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
                         <button
                           type="button"
                           onClick={() => onToggleFavorite(item.id)}
@@ -2257,7 +2264,7 @@ export default function LeftPanel({
                 {libraryItems.filter((item) => item.source !== "seed").map((item) => (
                   <div key={`manage-${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                      <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
                       <div className="truncate text-[11px] uppercase tracking-[0.18em] text-slate-500">
                         {item.category} · {item.source === "admin" ? "Shared" : "Personal"}
                       </div>
