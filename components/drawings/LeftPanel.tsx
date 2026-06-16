@@ -9,8 +9,10 @@ import {
   Wrench,
   FolderOpen,
   UploadCloud,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
+import { LibraryThumbnail, displayLibraryName } from "./LibraryThumbnail";
 import type { TitleBlockData } from "@/lib/drawings/fabricHelpers";
 import { PATTERNS, PatternType } from "@/lib/drawings/patterns";
 import { TITLE_BLOCK_TEMPLATES } from "@/lib/drawings/titleBlocks";
@@ -64,6 +66,8 @@ interface LeftPanelProps {
   recentIds: string[];
   onToggleFavorite: (libraryId: string) => void;
   onRecordLibraryUse: (libraryId: string) => void;
+  onOpenLibrary: () => void;
+  onInsertLibraryItem: (item: LibraryItem) => void | Promise<void>;
   savedProjects: SavedProject[];
   activeProjectId: string | null;
   selectedCount: number;
@@ -103,108 +107,6 @@ interface LeftPanelProps {
 
 export type DrawingPanelTab = "library" | "properties" | "details" | "projects" | "admin";
 
-// Rasterized thumbnails are cached across renders so scrolling the library back
-// and forth never re-rasterizes the same drawing.
-const thumbnailCache = new Map<string, string>();
-
-/**
- * Library card thumbnail. Imported CAD drawings can be large SVGs (hundreds of
- * KB each); rendering all of them inline as data-URI <img>s makes the library
- * panel heavy. This defers work until the card scrolls into view, then
- * rasterizes the SVG once to a small PNG and caches it — so the DOM only ever
- * holds tiny thumbnails for the cards you actually look at.
- */
-
-// Library drawing titles are all prefixed "Standard Details" — strip that
-// boilerplate for display so the card shows the actual subject of the drawing.
-// The full name is kept for the tooltip and search.
-const displayLibraryName = (name: string) =>
-  name.replace(/^\s*standard details\s*[,:–-]?\s*/i, "").trim() || name;
-
-function LibraryThumbnail({ id, svg, thumbnail, alt }: { id: string; svg: string; thumbnail?: string; alt: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  // A stored thumbnail (admin/DB items) is used directly — no rasterization and
-  // no need for the full svg. Seed/local items fall back to rasterizing their svg.
-  const [thumb, setThumb] = useState<string | null>(() => thumbnail || thumbnailCache.get(id) || null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (thumb || !svg) return;
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") {
-      setVisible(true);
-      return;
-    }
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true);
-          io.disconnect();
-        }
-      },
-      { rootMargin: "250px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [thumb]);
-
-  useEffect(() => {
-    if (!visible || thumb) return;
-    let cancelled = false;
-    const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-    const img = new Image();
-    img.onload = () => {
-      if (cancelled) return;
-      const maxW = 260;
-      const natW = img.naturalWidth || maxW;
-      const natH = img.naturalHeight || maxW;
-      const scale = Math.min(1, maxW / natW);
-      const w = Math.max(1, Math.round(natW * scale));
-      const h = Math.max(1, Math.round(natH * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        setThumb(url);
-        return;
-      }
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      let out = url;
-      try {
-        out = canvas.toDataURL("image/png");
-      } catch {
-        out = url;
-      }
-      thumbnailCache.set(id, out);
-      setThumb(out);
-    };
-    img.onerror = () => {
-      if (!cancelled) setThumb(url);
-    };
-    img.src = url;
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, thumb, svg, id]);
-
-  return (
-    <div
-      ref={ref}
-      className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5"
-    >
-      {thumb ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={thumb} alt={alt} className="max-h-full max-w-full" />
-      ) : (
-        <div className="h-full w-full animate-pulse rounded-lg bg-slate-50" />
-      )}
-    </div>
-  );
-}
-
 export default function LeftPanel({
   layout = "top",
   activeTray,
@@ -217,6 +119,8 @@ export default function LeftPanel({
   recentIds,
   onToggleFavorite,
   onRecordLibraryUse,
+  onOpenLibrary,
+  onInsertLibraryItem,
   savedProjects,
   activeProjectId,
   selectedCount,
@@ -263,8 +167,6 @@ export default function LeftPanel({
     setLocalActiveTray(next);
   };
   const tab = activeTrayValue ?? "library";
-  const [libraryQuery, setLibraryQuery] = useState("");
-  const [libraryCategory, setLibraryCategory] = useState<LibraryCategory | "all">("all");
   const [hatchScale, setHatchScale] = useState(1);
   const [hatchColor, setHatchColor] = useState("#0f172a");
   const [strokeColor, setStrokeColor] = useState("#0f172a");
@@ -316,22 +218,6 @@ export default function LeftPanel({
   );
   const [publishTags, setPublishTags] = useState("library, editable, drawing");
 
-  const [assetFilter, setAssetFilter] = useState<"all" | "object" | "drawing">("all");
-
-  const filteredItems = useMemo(() => {
-    const needle = libraryQuery.trim().toLowerCase();
-    return libraryItems.filter((item) => {
-      const categoryMatch = libraryCategory === "all" || item.category === libraryCategory;
-      if (!categoryMatch) return false;
-      // Treat items with no assetType as "object" (legacy library entries).
-      const effectiveType = item.assetType ?? "object";
-      if (assetFilter !== "all" && effectiveType !== assetFilter) return false;
-      if (!needle) return true;
-      const haystack = [item.name, item.description, ...item.tags, item.author].join(" ").toLowerCase();
-      return haystack.includes(needle);
-    });
-  }, [assetFilter, libraryCategory, libraryItems, libraryQuery]);
-
   const favoriteItems = useMemo(
     () =>
       favoriteIds
@@ -350,20 +236,7 @@ export default function LeftPanel({
     [favoriteIds, libraryItems, recentIds],
   );
 
-  const handleInsertLibraryItem = async (item: LibraryItem) => {
-    onRecordLibraryUse(item.id);
-    if (item.parametricKind) {
-      // Insert as an editable parametric block so dimensions can be changed.
-      onAddParametricBlock(item.parametricKind, item.parametricParams as Partial<ParametricBlockParams>);
-      return;
-    }
-    // Admin/DB items load without their svg (the grid uses the thumbnail); fetch
-    // the full drawing only now, when it's actually being inserted.
-    const svg = item.svg || (await onFetchLibrarySvg(item.id));
-    if (svg) onAddSvg(svg);
-  };
-
-  const updateTitleBlock = <K extends keyof TitleBlockData>(
+  const updateTitleBlock =<K extends keyof TitleBlockData>(
     key: K,
     value: TitleBlockData[K],
   ) => setTitleBlockData({ ...titleBlockData, [key]: value });
@@ -1337,54 +1210,23 @@ export default function LeftPanel({
 
         {tab === "library" ? (
           <div className="space-y-5">
-            <div className="space-y-3">
-              <div>
-                <label className="label">Search library</label>
-                <input
-                  className="input"
-                  value={libraryQuery}
-                  onChange={(event) => setLibraryQuery(event.target.value)}
-                  placeholder="Search layouts, symbols, equipment"
-                />
-              </div>
-
-              <div>
-                <label className="label">Category</label>
-                <select
-                  className="input"
-                  value={libraryCategory}
-                  onChange={(event) => setLibraryCategory(event.target.value as LibraryCategory | "all")}
-                >
-                  <option value="all">All categories</option>
-                  {LIBRARY_CATEGORIES.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-semibold">
-              {[
-                { id: "all" as const, label: "All" },
-                { id: "object" as const, label: "Objects" },
-                { id: "drawing" as const, label: "Templates" },
-              ].map((filter) => (
-                <button
-                  key={filter.id}
-                  type="button"
-                  onClick={() => setAssetFilter(filter.id)}
-                  className={`rounded-md px-3 py-1.5 transition ${
-                    assetFilter === filter.id
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
+            {/* Browse launcher — the full grid lives in the warehouse overlay so
+                it never crowds the canvas. */}
+            <button
+              type="button"
+              onClick={onOpenLibrary}
+              className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.05)] transition hover:border-amber-300 hover:bg-amber-50/40"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+                <LayoutGrid className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-slate-900">Browse library</span>
+                <span className="block text-[12px] text-slate-500">
+                  {libraryItems.length} reusable drawings & objects
+                </span>
+              </span>
+            </button>
 
             {favoriteItems.length > 0 ? (
               <div>
@@ -1396,7 +1238,7 @@ export default function LeftPanel({
                     <button
                       key={`fav-${item.id}`}
                       type="button"
-                      onClick={() => handleInsertLibraryItem(item)}
+                      onClick={() => void onInsertLibraryItem(item)}
                       className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-left transition hover:bg-amber-50"
                     >
                       <div className="min-w-0">
@@ -1422,7 +1264,7 @@ export default function LeftPanel({
                     <button
                       key={`recent-${item.id}`}
                       type="button"
-                      onClick={() => handleInsertLibraryItem(item)}
+                      onClick={() => void onInsertLibraryItem(item)}
                       className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50"
                     >
                       <div className="min-w-0">
@@ -1438,66 +1280,12 @@ export default function LeftPanel({
               </div>
             ) : null}
 
-            <div className="space-y-3">
-              {(favoriteItems.length > 0 || recentItems.length > 0) && (
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  All {assetFilter === "drawing" ? "templates" : assetFilter === "object" ? "objects" : "items"}
-                </div>
-              )}
-              {filteredItems.map((item) => {
-                const isFavorite = favoriteIds.includes(item.id);
-                return (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)]"
-                    // Keep the card lean — name + thumbnail. The category, tags,
-                    // source and updated-by metadata live in this hover tooltip
-                    // (and are still searchable) rather than cluttering every card.
-                    title={[
-                      item.name,
-                      `${item.category} · ${item.assetType === "drawing" ? "Template" : "Object"} · ${
-                        item.source === "personal"
-                          ? "My library"
-                          : item.source === "admin"
-                            ? "Shared admin library"
-                            : "System starter"
-                      }${item.parametricKind ? " · Editable dimensions" : ""}`,
-                      item.tags.length ? `Tags: ${item.tags.join(", ")}` : "",
-                      `Updated ${new Date(item.updatedAt).toLocaleDateString()} by ${item.author}`,
-                    ]
-                      .filter(Boolean)
-                      .join("\n")}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
-                        <button
-                          type="button"
-                          onClick={() => onToggleFavorite(item.id)}
-                          className={`shrink-0 text-base leading-none transition ${
-                            isFavorite ? "text-amber-500 hover:text-amber-600" : "text-slate-300 hover:text-amber-500"
-                          }`}
-                          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                          title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                        >
-                          {isFavorite ? "★" : "☆"}
-                        </button>
-                      </div>
-                      <button className="btn btn-primary shrink-0" onClick={() => handleInsertLibraryItem(item)}>
-                        Insert
-                      </button>
-                    </div>
-                    <LibraryThumbnail id={item.id} svg={item.svg} thumbnail={item.thumbnail} alt={item.name} />
-                  </div>
-                );
-              })}
-
-              {filteredItems.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                  No library {assetFilter === "drawing" ? "templates" : assetFilter === "object" ? "objects" : "items"} match the current search.
-                </div>
-              ) : null}
-            </div>
+            {favoriteItems.length === 0 && recentItems.length === 0 ? (
+              <p className="text-[12px] leading-5 text-slate-500">
+                Open the library to browse, search and insert drawings. Items you star or use
+                recently appear here for quick re-use.
+              </p>
+            ) : null}
           </div>
         ) : null}
 

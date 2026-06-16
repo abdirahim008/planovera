@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import Toolbar from "./Toolbar";
 import LeftPanel, { type DrawingPanelTab } from "./LeftPanel";
+import { subscribeLibraryImports } from "@/lib/drawings/libraryBridge";
 import { FileText, Plus } from "lucide-react";
 import ContextMenu from "./ContextMenu";
 import { getPaperDimensions } from "@/lib/drawings/paper";
@@ -1848,6 +1849,44 @@ export default function Editor({
     [commitHistory, fabricMod, setMessage],
   );
 
+  // Insert a library item onto the canvas: parametric blocks become editable
+  // blocks; everything else fetches its (possibly large) svg lazily — only now,
+  // at insert time — and drops it in. Shared by the panel strips and the
+  // warehouse overlay.
+  const handleInsertLibraryItem = useCallback(
+    async (item: LibraryItem) => {
+      recordLibraryUse(item.id);
+      if (item.parametricKind) {
+        void handleAddParametricBlock(
+          item.parametricKind as ParametricBlockKind,
+          item.parametricParams as Partial<ParametricBlockParams>,
+        );
+        return;
+      }
+      const svg = item.svg || (await fetchLibrarySvg(item.id));
+      if (svg) handleAddSvg(svg);
+    },
+    [fetchLibrarySvg, handleAddParametricBlock, handleAddSvg, recordLibraryUse],
+  );
+
+  // Receive imports raised from the standalone library tab and drop them on the
+  // canvas. The browser tab only sends an id; we resolve it against the loaded
+  // library (svg fetched lazily) so the canvas tab stays light while browsing.
+  useEffect(() => {
+    return subscribeLibraryImports((libraryId) => {
+      const item = libraryItems.find((entry) => entry.id === libraryId);
+      if (item) {
+        void handleInsertLibraryItem(item);
+        return;
+      }
+      // Item not in the in-memory list (rare) — fetch its svg directly.
+      recordLibraryUse(libraryId);
+      void fetchLibrarySvg(libraryId).then((svg) => {
+        if (svg) handleAddSvg(svg);
+      });
+    });
+  }, [fetchLibrarySvg, handleAddSvg, handleInsertLibraryItem, libraryItems, recordLibraryUse]);
+
   const handleUpdateParametricBlock = useCallback(
     async (params: Partial<ParametricBlockParams>) => {
       const canvas = fabricRef.current;
@@ -2932,6 +2971,8 @@ export default function Editor({
           recentIds={recentIds}
           onToggleFavorite={toggleLibraryFavorite}
           onRecordLibraryUse={recordLibraryUse}
+          onOpenLibrary={() => window.open("/drawings/library", "planovera-library")}
+          onInsertLibraryItem={handleInsertLibraryItem}
           savedProjects={savedProjects}
           activeProjectId={activeProjectId}
           selectedCount={selectedCount}
