@@ -1857,16 +1857,21 @@ export default function Editor({
     async (item: LibraryItem) => {
       recordLibraryUse(item.id);
       if (item.parametricKind) {
-        void handleAddParametricBlock(
+        await handleAddParametricBlock(
           item.parametricKind as ParametricBlockKind,
           item.parametricParams as Partial<ParametricBlockParams>,
         );
-        return;
+      } else {
+        const svg = item.svg || (await fetchLibrarySvg(item.id));
+        if (svg) await handleAddSvg(svg);
       }
-      const svg = item.svg || (await fetchLibrarySvg(item.id));
-      if (svg) handleAddSvg(svg);
+      // Persist the insert into the page JSON right away. Otherwise a canvas
+      // re-create (a zoom/tool/focus-driven re-render reloads currentPage.json)
+      // would wipe a freshly-imported drawing that only lived on the live canvas
+      // — the "appears then disappears" report when importing from the library tab.
+      void saveCurrentPage();
     },
-    [fetchLibrarySvg, handleAddParametricBlock, handleAddSvg, recordLibraryUse],
+    [fetchLibrarySvg, handleAddParametricBlock, handleAddSvg, recordLibraryUse, saveCurrentPage],
   );
 
   // Receive imports raised from the standalone library tab and drop them on the

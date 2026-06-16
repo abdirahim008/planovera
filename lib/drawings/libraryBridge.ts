@@ -105,3 +105,18 @@ export async function fetchDrawingLibrary(): Promise<LibraryItem[]> {
   if (error || !data) return loadLibraryItems();
   return mergeWithSeed((data as LibraryItemRecord[]).map(mapLibraryRecord));
 }
+
+// Resolve a library item's full SVG for a large preview (seed items carry it;
+// DB items load metadata-only, so fetch the heavy svg by id on demand).
+export async function fetchLibraryItemSvg(item: LibraryItem): Promise<string> {
+  if (item.svg) return item.svg;
+  if (!isSupabaseConfigured()) return "";
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return "";
+  const { data } = await supabase
+    .from("drawing_library_items")
+    .select("svg")
+    .eq("id", item.id)
+    .single();
+  return (data?.svg as string) ?? "";
+}

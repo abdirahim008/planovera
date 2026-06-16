@@ -8,7 +8,7 @@ import {
   persistFavoriteIds,
   type LibraryItem,
 } from "@/lib/drawings/appModel";
-import { fetchDrawingLibrary, postLibraryImport } from "@/lib/drawings/libraryBridge";
+import { fetchDrawingLibrary, fetchLibraryItemSvg, postLibraryImport } from "@/lib/drawings/libraryBridge";
 
 // Standalone library browser — opened in its own tab from the studio so the
 // canvas tab stays light. "Import" hands the chosen drawing to the studio tab
@@ -67,6 +67,7 @@ export default function DrawingLibraryPage() {
       recentIds={recentIds}
       onToggleFavorite={handleToggleFavorite}
       onImport={handleImport}
+      onResolveSvg={fetchLibraryItemSvg}
       onClose={() => window.close()}
     />
   );

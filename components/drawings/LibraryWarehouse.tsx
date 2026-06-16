@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X, Star, Clock, LayoutGrid, Check } from "lucide-react";
+import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn } from "lucide-react";
 import {
   LIBRARY_CATEGORIES,
   type LibraryCategory,
@@ -19,7 +19,16 @@ interface LibraryWarehouseProps {
   // Import sends the item to the studio tab (or canvas). The browser stays open
   // so several items can be imported in a row.
   onImport: (item: LibraryItem) => void | Promise<void>;
+  // Resolve an item's full SVG for the large preview (seed items carry it; DB
+  // items fetch it by id on demand).
+  onResolveSvg?: (item: LibraryItem) => Promise<string>;
   onClose?: () => void;
+}
+
+interface PreviewState {
+  item: LibraryItem;
+  svg: string;
+  loading: boolean;
 }
 
 /**
@@ -35,21 +44,32 @@ export default function LibraryWarehouse({
   recentIds,
   onToggleFavorite,
   onImport,
+  onResolveSvg,
   onClose,
 }: LibraryWarehouseProps) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [assetFilter, setAssetFilter] = useState<"all" | "object" | "drawing">("all");
   const [justImported, setJustImported] = useState<Record<string, number>>({});
+  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   useEffect(() => {
-    if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      if (preview) setPreview(null);
+      else onClose?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, preview]);
+
+  const openPreview = async (item: LibraryItem) => {
+    setPreview({ item, svg: item.svg || "", loading: !item.svg });
+    if (!item.svg && onResolveSvg) {
+      const svg = await onResolveSvg(item);
+      setPreview((prev) => (prev && prev.item.id === item.id ? { ...prev, svg, loading: false } : prev));
+    }
+  };
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -230,6 +250,17 @@ export default function LibraryWarehouse({
                       </div>
                     </button>
 
+                    {/* Zoom / preview — larger crisp view without importing. */}
+                    <button
+                      type="button"
+                      onClick={() => void openPreview(item)}
+                      aria-label={`Preview ${displayLibraryName(item.name)}`}
+                      title="Preview"
+                      className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-[#3a3b42] bg-[#141519]/70 text-slate-200 opacity-0 transition hover:bg-[#f0a13a] hover:text-[#1c1206] group-hover:opacity-100"
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </button>
+
                     <div className="flex items-start gap-1.5 px-2.5 py-2">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12.5px] leading-tight text-slate-100">
@@ -258,6 +289,70 @@ export default function LibraryWarehouse({
           )}
         </div>
       </div>
+
+      {preview ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-[#0c0d10]/85 p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview: ${displayLibraryName(preview.item.name)}`}
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="mx-auto flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#34353c] bg-[#1c1d22]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-[#34353c] px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-medium text-slate-100">
+                  {displayLibraryName(preview.item.name)}
+                </div>
+                <div className="truncate text-[11px] text-slate-500">
+                  {preview.item.category}
+                  {preview.item.tags.length ? ` · ${preview.item.tags.slice(0, 4).join(", ")}` : ""}
+                </div>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleImport(preview.item);
+                    setPreview(null);
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#f0a13a] px-3 py-1.5 text-[12px] font-medium text-[#1c1206]"
+                >
+                  Import
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreview(null)}
+                  aria-label="Close preview"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#3a3b42] text-slate-300 transition hover:bg-white/5"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-white p-4">
+              {preview.loading ? (
+                <span className="text-[13px] text-slate-400">Loading preview…</span>
+              ) : preview.svg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`data:image/svg+xml;utf8,${encodeURIComponent(preview.svg)}`}
+                  alt={preview.item.name}
+                  className="max-h-[78vh] max-w-full object-contain"
+                />
+              ) : preview.item.thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={preview.item.thumbnail} alt={preview.item.name} className="max-h-[78vh] max-w-full object-contain" />
+              ) : (
+                <span className="text-[13px] text-slate-400">No preview available.</span>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
