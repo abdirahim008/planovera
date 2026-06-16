@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 
 import Toolbar from "./Toolbar";
 import LeftPanel, { type DrawingPanelTab } from "./LeftPanel";
-import { subscribeLibraryImports } from "@/lib/drawings/libraryBridge";
+import { subscribeLibraryActions } from "@/lib/drawings/libraryBridge";
 import { FileText, Plus } from "lucide-react";
 import ContextMenu from "./ContextMenu";
 import { getPaperDimensions } from "@/lib/drawings/paper";
@@ -331,6 +331,19 @@ export default function Editor({
       return next;
     });
   }, []);
+
+  // Admin "edit a library drawing" session: the drawing is loaded onto a fresh
+  // isolated sheet; Save overwrites the source item. Null when not editing.
+  const [editingLibraryItem, setEditingLibraryItem] = useState<{
+    id: string;
+    name: string;
+    category: LibraryCategory;
+    description: string;
+    tags: string[];
+  } | null>(null);
+  // SVG queued to load once the editing sheet's canvas is ready (see the canvas
+  // init effect, which loads it after the blank page mounts).
+  const pendingLoadRef = useRef<string | null>(null);
 
   const recordLibraryUse = useCallback((libraryId: string) => {
     setRecentIds((current) => {
@@ -1661,14 +1674,29 @@ export default function Editor({
 
     applyZoom(canvas, zoom, width, height);
 
+    // A drawing queued for editing loads onto this (blank) sheet once ready.
+    const loadPending = () => {
+      const svg = pendingLoadRef.current;
+      if (!svg) return;
+      pendingLoadRef.current = null;
+      void addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg))
+        .then(() => {
+          canvas.requestRenderAll();
+          commitHistory();
+        })
+        .catch(() => {});
+    };
+
     if (currentPage.json) {
       canvas.loadFromJSON(currentPage.json).then(() => {
         canvas.getObjects().forEach(makeStrokeNonScaling);
         canvas.requestRenderAll();
         initializeHistory(canvas);
+        loadPending();
       });
     } else {
       initializeHistory(canvas);
+      loadPending();
     }
 
     setTimeout(() => {
@@ -1874,11 +1902,50 @@ export default function Editor({
     [fetchLibrarySvg, handleAddParametricBlock, handleAddSvg, recordLibraryUse, saveCurrentPage],
   );
 
-  // Receive imports raised from the standalone library tab and drop them on the
-  // canvas. The browser tab only sends an id; we resolve it against the loaded
-  // library (svg fetched lazily) so the canvas tab stays light while browsing.
+  // Admin: open a library drawing for editing on a fresh, isolated sheet (no
+  // title block), so a clean-up can be saved straight back over the source item.
+  const handleEditLibraryItem = useCallback(
+    async (libraryId: string) => {
+      if (session?.role !== "admin") {
+        setMessage("Only admins can edit shared library drawings.");
+        return;
+      }
+      const item = libraryItems.find((entry) => entry.id === libraryId);
+      if (!item) {
+        setMessage("That drawing is no longer in the library.");
+        return;
+      }
+      const svg = item.svg || (await fetchLibrarySvg(libraryId));
+      if (!svg) {
+        setMessage("Could not load that drawing for editing.");
+        return;
+      }
+      pendingLoadRef.current = svg;
+      setEditingLibraryItem({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        description: item.description,
+        tags: item.tags,
+      });
+      const nextPages = await saveCurrentPage();
+      const newPages = syncSheetLabels([...nextPages, createBlankPage(nextPages.length + 1)]);
+      setPages(newPages);
+      setCurrentPageIndex(newPages.length - 1);
+      setMessage(`Editing "${item.name}" — clean it up, then save to the library.`);
+    },
+    [fetchLibrarySvg, libraryItems, saveCurrentPage, session, setMessage],
+  );
+
+  // Receive actions raised from the standalone library tab. Import drops the
+  // drawing on the canvas; edit opens it for an admin clean-up. The browser tab
+  // only sends an id, so the canvas tab stays light while browsing.
   useEffect(() => {
-    return subscribeLibraryImports((libraryId) => {
+    return subscribeLibraryActions((libraryId, action) => {
+      if (action === "edit") {
+        void handleEditLibraryItem(libraryId);
+        return;
+      }
       const item = libraryItems.find((entry) => entry.id === libraryId);
       if (item) {
         void handleInsertLibraryItem(item);
@@ -1890,7 +1957,7 @@ export default function Editor({
         if (svg) handleAddSvg(svg);
       });
     });
-  }, [fetchLibrarySvg, handleAddSvg, handleInsertLibraryItem, libraryItems, recordLibraryUse]);
+  }, [fetchLibrarySvg, handleAddSvg, handleEditLibraryItem, handleInsertLibraryItem, libraryItems, recordLibraryUse]);
 
   const handleUpdateParametricBlock = useCallback(
     async (params: Partial<ParametricBlockParams>) => {
@@ -2765,6 +2832,48 @@ export default function Editor({
     [projectName, session, setMessage, userId],
   );
 
+  // Admin: overwrite the library drawing currently being edited with the cleaned
+  // canvas (new svg + thumbnail). "Republish the updated drawing."
+  const handleUpdateLibraryItem = useCallback(async () => {
+    if (!editingLibraryItem) return;
+    const supabase = getSupabaseBrowserClient();
+    const canvas = fabricRef.current;
+    if (!supabase || !canvas || session?.role !== "admin") {
+      setMessage("Only admins can update shared library drawings.");
+      return;
+    }
+    const canvasSvg = canvas.toSVG();
+    const thumbnail = await svgToThumbnail(canvasSvg);
+    const updatedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from("drawing_library_items")
+      .update({ svg: canvasSvg, thumbnail, updated_at: updatedAt })
+      .eq("id", editingLibraryItem.id);
+    if (error) {
+      setMessage(`Library update failed: ${error.message}`);
+      return;
+    }
+    setLibraryItems((previous) =>
+      previous.map((entry) =>
+        entry.id === editingLibraryItem.id ? { ...entry, svg: canvasSvg, thumbnail, updatedAt } : entry,
+      ),
+    );
+    setMessage(`Updated "${editingLibraryItem.name}" in the library.`);
+    setEditingLibraryItem(null);
+  }, [editingLibraryItem, session, setMessage, svgToThumbnail]);
+
+  // Admin: save the cleaned canvas as a new copy instead of overwriting.
+  const handleSaveEditAsNew = useCallback(() => {
+    if (!editingLibraryItem) return;
+    void handlePublishCanvasToLibrary({
+      name: `${editingLibraryItem.name} (copy)`,
+      category: editingLibraryItem.category,
+      description: editingLibraryItem.description,
+      tags: editingLibraryItem.tags,
+    });
+    setEditingLibraryItem(null);
+  }, [editingLibraryItem, handlePublishCanvasToLibrary]);
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement | null)?.tagName;
@@ -2962,6 +3071,26 @@ export default function Editor({
           setMessage("Reset the local drawing workspace.");
         }}
       />
+
+      {editingLibraryItem ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm">
+          <span className="font-semibold text-amber-900">
+            Editing library drawing: {editingLibraryItem.name}
+          </span>
+          <span className="text-amber-700">Remove unneeded notes, clean up, then save.</span>
+          <div className="ml-auto flex items-center gap-2">
+            <button className="btn btn-primary" onClick={() => void handleUpdateLibraryItem()}>
+              Save changes to library
+            </button>
+            <button className="btn" onClick={handleSaveEditAsNew}>
+              Save as new copy
+            </button>
+            <button className="btn" onClick={() => setEditingLibraryItem(null)}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className={`flex min-h-0 flex-1 ${embedded ? "flex-col" : "flex-row"}`}>
         <LeftPanel

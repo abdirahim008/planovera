@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn } from "lucide-react";
+import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, Pencil, Trash2 } from "lucide-react";
 import {
   LIBRARY_CATEGORIES,
   type LibraryCategory,
@@ -10,6 +10,20 @@ import {
 import { LibraryThumbnail, displayLibraryName } from "./LibraryThumbnail";
 
 type Scope = LibraryCategory | "all" | "favorites" | "recent";
+type Kind = "all" | "drawing" | "object";
+
+// A "part" is a reusable individual detail (a parametric block, an explicit
+// object, or an imported single-structure standard detail); a "drawing" is a
+// complete multi-purpose sheet/assembly. DB items don't carry an asset type, so
+// we fall back to: parametric → part; tagged "standard detail" → part (the
+// roadway/WASH standard details are self-contained, single-structure details);
+// otherwise drawing.
+const itemKind = (item: LibraryItem): "drawing" | "object" => {
+  if (item.assetType) return item.assetType;
+  if (item.parametricKind) return "object";
+  if (item.tags.includes("standard detail")) return "object";
+  return "drawing";
+};
 
 interface LibraryWarehouseProps {
   libraryItems: LibraryItem[];
@@ -22,6 +36,10 @@ interface LibraryWarehouseProps {
   // Resolve an item's full SVG for the large preview (seed items carry it; DB
   // items fetch it by id on demand).
   onResolveSvg?: (item: LibraryItem) => Promise<string>;
+  // Admin-only: edit (open in studio for clean-up + republish) and delete.
+  isAdmin?: boolean;
+  onEdit?: (item: LibraryItem) => void;
+  onDelete?: (item: LibraryItem) => void | Promise<void>;
   onClose?: () => void;
 }
 
@@ -45,11 +63,14 @@ export default function LibraryWarehouse({
   onToggleFavorite,
   onImport,
   onResolveSvg,
+  isAdmin = false,
+  onEdit,
+  onDelete,
   onClose,
 }: LibraryWarehouseProps) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
-  const [assetFilter, setAssetFilter] = useState<"all" | "object" | "drawing">("all");
+  const [kindTab, setKindTab] = useState<Kind>("all");
   const [justImported, setJustImported] = useState<Record<string, number>>({});
   const [preview, setPreview] = useState<PreviewState | null>(null);
 
@@ -77,6 +98,13 @@ export default function LibraryWarehouse({
     return map;
   }, [libraryItems]);
 
+  const kindCounts = useMemo(() => {
+    let drawing = 0;
+    let object = 0;
+    for (const item of libraryItems) (itemKind(item) === "object" ? object++ : drawing++);
+    return { all: libraryItems.length, drawing, object };
+  }, [libraryItems]);
+
   const items = useMemo(() => {
     const needle = query.trim().toLowerCase();
     let pool = libraryItems;
@@ -86,13 +114,12 @@ export default function LibraryWarehouse({
     else if (scope !== "all") pool = pool.filter((i) => i.category === scope);
 
     return pool.filter((item) => {
-      const effectiveType = item.assetType ?? "object";
-      if (assetFilter !== "all" && effectiveType !== assetFilter) return false;
+      if (kindTab !== "all" && itemKind(item) !== kindTab) return false;
       if (!needle) return true;
       const haystack = [item.name, item.description, ...item.tags, item.author].join(" ").toLowerCase();
       return haystack.includes(needle);
     });
-  }, [assetFilter, favoriteIds, libraryItems, query, recentIds, scope]);
+  }, [favoriteIds, kindTab, libraryItems, query, recentIds, scope]);
 
   const handleImport = async (item: LibraryItem) => {
     await onImport(item);
@@ -148,6 +175,32 @@ export default function LibraryWarehouse({
         </div>
       </div>
 
+      {/* Type tabs — Drawings (complete sheets) vs Parts (reusable details). */}
+      <div className="flex items-center gap-1 border-b border-[#34353c] bg-[#17181c] px-3 py-1.5">
+        {([
+          { id: "all", label: "All", icon: LayoutGrid, count: kindCounts.all },
+          { id: "drawing", label: "Drawings", icon: Layers, count: kindCounts.drawing },
+          { id: "object", label: "Parts", icon: Puzzle, count: kindCounts.object },
+        ] as const).map((t) => {
+          const active = kindTab === t.id;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setKindTab(t.id)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] transition ${
+                active ? "bg-[#f0a13a] font-medium text-[#1c1206]" : "text-slate-300 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+              <span className={`text-[11px] ${active ? "opacity-80" : "text-slate-500"}`}>{t.count}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Body */}
       <div className="flex min-h-0 flex-1">
         {/* Left rail */}
@@ -177,24 +230,6 @@ export default function LibraryWarehouse({
             </button>
           ))}
 
-          <div className="mx-2 my-3 border-t border-[#34353c]" />
-          <div className="inline-flex w-full rounded-lg border border-[#3a3b42] bg-[#15161a] p-0.5 text-[11px] font-medium">
-            {[
-              { id: "all" as const, label: "All" },
-              { id: "object" as const, label: "Objects" },
-              { id: "drawing" as const, label: "Templates" },
-            ].map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setAssetFilter(f.id)}
-                className={`flex-1 rounded-md px-2 py-1.5 transition ${
-                  assetFilter === f.id ? "bg-[#f0a13a] text-[#1c1206]" : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Grid */}
@@ -260,6 +295,34 @@ export default function LibraryWarehouse({
                     >
                       <ZoomIn className="h-4 w-4" />
                     </button>
+
+                    {/* Admin actions — edit (clean up + republish) and delete. */}
+                    {isAdmin && item.source !== "seed" ? (
+                      <div className="absolute left-1.5 top-1.5 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                        {onEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => onEdit(item)}
+                            aria-label={`Edit ${displayLibraryName(item.name)}`}
+                            title="Edit in studio"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#3a3b42] bg-[#141519]/70 text-slate-200 transition hover:bg-[#f0a13a] hover:text-[#1c1206]"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                        {onDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => void onDelete(item)}
+                            aria-label={`Delete ${displayLibraryName(item.name)}`}
+                            title="Delete from library"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#3a3b42] bg-[#141519]/70 text-slate-200 transition hover:bg-red-500 hover:text-white"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     <div className="flex items-start gap-1.5 px-2.5 py-2">
                       <div className="min-w-0 flex-1">

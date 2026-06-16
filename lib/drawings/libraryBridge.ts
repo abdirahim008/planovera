@@ -19,21 +19,27 @@ import {
 
 const QUEUE_KEY = "drawflow-library-import-queue";
 
-interface ImportEntry {
+export type LibraryAction = "import" | "edit";
+
+interface QueueEntry {
   token: string;
   libraryId: string;
+  action: LibraryAction;
 }
 
-function readQueue(): ImportEntry[] {
+function readQueue(): QueueEntry[] {
   try {
     const raw = window.localStorage.getItem(QUEUE_KEY);
-    return raw ? (JSON.parse(raw) as ImportEntry[]) : [];
+    if (!raw) return [];
+    // Tolerate older entries that predate the `action` field.
+    const parsed = JSON.parse(raw) as Array<{ token: string; libraryId: string; action?: LibraryAction }>;
+    return parsed.map((e) => ({ ...e, action: e.action ?? "import" }));
   } catch {
     return [];
   }
 }
 
-function writeQueue(entries: ImportEntry[]) {
+function writeQueue(entries: QueueEntry[]) {
   try {
     window.localStorage.setItem(QUEUE_KEY, JSON.stringify(entries));
   } catch {
@@ -41,19 +47,30 @@ function writeQueue(entries: ImportEntry[]) {
   }
 }
 
-// Library tab → enqueue an import for the studio tab to pick up.
-export function postLibraryImport(libraryId: string) {
+function enqueue(libraryId: string, action: LibraryAction) {
   const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  writeQueue([...readQueue(), { token, libraryId }]);
+  writeQueue([...readQueue(), { token, libraryId, action }]);
+}
+
+// Library tab → enqueue an import for the studio tab to drop on the canvas.
+export function postLibraryImport(libraryId: string) {
+  enqueue(libraryId, "import");
+}
+
+// Library tab → enqueue an admin edit: the studio opens the drawing for editing.
+export function postLibraryEdit(libraryId: string) {
+  enqueue(libraryId, "edit");
 }
 
 /**
- * Studio tab → run `handler` for each freshly-imported library id. Drains the
- * queue on the cross-tab `storage` event and on window focus (so an import
- * raised while the studio was unfocused — or before it was open — still lands).
- * Returns an unsubscribe function.
+ * Studio tab → run `handler` for each freshly-queued library action. Drains on
+ * the cross-tab `storage` event and on window focus (so an action raised while
+ * the studio was unfocused — or before it was open — still lands). Returns an
+ * unsubscribe function.
  */
-export function subscribeLibraryImports(handler: (libraryId: string) => void): () => void {
+export function subscribeLibraryActions(
+  handler: (libraryId: string, action: LibraryAction) => void,
+): () => void {
   if (typeof window === "undefined") return () => {};
   const processed = new Set<string>();
 
@@ -63,7 +80,7 @@ export function subscribeLibraryImports(handler: (libraryId: string) => void): (
     for (const entry of queue) {
       if (processed.has(entry.token)) continue;
       processed.add(entry.token);
-      handler(entry.libraryId);
+      handler(entry.libraryId, entry.action);
     }
     writeQueue([]);
   };
@@ -80,6 +97,28 @@ export function subscribeLibraryImports(handler: (libraryId: string) => void): (
     window.removeEventListener("storage", onStorage);
     window.removeEventListener("focus", drain);
   };
+}
+
+// Current user's role for the standalone library page (admin gating). Returns
+// null when not configured / not signed in.
+export async function fetchCurrentUserRole(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return null;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  return (data?.role as string) ?? null;
+}
+
+// Admin delete of a shared library item from the standalone library page.
+export async function deleteSharedLibraryItem(id: string): Promise<{ error?: string }> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Not connected." };
+  const { error } = await supabase.from("drawing_library_items").delete().eq("id", id);
+  return error ? { error: error.message } : {};
 }
 
 // Merge remote (DB) library items with the static seed set, de-duped by name.
