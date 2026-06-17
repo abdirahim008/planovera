@@ -19,6 +19,7 @@ import {
   TitleBlockData,
   addSvgToCanvas,
   createDimensionGroup,
+  createLeaderGroup,
   createOrUpdateTitleBlock,
   createSvgObject,
   exportPagesToPDF,
@@ -69,6 +70,7 @@ type ToolMode =
   | "pan"
   | "line"
   | "dimension"
+  | "leader"
   | "trim"
   | "wall"
   | "wallRect"
@@ -415,6 +417,13 @@ export default function Editor({
     // Preview polyline drawn from confirmed points + the rubber-band cursor segment.
     previewPolyline?: FabricNS.Polyline | null;
   }>({ points: [] });
+  // Leader/callout: step 0 → pick the anchor (arrow tip); step 1 → pick the
+  // label position, then prompt for the text.
+  const leaderStateRef = useRef<{
+    step: number;
+    anchor?: { x: number; y: number };
+    previewGroup?: FabricNS.Group | null;
+  }>({ step: 0 });
   const wallStateRef = useRef<{
     p1?: { x: number; y: number };
     previewLine?: FabricNS.Line | null;
@@ -830,6 +839,10 @@ export default function Editor({
       if (dimState.previewGroup) canvas.remove(dimState.previewGroup);
       dimStateRef.current = { step: 0 };
 
+      const leaderState = leaderStateRef.current;
+      if (leaderState.previewGroup) canvas.remove(leaderState.previewGroup);
+      leaderStateRef.current = { step: 0 };
+
       if (mode === "select") {
         canvas.selection = true;
         canvas.defaultCursor = "default";
@@ -1212,11 +1225,32 @@ export default function Editor({
         finishLinePolyline();
         return;
       }
-      const target = opt.target;
+      const target = opt.target as (FabricNS.FabricObject & Record<string, unknown>) | undefined;
       if (target && (target.type === "itext" || target.type === "textbox")) {
         canvas.setActiveObject(target);
-        (target as FabricNS.IText).enterEditing();
+        (target as unknown as FabricNS.IText).enterEditing();
         canvas.requestRenderAll();
+        return;
+      }
+      // Dimensions and leaders are groups, so their inner text can't be edited
+      // in place — double-click prompts for the new value instead.
+      if (target && (target._isDimension || target._isLeader)) {
+        const group = target as unknown as FabricNS.Group;
+        const inner = group
+          .getObjects()
+          .find((o) => o instanceof fabricMod.IText) as unknown as FabricNS.IText | undefined;
+        if (inner) {
+          const next = window.prompt(
+            target._isDimension ? "Dimension value" : "Label text",
+            inner.text ?? "",
+          );
+          if (next !== null) {
+            inner.set({ text: next });
+            group.set({ dirty: true } as Partial<FabricNS.Group>);
+            canvas.requestRenderAll();
+            commitHistory();
+          }
+        }
       }
     });
 
@@ -1495,20 +1529,62 @@ export default function Editor({
           if (state.p1 && state.p2) {
             const offsetDist = calculateOffsetDist(state.p1, state.p2, point);
             if (state.previewGroup) canvas.remove(state.previewGroup);
-            const finalDimension = createDimensionGroup(fabricMod, state.p1, state.p2, offsetDist, {
-              isPreview: false,
-            });
-            if (finalDimension) {
-              canvas.add(finalDimension);
-              canvas.setActiveObject(finalDimension);
-              commitHistory();
-              setMessage("Dimension placed.");
+            // The user types the dimension value (double-click later to edit).
+            const value = window.prompt("Dimension value", "000");
+            if (value !== null) {
+              const finalDimension = createDimensionGroup(fabricMod, state.p1, state.p2, offsetDist, {
+                isPreview: false,
+                text: value.trim() || "000",
+              });
+              if (finalDimension) {
+                canvas.add(finalDimension);
+                canvas.setActiveObject(finalDimension);
+                canvas.requestRenderAll();
+                commitHistory();
+                setMessage("Dimension placed. Double-click it to edit the value.");
+              }
             }
           }
 
           dimStateRef.current = { step: 0 };
           handleSetToolMode("select");
         }
+        return;
+      }
+
+      if (toolModeRef.current === "leader" && event.button === 0) {
+        let point: { x: number; y: number } = canvas.getScenePoint(event);
+        const state = leaderStateRef.current;
+        const snap = snapEnabledRef.current
+          ? findSnapPoint(fabricMod, point, canvas, state.previewGroup ? [state.previewGroup] : [])
+          : null;
+        if (snap) point = snap.point;
+
+        if (state.step === 0) {
+          // First click = the point being called out (where the arrow points).
+          state.anchor = point;
+          state.step = 1;
+          setMessage("Now click where the label should sit.");
+        } else if (state.step === 1 && state.anchor) {
+          if (state.previewGroup) {
+            canvas.remove(state.previewGroup);
+            state.previewGroup = null;
+          }
+          const label = window.prompt("Label text", "Note");
+          if (label !== null) {
+            const leader = createLeaderGroup(fabricMod, state.anchor, point, label.trim() || "Note", {
+              isPreview: false,
+            });
+            canvas.add(leader);
+            canvas.setActiveObject(leader);
+            canvas.requestRenderAll();
+            commitHistory();
+            setMessage("Leader placed. Double-click it to edit the text.");
+          }
+          leaderStateRef.current = { step: 0 };
+          handleSetToolMode("select");
+        }
+        return;
       }
     });
 
@@ -1656,6 +1732,17 @@ export default function Editor({
             canvas.add(preview);
             state.previewGroup = preview;
           }
+        }
+      }
+
+      if (toolModeRef.current === "leader") {
+        const point: { x: number; y: number } = canvas.getScenePoint(event);
+        const state = leaderStateRef.current;
+        if (state.step === 1 && state.anchor) {
+          if (state.previewGroup) canvas.remove(state.previewGroup);
+          const preview = createLeaderGroup(fabricMod, state.anchor, point, "Note", { isPreview: true });
+          canvas.add(preview);
+          state.previewGroup = preview;
         }
       }
     });

@@ -18,6 +18,7 @@ import {
   Layers3,
   Magnet,
   Minus,
+  MoveUpRight,
   MousePointer2,
   Move,
   PaintBucket,
@@ -48,6 +49,7 @@ type ToolMode =
   | "pan"
   | "line"
   | "dimension"
+  | "leader"
   | "trim"
   | "wall"
   | "wallRect"
@@ -694,6 +696,10 @@ export default function Toolbar({
           <button className={menuItem} onClick={() => run(() => onSetToolMode("dimension"))}>
             <span className="inline-flex items-center gap-2"><Ruler className="h-4 w-4" /> Dimension line</span>
             {toolMode === "dimension" ? <span className="text-xs text-slate-400">Active</span> : null}
+          </button>
+          <button className={menuItem} onClick={() => run(() => onSetToolMode("leader"))}>
+            <span className="inline-flex items-center gap-2"><MoveUpRight className="h-4 w-4" /> Arrow label (leader)</span>
+            {toolMode === "leader" ? <span className="text-xs text-slate-400">Active</span> : null}
           </button>
           <button className={menuItem} onClick={() => run(onAddRectangle)}>
             <span className="inline-flex items-center gap-2"><Square className="h-4 w-4" /> Rectangle</span>

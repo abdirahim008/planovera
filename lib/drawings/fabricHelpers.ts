@@ -299,7 +299,10 @@ export function createDimensionGroup(
   let textAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
   if (textAngle > 90 || textAngle < -90) textAngle += 180;
 
-  const textVal = opts?.text || length.toFixed(1);
+  // Honour an explicitly supplied label (including empty); only fall back to the
+  // raw pixel length when no text was passed. Dimension values are typed by the
+  // user, so the caller normally provides a real value here.
+  const textVal = opts?.text !== undefined ? opts.text : length.toFixed(1);
   const textGap = dir * 7;
 
   const textObj = new fabric.IText(textVal, {
@@ -323,6 +326,76 @@ export function createDimensionGroup(
 
   const group = new fabric.Group([ext1, ext2, mainLine, tick1, tick2, textObj], groupOpts);
   group.set({ _isDimension: true } as any);
+
+  return group;
+}
+
+// -----------------------------------------------------------------
+// Leader / callout: an arrow from a label position pointing at an anchor,
+// with an editable text label. `anchor` is where the arrowhead points (the
+// feature being called out); `labelPos` is where the text sits.
+// -----------------------------------------------------------------
+export function createLeaderGroup(
+  fabric: FabricMod,
+  anchor: { x: number; y: number },
+  labelPos: { x: number; y: number },
+  text: string,
+  opts?: { color?: string; strokeWidth?: number; fontSize?: number; isPreview?: boolean },
+): FabricNS.Group {
+  const color = opts?.color || "#0f172a";
+  const strokeWidth = opts?.strokeWidth || 1;
+  const fontSize = opts?.fontSize || 14;
+
+  const dx = anchor.x - labelPos.x;
+  const dy = anchor.y - labelPos.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const nx = -uy;
+  const ny = ux;
+
+  const head = 11; // arrowhead length
+  const halfW = 4; // arrowhead half-width
+  const baseX = anchor.x - ux * head;
+  const baseY = anchor.y - uy * head;
+
+  const line = new fabric.Line([labelPos.x, labelPos.y, baseX, baseY], {
+    stroke: color,
+    strokeWidth,
+    selectable: false,
+    evented: false,
+    strokeLineCap: "round",
+  });
+
+  const arrow = new fabric.Polygon(
+    [
+      { x: anchor.x, y: anchor.y },
+      { x: baseX + nx * halfW, y: baseY + ny * halfW },
+      { x: baseX - nx * halfW, y: baseY - ny * halfW },
+    ],
+    { fill: color, stroke: color, strokeWidth: 0, selectable: false, evented: false },
+  );
+
+  // Text grows away from the arrow so it never overlaps the leader line.
+  const rightward = ux >= 0;
+  const textObj = new fabric.IText(text || "Label", {
+    left: labelPos.x + (rightward ? -4 : 4),
+    top: labelPos.y,
+    fontSize,
+    fontFamily: "Arial",
+    fill: color,
+    originX: rightward ? "right" : "left",
+    originY: "center",
+    editable: true,
+  });
+
+  const group = new fabric.Group([line, arrow, textObj], {
+    selectable: !opts?.isPreview,
+    evented: !opts?.isPreview,
+    hasControls: !opts?.isPreview,
+    hoverCursor: opts?.isPreview ? "crosshair" : "move",
+  });
+  group.set({ _isLeader: true } as any);
 
   return group;
 }
