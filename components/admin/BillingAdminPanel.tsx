@@ -42,6 +42,13 @@ type MemberCountRecord = {
   status: string;
 };
 
+type ProfileLite = {
+  id: string;
+  full_name: string | null;
+  email: string;
+  company: string | null;
+};
+
 type EditableSubscription = {
   organizationId: string;
   organizationName: string;
@@ -144,10 +151,12 @@ export default function BillingAdminPanel() {
   const [subscriptions, setSubscriptions] = useState<OrganizationSubscriptionRecord[]>([]);
   const [memberRows, setMemberRows] = useState<MemberCountRecord[]>([]);
   const [inviteRows, setInviteRows] = useState<InviteCountRecord[]>([]);
+  const [profilesById, setProfilesById] = useState<Record<string, ProfileLite>>({});
   const [editor, setEditor] = useState<EditableSubscription | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | OrganizationSubscriptionRecord["status"]>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "individual" | "organization">("all");
+  const [search, setSearch] = useState("");
 
   const loadData = async () => {
     if (!configured) {
@@ -170,6 +179,7 @@ export default function BillingAdminPanel() {
       { data: subscriptionRows, error: subscriptionError },
       { data: members, error: membersError },
       { data: invites, error: invitesError },
+      { data: profileRows, error: profilesError },
     ] = await Promise.all([
       supabase.from("organizations").select("*").order("created_at", { ascending: false }),
       supabase.from("billing_plans").select("*").order("base_price_cents", { ascending: true }),
@@ -179,6 +189,9 @@ export default function BillingAdminPanel() {
         .order("updated_at", { ascending: false }),
       supabase.from("organization_members").select("organization_id,status"),
       supabase.from("organization_invites").select("organization_id,status"),
+      // Admins can read every profile (can_view_profile → is_admin), so we can
+      // show who actually owns each account.
+      supabase.from("profiles").select("id,full_name,email,company"),
     ]);
 
     setOrganizations((orgRows ?? []) as OrganizationRecord[]);
@@ -186,6 +199,9 @@ export default function BillingAdminPanel() {
     setSubscriptions((subscriptionRows ?? []) as OrganizationSubscriptionRecord[]);
     setMemberRows((members ?? []) as MemberCountRecord[]);
     setInviteRows((invites ?? []) as InviteCountRecord[]);
+    setProfilesById(
+      Object.fromEntries(((profileRows ?? []) as ProfileLite[]).map((profile) => [profile.id, profile])),
+    );
     setNotice(
       expiryError?.message ||
         orgError?.message ||
@@ -193,6 +209,7 @@ export default function BillingAdminPanel() {
         subscriptionError?.message ||
         membersError?.message ||
         invitesError?.message ||
+        profilesError?.message ||
         null,
     );
     setLoading(false);
@@ -230,8 +247,22 @@ export default function BillingAdminPanel() {
         if (typeFilter === "all") return true;
         if (typeFilter === "individual") return item.organization.personal;
         return !item.organization.personal;
+      })
+      .filter((item) => {
+        const needle = search.trim().toLowerCase();
+        if (!needle) return true;
+        const owner = item.organization.owner_id ? profilesById[item.organization.owner_id] : undefined;
+        const haystack = [
+          item.organization.name,
+          owner?.full_name ?? "",
+          owner?.email ?? "",
+          owner?.company ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(needle);
       });
-  }, [inviteRows, memberRows, organizations, statusFilter, typeFilter, subscriptions]);
+  }, [inviteRows, memberRows, organizations, profilesById, search, statusFilter, typeFilter, subscriptions]);
 
   const totalActive = subscriptions.filter(
     (item) => getSubscriptionAccessState(item) === "active",
@@ -547,6 +578,13 @@ export default function BillingAdminPanel() {
           <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             Filter
           </label>
+          <input
+            type="search"
+            className="input w-full sm:!w-auto sm:min-w-[220px]"
+            placeholder="Search by name, email or account…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
           <select
             className="input w-full sm:!w-auto sm:min-w-[180px]"
             value={statusFilter}
@@ -629,6 +667,32 @@ export default function BillingAdminPanel() {
                         ) : null}
                       </div>
                     </div>
+
+                    {(() => {
+                      const owner = organization.owner_id ? profilesById[organization.owner_id] : undefined;
+                      return (
+                        <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
+                            Account owner
+                          </div>
+                          {owner ? (
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span className="font-medium text-txt">{owner.full_name?.trim() || "(no name set)"}</span>
+                              {owner.email ? (
+                                <a href={`mailto:${owner.email}`} className="text-accent hover:underline">
+                                  {owner.email}
+                                </a>
+                              ) : null}
+                              {owner.company?.trim() ? (
+                                <span className="text-txt-dim">· {owner.company.trim()}</span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="mt-0.5 text-txt-dim">Owner profile unavailable</div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                       <div>
