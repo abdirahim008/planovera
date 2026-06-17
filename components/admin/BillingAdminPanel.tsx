@@ -765,6 +765,25 @@ export default function BillingAdminPanel() {
                               {organization.personal ? "INDIVIDUAL" : "ORG"}
                             </Badge>
                           </div>
+                          {(() => {
+                            const owner = organization.owner_id ? profilesById[organization.owner_id] : undefined;
+                            if (!owner) {
+                              return <div className="mt-1 text-xs text-txt-dim">Owner profile unavailable</div>;
+                            }
+                            return (
+                              <div className="mt-1 text-xs leading-tight">
+                                <div className="text-txt">{owner.full_name?.trim() || "(no name set)"}</div>
+                                {owner.email ? (
+                                  <a href={`mailto:${owner.email}`} className="text-accent hover:underline">
+                                    {owner.email}
+                                  </a>
+                                ) : null}
+                                {owner.company?.trim() ? (
+                                  <div className="text-txt-dim">{owner.company.trim()}</div>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="data-cell-wrap">
                           {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
