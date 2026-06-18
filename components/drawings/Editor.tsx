@@ -644,12 +644,17 @@ export default function Editor({
 
       const [{ data: projectRows, error: projectsError }, { data: libraryRows, error: libraryError }] =
         await Promise.all([
-          supabase.from("drawing_projects").select("*").order("updated_at", { ascending: false }),
-          // Load only what the library grid needs — the (large) svg column is
-          // fetched lazily on insert via fetchLibrarySvg.
+          // List metadata only — the heavy `pages` JSON (which can hold large
+          // inserted drawings) is fetched on demand when a project is opened.
+          supabase
+            .from("drawing_projects")
+            .select("id,owner_id,linked_project_id,linked_project_name,name,created_at,updated_at")
+            .order("updated_at", { ascending: false }),
+          // Metadata only — the studio panel shows names (the warehouse tab loads
+          // its own thumbnails); the large svg + thumbnail are fetched lazily.
           supabase
             .from("drawing_library_items")
-            .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+            .select("id,name,category,description,tags,author_id,author_name,updated_at")
             .order("updated_at", { ascending: false }),
         ]);
 
@@ -2718,8 +2723,25 @@ export default function Editor({
   }, [activeProjectId, linkedProject, projectName, saveCurrentPage, session, setMessage, userId]);
 
   const handleOpenProject = useCallback(
-    (project: SavedProject) => {
-      setPages(clonePages(syncSheetLabels(project.pages)));
+    async (project: SavedProject) => {
+      // The list carries metadata only; fetch the project's pages on open so
+      // boot never pulls every project's (potentially large) drawing content.
+      let pages = project.pages;
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        setMessage(`Opening "${project.name}"…`);
+        const { data, error } = await supabase
+          .from("drawing_projects")
+          .select("pages")
+          .eq("id", project.id)
+          .single();
+        if (error) {
+          setMessage(`Could not open project: ${error.message}`);
+          return;
+        }
+        pages = Array.isArray(data?.pages) && data.pages.length ? (data.pages as Page[]) : [createBlankPage(1)];
+      }
+      setPages(clonePages(syncSheetLabels(pages)));
       setCurrentPageIndex(0);
       setProjectName(project.name);
       setActiveProjectId(project.id);
