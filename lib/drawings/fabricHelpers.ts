@@ -399,3 +399,56 @@ export function createLeaderGroup(
 
   return group;
 }
+
+// Just the leader arrow (line + arrowhead) as a group — no text. Paired with a
+// standalone editable IText so the label can be typed inline on the canvas.
+// Returns the arrow group plus where/how to place the label text.
+export function createLeaderArrow(
+  fabric: FabricMod,
+  anchor: { x: number; y: number },
+  labelPos: { x: number; y: number },
+  opts?: { color?: string; strokeWidth?: number; fontSize?: number },
+): { arrow: FabricNS.Group; label: { left: number; top: number; originX: "left" | "right"; fontSize: number; color: string } } {
+  const color = opts?.color || "#0f172a";
+  const strokeWidth = opts?.strokeWidth || 1;
+  const fontSize = opts?.fontSize || 14;
+
+  const dx = anchor.x - labelPos.x;
+  const dy = anchor.y - labelPos.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const nx = -uy;
+  const ny = ux;
+  const head = 11;
+  const halfW = 4;
+  const baseX = anchor.x - ux * head;
+  const baseY = anchor.y - uy * head;
+
+  const line = new fabric.Line([labelPos.x, labelPos.y, baseX, baseY], {
+    stroke: color,
+    strokeWidth,
+    selectable: false,
+    evented: false,
+    strokeLineCap: "round",
+  });
+  const arrow = new fabric.Polygon(
+    [
+      { x: anchor.x, y: anchor.y },
+      { x: baseX + nx * halfW, y: baseY + ny * halfW },
+      { x: baseX - nx * halfW, y: baseY - ny * halfW },
+    ],
+    { fill: color, stroke: color, strokeWidth: 0, selectable: false, evented: false },
+  );
+  const group = new fabric.Group([line, arrow], {
+    hasControls: false,
+    hoverCursor: "move",
+  });
+  group.set({ _isLeaderArrow: true } as any);
+
+  const rightward = ux >= 0;
+  return {
+    arrow: group,
+    label: { left: labelPos.x + (rightward ? -4 : 4), top: labelPos.y, originX: rightward ? "right" : "left", fontSize, color },
+  };
+}

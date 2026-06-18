@@ -20,6 +20,7 @@ import {
   addSvgToCanvas,
   createDimensionGroup,
   createLeaderGroup,
+  createLeaderArrow,
   createOrUpdateTitleBlock,
   createSvgObject,
   exportPagesToPDF,
@@ -1575,19 +1576,29 @@ export default function Editor({
             canvas.remove(state.previewGroup);
             state.previewGroup = null;
           }
-          const label = window.prompt("Label text", "Note");
-          if (label !== null) {
-            const leader = createLeaderGroup(fabricMod, state.anchor, point, label.trim() || "Note", {
-              isPreview: false,
-            });
-            canvas.add(leader);
-            canvas.setActiveObject(leader);
-            canvas.requestRenderAll();
-            commitHistory();
-            setMessage("Leader placed. Double-click it to edit the text.");
-          }
+          // Place the arrow, then drop an editable label at its end and open the
+          // in-canvas text editor immediately — type straight away, no popup.
+          const { arrow, label } = createLeaderArrow(fabricMod, state.anchor, point);
+          const textObj = new fabricMod.IText("Note", {
+            left: label.left,
+            top: label.top,
+            originX: label.originX,
+            originY: "center",
+            fontSize: label.fontSize,
+            fontFamily: "Arial",
+            fill: label.color,
+            editable: true,
+          });
+          canvas.add(arrow);
+          canvas.add(textObj);
           leaderStateRef.current = { step: 0 };
           handleSetToolMode("select");
+          canvas.setActiveObject(textObj);
+          textObj.enterEditing();
+          textObj.selectAll();
+          canvas.requestRenderAll();
+          commitHistory();
+          setMessage("Type the label, then click away.");
         }
         return;
       }
