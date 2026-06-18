@@ -7,10 +7,13 @@ import {
   CalendarClock,
   CreditCard,
   Hourglass,
+  MoreHorizontal,
   Pencil,
   Play,
   RefreshCcw,
+  SlidersHorizontal,
   Users,
+  XCircle,
 } from "lucide-react";
 
 import Badge from "@/components/ui/Badge";
@@ -142,6 +145,93 @@ const subscriptionExpiryInput = (subscription?: OrganizationSubscriptionRecord |
   return Number.isNaN(date.getTime()) ? dateInputFromNow(30) : date.toISOString().slice(0, 10);
 };
 
+// Initials for the avatar — first letters of the first two words, or first two
+// characters of a single-word name.
+const orgInitials = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+};
+
+// Deterministic soft tint from the name so each org keeps a stable colour.
+// Built only from existing theme tokens.
+const AVATAR_TINTS = [
+  "bg-accent/10 text-accent",
+  "bg-ok/10 text-ok",
+  "bg-warn/10 text-warn",
+] as const;
+
+const avatarTint = (name: string) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash + name.charCodeAt(i)) % AVATAR_TINTS.length;
+  }
+  return AVATAR_TINTS[hash];
+};
+
+// Status + access summarised as a single coloured dot + short label.
+const statusDotInfo = (
+  subscription: OrganizationSubscriptionRecord | undefined,
+  accessState: ReturnType<typeof getSubscriptionAccessState>,
+) => {
+  if (!subscription || subscription.status === "incomplete") {
+    return { className: "text-err", label: "Setup incomplete" };
+  }
+  if (subscription.status === "canceled") {
+    return { className: "text-txt-dim", label: "Cancelled" };
+  }
+  if (subscription.status === "past_due") {
+    return { className: "text-warn", label: "Past due" };
+  }
+  if (accessState === "expired") {
+    return { className: "text-err", label: "Access expired" };
+  }
+  if (subscription.status === "trialing") {
+    return { className: "text-accent", label: "On trial" };
+  }
+  return { className: "text-ok", label: "Access active" };
+};
+
+// Subscription-status dot (the left dot in the mobile two-dot status row):
+// reflects the raw subscription.status rather than the derived access state.
+const subscriptionStatusDot = (
+  subscription: OrganizationSubscriptionRecord | undefined,
+) => {
+  if (!subscription) return { className: "text-txt-dim", label: "No subscription" };
+  if (subscription.status === "active") return { className: "text-ok", label: "Active" };
+  if (subscription.status === "trialing") return { className: "text-accent", label: "Trialing" };
+  if (subscription.status === "past_due") return { className: "text-warn", label: "Past due" };
+  if (subscription.status === "canceled") return { className: "text-err", label: "Cancelled" };
+  return { className: "text-txt-dim", label: "Inactive" };
+};
+
+// Urgency colour for the access-until progress bar / remaining text.
+const remainingUrgencyClass = (daysRemaining: number | null) => {
+  if (daysRemaining === null || daysRemaining < 0) return "text-err";
+  if (daysRemaining <= 14) return "text-warn";
+  return "text-ok";
+};
+
+const remainingBarClass = (daysRemaining: number | null) => {
+  if (daysRemaining === null || daysRemaining < 0) return "bg-err";
+  if (daysRemaining <= 14) return "bg-warn";
+  return "bg-ok";
+};
+
+// Compact "x minutes ago" string for the footer sync indicator.
+const formatRelativeTime = (date: Date | null) => {
+  if (!date) return "never";
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+};
+
 export default function BillingAdminPanel() {
   const configured = isSupabaseConfigured();
   const [loading, setLoading] = useState(true);
@@ -157,6 +247,15 @@ export default function BillingAdminPanel() {
   const [statusFilter, setStatusFilter] = useState<"all" | OrganizationSubscriptionRecord["status"]>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "individual" | "organization">("all");
   const [search, setSearch] = useState("");
+  // Pending view = orgs without a subscription or with status "incomplete".
+  // Tracked separately so the stat card can drive it without colliding with the
+  // status select.
+  const [pendingOnly, setPendingOnly] = useState(false);
+  const [menuOrgId, setMenuOrgId] = useState<string | null>(null);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  // Re-render the footer "synced x ago" label on a slow tick.
+  const [, setNowTick] = useState(0);
 
   const loadData = async () => {
     if (!configured) {
@@ -212,12 +311,34 @@ export default function BillingAdminPanel() {
         profilesError?.message ||
         null,
     );
+    setLastSyncedAt(new Date());
     setLoading(false);
   };
 
   useEffect(() => {
     void loadData();
   }, [configured]);
+
+  // Keep the footer "synced x ago" label fresh without re-fetching.
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick((tick) => tick + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Close the per-row actions menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuOrgId) return;
+    const handleClick = () => setMenuOrgId(null);
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOrgId(null);
+    };
+    document.addEventListener("click", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [menuOrgId]);
 
   const organizationCards = useMemo(() => {
     return organizations
@@ -241,6 +362,11 @@ export default function BillingAdminPanel() {
         };
       })
       .filter((item) =>
+        pendingOnly
+          ? !item.subscription || item.subscription.status === "incomplete"
+          : true,
+      )
+      .filter((item) =>
         statusFilter === "all" ? true : item.subscription?.status === statusFilter,
       )
       .filter((item) => {
@@ -262,7 +388,7 @@ export default function BillingAdminPanel() {
           .toLowerCase();
         return haystack.includes(needle);
       });
-  }, [inviteRows, memberRows, organizations, profilesById, search, statusFilter, typeFilter, subscriptions]);
+  }, [inviteRows, memberRows, organizations, pendingOnly, profilesById, search, statusFilter, typeFilter, subscriptions]);
 
   const totalActive = subscriptions.filter(
     (item) => getSubscriptionAccessState(item) === "active",
@@ -279,6 +405,39 @@ export default function BillingAdminPanel() {
     );
     return !subscription || subscription.status === "incomplete";
   }).length;
+
+  const seatsSold = subscriptions.reduce(
+    (sum, subscription) => sum + subscription.seat_count,
+    0,
+  );
+
+  // Which stat card is currently "active" (filled dark) — derived from the live
+  // filter state so the highlight always reflects the table.
+  const activeStat: "all" | "pending" | "active" | "trialing" =
+    pendingOnly || statusFilter === "incomplete"
+      ? "pending"
+      : statusFilter === "active"
+        ? "active"
+        : statusFilter === "trialing"
+          ? "trialing"
+          : "all";
+
+  const showAll = () => {
+    setPendingOnly(false);
+    setStatusFilter("all");
+  };
+  const showPending = () => {
+    setStatusFilter("all");
+    setPendingOnly(true);
+  };
+  const showActive = () => {
+    setPendingOnly(false);
+    setStatusFilter("active");
+  };
+  const showTrialing = () => {
+    setPendingOnly(false);
+    setStatusFilter("trialing");
+  };
 
   const handleSave = async () => {
     if (!editor) return;
@@ -363,8 +522,45 @@ export default function BillingAdminPanel() {
     await loadData();
   };
 
-  // Per-org action buttons. Shared between the desktop table row and the
-  // mobile card layout so behaviour stays identical.
+  // Opens the seat/term editor modal with the same payload the legacy Edit
+  // button used — preserved verbatim so the modal behaviour is unchanged.
+  const openEditor = (
+    organization: OrganizationRecord,
+    subscription: OrganizationSubscriptionRecord | undefined,
+    occupiedSeats: number,
+    effectivePlanCode: string,
+    effectiveSeatCount: number,
+  ) => {
+    // A live subscription opens on "custom" holding its current expiry,
+    // so seat-only edits never shift the renewal date (added seats stay
+    // co-terminous). Otherwise default the term to the plan's interval.
+    const existingExpiry =
+      subscription?.current_period_end || subscription?.trial_ends_at;
+    const hasFutureExpiry = existingExpiry
+      ? new Date(existingExpiry).getTime() > Date.now()
+      : false;
+    setEditor({
+      organizationId: organization.id,
+      organizationName: organization.name,
+      planCode: effectivePlanCode,
+      status: subscription?.status || "trialing",
+      seatCount: String(effectiveSeatCount),
+      originalSeatCount: effectiveSeatCount,
+      occupiedSeats,
+      startDate: dateInputFromNow(0),
+      termPreset: hasFutureExpiry
+        ? "custom"
+        : effectivePlanCode.includes("yearly")
+          ? "year"
+          : "month",
+      expiryDate: subscriptionExpiryInput(subscription),
+      isPersonal: organization.personal,
+    });
+  };
+
+  // Per-org actions: one primary "Activate" button plus a three-dots menu with
+  // the secondary actions. Shared between the desktop table row and the mobile
+  // card layout so behaviour stays identical.
   const renderOrgActions = ({
     organization,
     subscription,
@@ -384,8 +580,13 @@ export default function BillingAdminPanel() {
       ? 1
       : subscription?.seat_count || Math.max(occupiedSeats, 1);
     const orgBusy = busy?.startsWith(`${organization.id}:`);
+    const menuOpen = menuOrgId === organization.id;
+
+    const menuItemClass =
+      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-txt transition hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40";
+
     return (
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
         <Button
           variant="success"
           size="sm"
@@ -400,89 +601,106 @@ export default function BillingAdminPanel() {
             })
           }
         >
-          <Play size={13} /> {organization.personal ? "Activate (1 mo trial)" : "Activate 30d"}
+          <Play size={13} /> {organization.personal ? "Activate trial" : "Activate 30d"}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={orgBusy}
-          onClick={() =>
-            handleQuickUpdate({
-              organizationId: organization.id,
-              planCode: effectivePlanCode,
-              status: subscription?.status === "trialing" ? "trialing" : "active",
-              seatCount: effectiveSeatCount,
-              days: 90,
-            })
-          }
-        >
-          Extend 90d
-        </Button>
-        <button
-          type="button"
-          disabled={orgBusy}
-          onClick={() =>
-            handleQuickUpdate({
-              organizationId: organization.id,
-              planCode: effectivePlanCode,
-              status: "past_due",
-              seatCount: effectiveSeatCount,
-              days: -1,
-            })
-          }
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-surface px-2.5 py-1 text-xs font-medium text-warn transition hover:border-warn/40 hover:bg-warn/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Ban size={13} /> Suspend
-        </button>
-        <button
-          type="button"
-          disabled={orgBusy}
-          onClick={() =>
-            handleQuickUpdate({
-              organizationId: organization.id,
-              planCode: effectivePlanCode,
-              status: "canceled",
-              seatCount: effectiveSeatCount,
-              days: -1,
-            })
-          }
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-surface px-2.5 py-1 text-xs font-medium text-err transition hover:border-err/40 hover:bg-err/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Cancel
-        </button>
-        <Button
-          variant="default"
-          size="sm"
-          onClick={() => {
-            // A live subscription opens on "custom" holding its current expiry,
-            // so seat-only edits never shift the renewal date (added seats stay
-            // co-terminous). Otherwise default the term to the plan's interval.
-            const existingExpiry =
-              subscription?.current_period_end || subscription?.trial_ends_at;
-            const hasFutureExpiry = existingExpiry
-              ? new Date(existingExpiry).getTime() > Date.now()
-              : false;
-            setEditor({
-              organizationId: organization.id,
-              organizationName: organization.name,
-              planCode: effectivePlanCode,
-              status: subscription?.status || "trialing",
-              seatCount: String(effectiveSeatCount),
-              originalSeatCount: effectiveSeatCount,
-              occupiedSeats,
-              startDate: dateInputFromNow(0),
-              termPreset: hasFutureExpiry
-                ? "custom"
-                : effectivePlanCode.includes("yearly")
-                  ? "year"
-                  : "month",
-              expiryDate: subscriptionExpiryInput(subscription),
-              isPersonal: organization.personal,
-            });
-          }}
-        >
-          <Pencil size={13} /> Edit seats & access
-        </Button>
+
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            disabled={orgBusy}
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOrgId(menuOpen ? null : organization.id);
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg-surface text-txt-dim transition hover:bg-bg-hover hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+
+          {menuOpen ? (
+            <div
+              role="menu"
+              onClick={(event) => event.stopPropagation()}
+              className="absolute right-0 top-full z-20 mt-1 hidden w-56 overflow-hidden rounded-lg border border-border bg-bg-surface py-1 shadow-lg sm:block"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                disabled={orgBusy}
+                onClick={() => {
+                  setMenuOrgId(null);
+                  handleQuickUpdate({
+                    organizationId: organization.id,
+                    planCode: effectivePlanCode,
+                    status: subscription?.status === "trialing" ? "trialing" : "active",
+                    seatCount: effectiveSeatCount,
+                    days: 90,
+                  });
+                }}
+                className={menuItemClass}
+              >
+                <CalendarClock size={14} className="text-txt-dim" /> Extend access 90 days
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOrgId(null);
+                  openEditor(
+                    organization,
+                    subscription,
+                    occupiedSeats,
+                    effectivePlanCode,
+                    effectiveSeatCount,
+                  );
+                }}
+                className={menuItemClass}
+              >
+                <Pencil size={14} className="text-txt-dim" /> Edit seats &amp; access
+              </button>
+              <div className="my-1 border-t border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                disabled={orgBusy}
+                onClick={() => {
+                  setMenuOrgId(null);
+                  handleQuickUpdate({
+                    organizationId: organization.id,
+                    planCode: effectivePlanCode,
+                    status: "past_due",
+                    seatCount: effectiveSeatCount,
+                    days: -1,
+                  });
+                }}
+                className={`${menuItemClass} !text-warn hover:bg-warn/10`}
+              >
+                <Ban size={14} /> Suspend organisation
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={orgBusy}
+                onClick={() => {
+                  setMenuOrgId(null);
+                  handleQuickUpdate({
+                    organizationId: organization.id,
+                    planCode: effectivePlanCode,
+                    status: "canceled",
+                    seatCount: effectiveSeatCount,
+                    days: -1,
+                  });
+                }}
+                className={`${menuItemClass} !text-err hover:bg-err/10`}
+              >
+                <XCircle size={14} /> Cancel subscription
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   };
@@ -491,6 +709,9 @@ export default function BillingAdminPanel() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold">Manual billing operations</h2>
+        <p className="mt-1 text-sm text-txt-dim">
+          Activate, extend, suspend or cancel organisation subscriptions. Click a stat to filter.
+        </p>
       </div>
 
       {notice ? (
@@ -505,79 +726,190 @@ export default function BillingAdminPanel() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            <Building2 size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
-              Organizations
-            </div>
-            <div className="text-xl font-semibold text-txt">{organizations.length}</div>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("incomplete")}
-          className={`flex items-center gap-3 rounded-2xl border bg-bg-surface p-4 text-left transition hover:border-warn/60 ${
-            totalPending > 0 ? "border-warn/50" : "border-border"
-          }`}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn">
-            <Hourglass size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
-              Pending approval
-            </div>
-            <div className="text-xl font-semibold text-txt">{totalPending}</div>
-            <div className="text-xs text-txt-muted">Awaiting activation</div>
-          </div>
-        </button>
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ok/10 text-ok">
-            <CreditCard size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
-              Active
-            </div>
-            <div className="text-xl font-semibold text-txt">{totalActive}</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            <CalendarClock size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
-              Trials / expired
-            </div>
-            <div className="text-xl font-semibold text-txt">{totalTrialing}</div>
-            <div className="text-xs text-txt-muted">{totalExpired} expired</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-surface p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            <Users size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
-              Seats sold
-            </div>
-            <div className="text-xl font-semibold text-txt">
-              {subscriptions.reduce((sum, subscription) => sum + subscription.seat_count, 0)}
-            </div>
-          </div>
-        </div>
+      {/* Mobile: compact stat chips (4) — same filters as the desktop cards. */}
+      <div className="grid grid-cols-4 gap-2 sm:hidden">
+        {([
+          {
+            key: "all" as const,
+            label: "Orgs",
+            value: organizations.length,
+            icon: Building2,
+            active: activeStat === "all",
+            onClick: showAll,
+          },
+          {
+            key: "pending" as const,
+            label: "Pending",
+            value: totalPending,
+            icon: Hourglass,
+            active: activeStat === "pending",
+            onClick: showPending,
+          },
+          {
+            key: "active" as const,
+            label: "Active",
+            value: totalActive,
+            icon: CreditCard,
+            active: activeStat === "active",
+            onClick: showActive,
+          },
+          {
+            key: "trialing" as const,
+            label: "Trials",
+            value: totalTrialing,
+            icon: CalendarClock,
+            active: activeStat === "trialing",
+            onClick: showTrialing,
+          },
+        ]).map((chip) => {
+          const Icon = chip.icon;
+          return (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.onClick}
+              className={`flex flex-col gap-1 rounded-xl border p-2.5 text-left transition ${
+                chip.active
+                  ? "border-txt bg-txt text-white"
+                  : "border-border bg-bg-surface"
+              }`}
+            >
+              <Icon size={13} className={chip.active ? "text-white/70" : "text-txt-dim"} />
+              <span className={`text-lg font-semibold leading-none ${chip.active ? "text-white" : "text-txt"}`}>
+                {chip.value}
+              </span>
+              <span
+                className={`text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                  chip.active ? "text-white/80" : "text-txt-dim"
+                }`}
+              >
+                {chip.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Desktop: the full set of 5 big stat cards. */}
+      <div className="hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-5">
+        {([
+          {
+            key: "all" as const,
+            label: "Organisations",
+            value: organizations.length,
+            sub: null,
+            icon: Building2,
+            active: activeStat === "all",
+            onClick: showAll,
+          },
+          {
+            key: "pending" as const,
+            label: "Pending approval",
+            value: totalPending,
+            sub: "awaiting",
+            icon: Hourglass,
+            active: activeStat === "pending",
+            onClick: showPending,
+          },
+          {
+            key: "active" as const,
+            label: "Active",
+            value: totalActive,
+            sub: null,
+            icon: CreditCard,
+            active: activeStat === "active",
+            onClick: showActive,
+          },
+          {
+            key: "trialing" as const,
+            label: "Trials / expired",
+            value: totalTrialing,
+            sub: `${totalExpired} expired`,
+            icon: CalendarClock,
+            active: activeStat === "trialing",
+            onClick: showTrialing,
+          },
+          {
+            key: "seats" as const,
+            label: "Seats sold",
+            value: seatsSold,
+            sub: null,
+            icon: Users,
+            active: false,
+            onClick: showAll,
+          },
+        ]).map((card) => {
+          const Icon = card.icon;
+          return (
+            <button
+              key={card.key}
+              type="button"
+              onClick={card.onClick}
+              className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition ${
+                card.active
+                  ? "border-txt bg-txt text-white"
+                  : "border-border bg-bg-surface hover:border-border-light"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Icon
+                  size={14}
+                  className={card.active ? "text-white/70" : "text-txt-dim"}
+                />
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                    card.active ? "text-white/80" : "text-txt-dim"
+                  }`}
+                >
+                  {card.label}
+                </span>
+              </div>
+              <div
+                className={`text-2xl font-semibold ${
+                  card.active ? "text-white" : "text-txt"
+                }`}
+              >
+                {card.value}
+              </div>
+              {card.sub ? (
+                <div
+                  className={`text-xs ${card.active ? "text-white/70" : "text-txt-dim"}`}
+                >
+                  {card.sub}
+                </div>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-bg-surface p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-            Filter
-          </label>
+        {/* Mobile: search + filter-toggle button on one row; selects collapse. */}
+        <div className="flex w-full items-center gap-2 sm:hidden">
+          <input
+            type="search"
+            className="input w-full"
+            placeholder="Search organisations…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <button
+            type="button"
+            aria-label="Toggle filters"
+            aria-expanded={showMobileFilters}
+            onClick={() => setShowMobileFilters((open) => !open)}
+            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition ${
+              showMobileFilters
+                ? "border-txt bg-txt text-white"
+                : "border-border bg-bg-surface text-txt-dim hover:text-txt"
+            }`}
+          >
+            <SlidersHorizontal size={16} />
+          </button>
+        </div>
+
+        {/* Desktop: inline search + both selects. */}
+        <div className="hidden w-full flex-col gap-2 sm:flex sm:w-auto sm:flex-row sm:items-center sm:gap-3">
           <input
             type="search"
             className="input w-full sm:!w-auto sm:min-w-[220px]"
@@ -587,12 +919,13 @@ export default function BillingAdminPanel() {
           />
           <select
             className="input w-full sm:!w-auto sm:min-w-[180px]"
-            value={statusFilter}
-            onChange={(event) =>
+            value={pendingOnly ? "incomplete" : statusFilter}
+            onChange={(event) => {
+              setPendingOnly(false);
               setStatusFilter(
                 event.target.value as "all" | OrganizationSubscriptionRecord["status"],
-              )
-            }
+              );
+            }}
           >
             <option value="all">All statuses</option>
             <option value="trialing">Trialing</option>
@@ -614,9 +947,48 @@ export default function BillingAdminPanel() {
           </select>
         </div>
 
-        <Button variant="ghost" className="w-full justify-center sm:w-auto" onClick={() => void loadData()} disabled={loading}>
+        {/* Mobile: collapsible filter panel revealed by the toggle button. */}
+        {showMobileFilters ? (
+          <div className="flex w-full flex-col gap-2 sm:hidden">
+            <select
+              className="input w-full"
+              value={pendingOnly ? "incomplete" : statusFilter}
+              onChange={(event) => {
+                setPendingOnly(false);
+                setStatusFilter(
+                  event.target.value as "all" | OrganizationSubscriptionRecord["status"],
+                );
+              }}
+            >
+              <option value="all">All statuses</option>
+              <option value="trialing">Trialing</option>
+              <option value="active">Active</option>
+              <option value="past_due">Past due</option>
+              <option value="canceled">Canceled</option>
+              <option value="incomplete">Incomplete</option>
+            </select>
+            <select
+              className="input w-full"
+              value={typeFilter}
+              onChange={(event) =>
+                setTypeFilter(event.target.value as "all" | "individual" | "organization")
+              }
+            >
+              <option value="all">All types</option>
+              <option value="individual">Individuals</option>
+              <option value="organization">Organizations</option>
+            </select>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => void loadData()}
+          disabled={loading}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3.5 py-1.5 text-sm font-medium text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+        >
           <RefreshCcw size={14} /> Refresh
-        </Button>
+        </button>
       </div>
 
       <div className="space-y-4">
@@ -636,114 +1008,160 @@ export default function BillingAdminPanel() {
           <>
             {/* Mobile: stacked cards so action buttons stay reachable on phones. */}
             <div className="space-y-3 sm:hidden">
-              {organizationCards.map(({ organization, subscription, activeMembers, pendingInvites, occupiedSeats }) => {
+              {organizationCards.map(({ organization, subscription, occupiedSeats }) => {
                 const plan = plans.find((item) => item.code === subscription?.plan_code);
                 const accessState = getSubscriptionAccessState(subscription);
                 const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
+                const statusDot = subscriptionStatusDot(subscription);
+                const accessDot = statusDotInfo(subscription, accessState);
+                const seatTotal = subscription?.seat_count || 0;
+                const seatPct = seatTotal > 0 ? Math.min(100, (occupiedSeats / seatTotal) * 100) : 0;
+                const seatFull = seatTotal > 0 && occupiedSeats >= seatTotal;
+                const hasExpiry = formatSubscriptionExpiry(subscription) !== "No expiry set";
+                const expiryShort = hasExpiry
+                  ? new Date(
+                      subscription?.current_period_end ||
+                        subscription?.trial_ends_at ||
+                        "",
+                    ).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      timeZone: "UTC",
+                    })
+                  : null;
+                const remainingShort =
+                  daysRemaining === null
+                    ? null
+                    : daysRemaining < 0
+                      ? `${Math.abs(daysRemaining)}d over`
+                      : `${daysRemaining}d`;
+                const effectivePlanCode =
+                  subscription?.plan_code ||
+                  (organization.personal ? "individual-monthly" : "organization-monthly");
+                const effectiveSeatCount = organization.personal
+                  ? 1
+                  : subscription?.seat_count || Math.max(occupiedSeats, 1);
+                const orgBusy = busy?.startsWith(`${organization.id}:`);
                 return (
                   <div
                     key={organization.id}
-                    className="rounded-2xl border border-border bg-bg-surface p-4 space-y-3"
+                    className="space-y-3 rounded-2xl border border-border bg-bg-surface p-4"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-txt">{organization.name}</span>
-                        <Badge color={organization.personal ? "ok" : "accent"}>
-                          {organization.personal ? "INDIVIDUAL" : "ORG"}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {subscription ? (
-                          <Badge color={subscriptionBadgeColor(accessState)}>
-                            {subscriptionStateLabel(accessState).toUpperCase()}
+                    {/* Header: avatar + name/type + plan·interval. */}
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarTint(
+                          organization.name,
+                        )}`}
+                      >
+                        {orgInitials(organization.name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-txt">{organization.name}</span>
+                          <Badge color={organization.personal ? "ok" : "accent"}>
+                            {organization.personal ? "INDIVIDUAL" : "ORG"}
                           </Badge>
-                        ) : (
-                          <Badge color="warn">NO SUBSCRIPTION</Badge>
-                        )}
-                        {subscription ? (
-                          <Badge color={statusBadge(subscription.status)}>
-                            {subscription.status.toUpperCase()}
-                          </Badge>
-                        ) : null}
+                        </div>
+                        <div className="mt-0.5 text-xs text-txt-dim">
+                          {organization.personal ? "Individual" : "Organization"} ·{" "}
+                          {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "No plan")}
+                        </div>
                       </div>
                     </div>
 
-                    {(() => {
-                      const owner = organization.owner_id ? profilesById[organization.owner_id] : undefined;
-                      return (
-                        <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">
-                            Account owner
-                          </div>
-                          {owner ? (
-                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                              <span className="font-medium text-txt">{owner.full_name?.trim() || "(no name set)"}</span>
-                              {owner.email ? (
-                                <a href={`mailto:${owner.email}`} className="text-accent hover:underline">
-                                  {owner.email}
-                                </a>
-                              ) : null}
-                              {owner.company?.trim() ? (
-                                <span className="text-txt-dim">· {owner.company.trim()}</span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <div className="mt-0.5 text-txt-dim">Owner profile unavailable</div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {/* Status row: subscription status dot + access state dot. */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                      <span className={`inline-flex items-center gap-1.5 ${statusDot.className}`}>
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                        {statusDot.label}
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 ${accessDot.className}`}>
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                        {accessDot.label}
+                      </span>
+                    </div>
 
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                      <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Plan</div>
-                        <div className="text-txt">
-                          {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
-                        </div>
-                      </div>
+                    {/* Seats / access-until row. */}
+                    <div className="grid grid-cols-2 gap-3 text-xs">
                       <div>
                         <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Seats</div>
-                        <div className="font-mono tabular-nums text-txt">
-                          {occupiedSeats}/{subscription?.seat_count || 0}
+                        <div className="mt-0.5 font-mono tabular-nums text-txt">
+                          {occupiedSeats}/{seatTotal}
                         </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Members</div>
-                        <div className="font-mono tabular-nums text-txt">
-                          {activeMembers} active · {pendingInvites} pending
+                        <div className="mt-1 h-1 w-16 overflow-hidden rounded-full bg-border">
+                          <div
+                            className={`h-full rounded-full ${seatFull ? "bg-warn" : "bg-ok"}`}
+                            style={{ width: `${seatPct}%` }}
+                          />
                         </div>
                       </div>
                       <div>
                         <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Access until</div>
-                        <div className="text-txt">{formatSubscriptionExpiry(subscription)}</div>
-                        <div
-                          className={`${
-                            daysRemaining !== null && daysRemaining < 0
-                              ? "text-err"
-                              : daysRemaining !== null && daysRemaining <= 7
-                                ? "text-warn"
-                                : "text-txt-dim"
-                          }`}
-                        >
-                          {formatRemaining(daysRemaining)}
-                        </div>
+                        {hasExpiry ? (
+                          <div className="mt-0.5 text-txt">
+                            {expiryShort}
+                            {remainingShort ? (
+                              <span className={`ml-1 ${remainingUrgencyClass(daysRemaining)}`}>
+                                · {remainingShort}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="mt-0.5 text-txt-dim">
+                            —
+                            <span className="ml-1 text-txt-dim">Awaiting activation</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {renderOrgActions({ organization, subscription, occupiedSeats })}
+                    {/* Primary activate button + overflow opens the bottom sheet. */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="success"
+                        size="sm"
+                        className="flex-1 justify-center"
+                        disabled={orgBusy}
+                        onClick={() =>
+                          handleQuickUpdate({
+                            organizationId: organization.id,
+                            planCode: effectivePlanCode,
+                            status: "active",
+                            seatCount: effectiveSeatCount,
+                            days: 30,
+                          })
+                        }
+                      >
+                        <Play size={13} /> {organization.personal ? "Activate trial" : "Activate 30d"}
+                      </Button>
+                      <button
+                        type="button"
+                        aria-label="More actions"
+                        disabled={orgBusy}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setMenuOrgId(organization.id);
+                        }}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-bg-surface text-txt-dim transition hover:bg-bg-hover hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Desktop: tabular layout. */}
-            <div className="hidden data-table-shell sm:block">
+            {/* Desktop: tabular layout. overflow-visible so the row action
+                menu can escape the shell without being clipped. */}
+            <div className="hidden data-table-shell !overflow-visible sm:block">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Organization</th>
+                    <th>Organisation</th>
                     <th>Plan</th>
-                    <th>Status</th>
+                    <th>Status &amp; access</th>
                     <th>Seats</th>
                     <th>Members</th>
                     <th>Pending</th>
@@ -756,72 +1174,92 @@ export default function BillingAdminPanel() {
                     const plan = plans.find((item) => item.code === subscription?.plan_code);
                     const accessState = getSubscriptionAccessState(subscription);
                     const daysRemaining = getDaysUntilSubscriptionExpiry(subscription);
+                    const owner = organization.owner_id ? profilesById[organization.owner_id] : undefined;
+                    const dot = statusDotInfo(subscription, accessState);
+                    const seatTotal = subscription?.seat_count || 0;
+                    const seatPct = seatTotal > 0 ? Math.min(100, (occupiedSeats / seatTotal) * 100) : 0;
+                    const seatFull = seatTotal > 0 && occupiedSeats >= seatTotal;
+                    const hasExpiry = formatSubscriptionExpiry(subscription) !== "No expiry set";
+                    // Days-left percentage against a 30-day horizon for the bar.
+                    const expiryPct =
+                      daysRemaining === null
+                        ? 0
+                        : Math.max(0, Math.min(100, (daysRemaining / 30) * 100));
                     return (
                       <tr key={organization.id}>
                         <td className="data-cell-wrap">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-txt">{organization.name}</span>
-                            <Badge color={organization.personal ? "ok" : "accent"}>
-                              {organization.personal ? "INDIVIDUAL" : "ORG"}
-                            </Badge>
-                          </div>
-                          {(() => {
-                            const owner = organization.owner_id ? profilesById[organization.owner_id] : undefined;
-                            if (!owner) {
-                              return <div className="mt-1 text-xs text-txt-dim">Owner profile unavailable</div>;
-                            }
-                            return (
-                              <div className="mt-1 text-xs leading-tight">
-                                <div className="text-txt">{owner.full_name?.trim() || "(no name set)"}</div>
-                                {owner.email ? (
-                                  <a href={`mailto:${owner.email}`} className="text-accent hover:underline">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarTint(
+                                organization.name,
+                              )}`}
+                            >
+                              {orgInitials(organization.name)}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-txt">{organization.name}</span>
+                                <Badge color={organization.personal ? "ok" : "accent"}>
+                                  {organization.personal ? "INDIVIDUAL" : "ORG"}
+                                </Badge>
+                              </div>
+                              <div className="mt-0.5 text-xs text-txt-dim">
+                                {owner?.email ? (
+                                  <a href={`mailto:${owner.email}`} className="hover:text-accent hover:underline">
                                     {owner.email}
                                   </a>
-                                ) : null}
-                                {owner.company?.trim() ? (
-                                  <div className="text-txt-dim">{owner.company.trim()}</div>
-                                ) : null}
+                                ) : (
+                                  "—"
+                                )}
                               </div>
-                            );
-                          })()}
-                        </td>
-                        <td className="data-cell-wrap">
-                          {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
-                        </td>
-                        <td>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {subscription ? (
-                              <Badge color={subscriptionBadgeColor(accessState)}>
-                                {subscriptionStateLabel(accessState).toUpperCase()}
-                              </Badge>
-                            ) : (
-                              <Badge color="warn">NO SUBSCRIPTION</Badge>
-                            )}
-                            {subscription ? (
-                              <Badge color={statusBadge(subscription.status)}>
-                                {subscription.status.toUpperCase()}
-                              </Badge>
-                            ) : null}
+                            </div>
                           </div>
                         </td>
+                        <td className="data-cell-wrap">
+                          <div className="text-txt">
+                            {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "Not set")}
+                          </div>
+                          <div className="text-xs text-txt-dim">Monthly</div>
+                        </td>
+                        <td>
+                          <span className={`inline-flex items-center gap-1.5 text-sm ${dot.className}`}>
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                            {dot.label}
+                          </span>
+                        </td>
                         <td className="data-cell-num">
-                          {occupiedSeats}/{subscription?.seat_count || 0}
+                          <div className="font-mono tabular-nums text-txt">
+                            {occupiedSeats}/{seatTotal}
+                          </div>
+                          <div className="mt-1 h-1 w-16 overflow-hidden rounded-full bg-border">
+                            <div
+                              className={`h-full rounded-full ${seatFull ? "bg-warn" : "bg-ok"}`}
+                              style={{ width: `${seatPct}%` }}
+                            />
+                          </div>
                         </td>
                         <td className="data-cell-num">{activeMembers}</td>
                         <td className="data-cell-num">{pendingInvites}</td>
                         <td className="data-cell-wrap">
-                          <div>{formatSubscriptionExpiry(subscription)}</div>
-                          <div
-                            className={`text-xs ${
-                              daysRemaining !== null && daysRemaining < 0
-                                ? "text-err"
-                                : daysRemaining !== null && daysRemaining <= 7
-                                  ? "text-warn"
-                                  : "text-txt-dim"
-                            }`}
-                          >
-                            {formatRemaining(daysRemaining)}
-                          </div>
+                          {hasExpiry ? (
+                            <>
+                              <div className="text-txt">{formatSubscriptionExpiry(subscription)}</div>
+                              <div className="mt-1 h-1 w-24 overflow-hidden rounded-full bg-border">
+                                <div
+                                  className={`h-full rounded-full ${remainingBarClass(daysRemaining)}`}
+                                  style={{ width: `${expiryPct}%` }}
+                                />
+                              </div>
+                              <div className={`mt-1 text-xs ${remainingUrgencyClass(daysRemaining)}`}>
+                                {formatRemaining(daysRemaining)}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-txt-dim">No expiry set</div>
+                              <div className="text-xs text-txt-dim">Awaiting activation</div>
+                            </>
+                          )}
                         </td>
                         <td>{renderOrgActions({ organization, subscription, occupiedSeats })}</td>
                       </tr>
@@ -830,9 +1268,216 @@ export default function BillingAdminPanel() {
                 </tbody>
               </table>
             </div>
+
+            {/* Footer: result count + last-sync indicator. */}
+            <div className="flex flex-col gap-1 px-1 pt-1 text-xs text-txt-dim sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Showing {organizationCards.length} of {organizations.length} organisations
+              </span>
+              <span>Last synced {formatRelativeTime(lastSyncedAt)}</span>
+            </div>
           </>
         ) : null}
       </div>
+
+      {/* Mobile action sheet — bottom sheet alternative to the desktop dropdown.
+          Driven by the same menuOrgId so both stay in sync. */}
+      {menuOrgId
+        ? (() => {
+            const card = organizationCards.find(
+              (item) => item.organization.id === menuOrgId,
+            );
+            if (!card) return null;
+            const { organization, subscription, occupiedSeats } = card;
+            const accessState = getSubscriptionAccessState(subscription);
+            const statusDot = subscriptionStatusDot(subscription);
+            const accessDot = statusDotInfo(subscription, accessState);
+            const effectivePlanCode =
+              subscription?.plan_code ||
+              (organization.personal ? "individual-monthly" : "organization-monthly");
+            const effectiveSeatCount = organization.personal
+              ? 1
+              : subscription?.seat_count || Math.max(occupiedSeats, 1);
+            const orgBusy = busy?.startsWith(`${organization.id}:`);
+            const rowClass =
+              "flex w-full items-center gap-3 px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40";
+            const iconWrap =
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg";
+            return (
+              <div className="sm:hidden">
+                <div
+                  className="fixed inset-0 z-40 bg-black/40"
+                  onClick={() => setMenuOrgId(null)}
+                />
+                <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-bg-surface pb-[env(safe-area-inset-bottom)]">
+                  <div className="flex justify-center pt-3">
+                    <span className="h-1 w-10 rounded-full bg-border" />
+                  </div>
+
+                  {/* Header: avatar + name + status dots. */}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarTint(
+                        organization.name,
+                      )}`}
+                    >
+                      {orgInitials(organization.name)}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-txt">{organization.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                        <span className={`inline-flex items-center gap-1.5 ${statusDot.className}`}>
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                          {statusDot.label}
+                        </span>
+                        <span className={`inline-flex items-center gap-1.5 ${accessDot.className}`}>
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                          {accessDot.label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border" />
+
+                  {/* Action rows — same handlers as the desktop dropdown. */}
+                  <button
+                    type="button"
+                    disabled={orgBusy}
+                    onClick={() => {
+                      setMenuOrgId(null);
+                      handleQuickUpdate({
+                        organizationId: organization.id,
+                        planCode: effectivePlanCode,
+                        status: "active",
+                        seatCount: effectiveSeatCount,
+                        days: 30,
+                      });
+                    }}
+                    className={`${rowClass} bg-ok/10`}
+                  >
+                    <span className={`${iconWrap} bg-ok/10 text-ok`}>
+                      <Play size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-ok">
+                        {organization.personal ? "Activate 1-month trial" : "Activate 1 month"}
+                      </span>
+                      <span className="block text-xs text-txt-dim">Grant 30 days of full access</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={orgBusy}
+                    onClick={() => {
+                      setMenuOrgId(null);
+                      handleQuickUpdate({
+                        organizationId: organization.id,
+                        planCode: effectivePlanCode,
+                        status: subscription?.status === "trialing" ? "trialing" : "active",
+                        seatCount: effectiveSeatCount,
+                        days: 90,
+                      });
+                    }}
+                    className={rowClass}
+                  >
+                    <span className={`${iconWrap} bg-bg text-txt-dim`}>
+                      <CalendarClock size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-txt">Extend access 90 days</span>
+                      <span className="block text-xs text-txt-dim">Push the expiry date out</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOrgId(null);
+                      openEditor(
+                        organization,
+                        subscription,
+                        occupiedSeats,
+                        effectivePlanCode,
+                        effectiveSeatCount,
+                      );
+                    }}
+                    className={rowClass}
+                  >
+                    <span className={`${iconWrap} bg-bg text-txt-dim`}>
+                      <Pencil size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-txt">Edit seats &amp; access</span>
+                      <span className="block text-xs text-txt-dim">Change limits and members</span>
+                    </span>
+                  </button>
+
+                  <div className="border-t border-border" />
+
+                  <button
+                    type="button"
+                    disabled={orgBusy}
+                    onClick={() => {
+                      setMenuOrgId(null);
+                      handleQuickUpdate({
+                        organizationId: organization.id,
+                        planCode: effectivePlanCode,
+                        status: "past_due",
+                        seatCount: effectiveSeatCount,
+                        days: -1,
+                      });
+                    }}
+                    className={rowClass}
+                  >
+                    <span className={`${iconWrap} bg-warn/10 text-warn`}>
+                      <Ban size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-warn">Suspend organisation</span>
+                      <span className="block text-xs text-txt-dim">Pause access immediately</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={orgBusy}
+                    onClick={() => {
+                      setMenuOrgId(null);
+                      handleQuickUpdate({
+                        organizationId: organization.id,
+                        planCode: effectivePlanCode,
+                        status: "canceled",
+                        seatCount: effectiveSeatCount,
+                        days: -1,
+                      });
+                    }}
+                    className={rowClass}
+                  >
+                    <span className={`${iconWrap} bg-err/10 text-err`}>
+                      <XCircle size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-err">Cancel subscription</span>
+                      <span className="block text-xs text-txt-dim">End billing and revoke access</span>
+                    </span>
+                  </button>
+
+                  <div className="border-t border-border p-3">
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-center"
+                      onClick={() => setMenuOrgId(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        : null}
 
       <Modal
         open={!!editor}
