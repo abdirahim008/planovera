@@ -18,7 +18,10 @@ import { createClient } from "@supabase/supabase-js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
-const OUT = join(root, "imports", "roads-library");
+// Library asset folder under imports/ — defaults to the original road set; pass
+// another (e.g. "roads-library-typical") as the first arg.
+const libDir = process.argv[2] || "roads-library";
+const OUT = join(root, "imports", libDir);
 
 // ── Resolve credentials (URL from env/.env.local; key from env ONLY) ──────────
 function readEnvLocal(key) {
