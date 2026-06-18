@@ -1042,6 +1042,7 @@ export default function BillingAdminPanel() {
                   ? 1
                   : subscription?.seat_count || Math.max(occupiedSeats, 1);
                 const orgBusy = busy?.startsWith(`${organization.id}:`);
+                const owner = organization.owner_id ? profilesById[organization.owner_id] : undefined;
                 return (
                   <div
                     key={organization.id}
@@ -1066,6 +1067,19 @@ export default function BillingAdminPanel() {
                         <div className="mt-0.5 text-xs text-txt-dim">
                           {organization.personal ? "Individual" : "Organization"} ·{" "}
                           {plan?.name || (subscription?.plan_code ? planLabel(subscription.plan_code) : "No plan")}
+                        </div>
+                        <div className="mt-1 text-xs leading-tight">
+                          <div className="truncate text-txt">{owner?.full_name?.trim() || "(no name set)"}</div>
+                          {owner?.email ? (
+                            <a
+                              href={`mailto:${owner.email}`}
+                              className="truncate text-txt-dim hover:text-accent hover:underline"
+                            >
+                              {owner.email}
+                            </a>
+                          ) : (
+                            <span className="text-txt-dim">no email on file</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1203,13 +1217,17 @@ export default function BillingAdminPanel() {
                                   {organization.personal ? "INDIVIDUAL" : "ORG"}
                                 </Badge>
                               </div>
-                              <div className="mt-0.5 text-xs text-txt-dim">
+                              <div className="mt-0.5 text-xs leading-tight">
+                                <div className="text-txt">{owner?.full_name?.trim() || "(no name set)"}</div>
                                 {owner?.email ? (
-                                  <a href={`mailto:${owner.email}`} className="hover:text-accent hover:underline">
+                                  <a
+                                    href={`mailto:${owner.email}`}
+                                    className="text-txt-dim hover:text-accent hover:underline"
+                                  >
                                     {owner.email}
                                   </a>
                                 ) : (
-                                  "—"
+                                  <span className="text-txt-dim">no email on file</span>
                                 )}
                               </div>
                             </div>
