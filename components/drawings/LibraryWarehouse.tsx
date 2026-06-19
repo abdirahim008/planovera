@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, Pencil, Trash2 } from "lucide-react";
+import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, Pencil, Trash2, ChevronRight, ChevronDown } from "lucide-react";
 import {
   LIBRARY_CATEGORIES,
   type LibraryCategory,
@@ -9,8 +9,81 @@ import {
 } from "@/lib/drawings/appModel";
 import { LibraryThumbnail, displayLibraryName } from "./LibraryThumbnail";
 
-type Scope = LibraryCategory | "all" | "favorites" | "recent";
+type Scope = "all" | "favorites" | "recent";
 type Kind = "all" | "drawing" | "object";
+
+// ── Category taxonomy ────────────────────────────────────────────────────────
+// A code-defined tree (category → subcategory → leaf) layered over the existing
+// item tags — no DB schema change. Each leaf matches items whose tags include any
+// of its `tags` (or, for a category-only leaf, whose category matches). Filtering
+// in the warehouse is the union of the selected leaves. Curate this as the
+// library grows; items just need decent tags (which the admin can edit).
+type WhLeaf = { key: string; label: string; tags?: readonly string[]; category?: LibraryCategory };
+type WhSub = { label: string; leaves: WhLeaf[] };
+
+const TAXONOMY: Partial<Record<LibraryCategory, WhSub[]>> = {
+  civil: [
+    {
+      label: "Roads",
+      leaves: [
+        { key: "civ-xsec", label: "Cross sections", tags: ["cross section", "carriageway", "pavement"] },
+        { key: "civ-curb", label: "Curbs & sidewalks", tags: ["kerb", "curb", "sidewalk", "median"] },
+        { key: "civ-mark", label: "Markings & signs", tags: ["road marking", "traffic signs", "signage", "sign", "road studs"] },
+        { key: "civ-calm", label: "Traffic calming", tags: ["speed hump", "speed bump", "raised crossing", "traffic calming"] },
+      ],
+    },
+    {
+      label: "Drainage",
+      leaves: [
+        { key: "civ-culv", label: "Culverts", tags: ["culvert", "box culvert", "pipe culvert"] },
+        { key: "civ-mh", label: "Manholes & catch basins", tags: ["manhole", "catch basin", "gully", "junction box"] },
+        { key: "civ-ditch", label: "Ditches & channels", tags: ["ditch", "side drain", "drainage gutter", "gutter"] },
+        { key: "civ-head", label: "Headwalls & wing walls", tags: ["headwall", "wing wall", "wingwall"] },
+        { key: "civ-trench", label: "Trenches & bedding", tags: ["trench", "pipe bedding", "backfill"] },
+      ],
+    },
+    {
+      label: "Structures & utilities",
+      leaves: [
+        { key: "civ-rw", label: "Retaining walls", tags: ["retaining wall"] },
+        { key: "civ-septic", label: "Septic tanks", tags: ["septic tank", "soakaway", "sanitation", "wastewater"] },
+        { key: "civ-light", label: "Street & solar lighting", tags: ["street lighting", "solar", "lighting pole", "pv"] },
+      ],
+    },
+  ],
+  structural: [
+    {
+      label: "Reinforced concrete",
+      leaves: [
+        { key: "str-beam", label: "Beams", tags: ["beam"] },
+        { key: "str-col", label: "Columns", tags: ["column"] },
+        { key: "str-foot", label: "Footings", tags: ["footing", "foundation"] },
+        { key: "str-rebar", label: "Rebar shapes", tags: ["rebar", "stirrup", "bar", "reinforcement"] },
+      ],
+    },
+  ],
+  details: [
+    {
+      label: "Reference details",
+      leaves: [
+        { key: "det-std", label: "Standard details", tags: ["standard detail"] },
+        { key: "det-typ", label: "Typical drawings", tags: ["typical drawing"] },
+      ],
+    },
+  ],
+};
+
+// Subcategories for a category — fall back to a single "All" leaf (filter by the
+// category itself) for categories without a curated subtree.
+const subsFor = (cat: LibraryCategory): WhSub[] =>
+  TAXONOMY[cat] ?? [{ label: "", leaves: [{ key: `cat-${cat}`, label: "All", category: cat }] }];
+
+const leafMatches = (leaf: WhLeaf, item: LibraryItem): boolean => {
+  if (leaf.category) return item.category === leaf.category;
+  if (!leaf.tags) return false;
+  const itemTags = item.tags.map((t) => t.toLowerCase());
+  return leaf.tags.some((t) => itemTags.includes(t));
+};
 
 // A "part" is a reusable individual detail (a parametric block, an explicit
 // object, or an imported single-structure standard detail); a "drawing" is a
@@ -73,6 +146,35 @@ export default function LibraryWarehouse({
   const [kindTab, setKindTab] = useState<Kind>("all");
   const [justImported, setJustImported] = useState<Record<string, number>>({});
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [expanded, setExpanded] = useState<Set<LibraryCategory>>(() => new Set<LibraryCategory>(["civil" as LibraryCategory]));
+  const [selectedLeaves, setSelectedLeaves] = useState<Set<string>>(() => new Set());
+
+  const toggleExpanded = (cat: LibraryCategory) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+    });
+  const toggleLeaf = (key: string) =>
+    setSelectedLeaves((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  const leafIndex = useMemo(() => {
+    const m = new Map<string, WhLeaf>();
+    for (const cat of LIBRARY_CATEGORIES) for (const sub of subsFor(cat.id)) for (const leaf of sub.leaves) m.set(leaf.key, leaf);
+    return m;
+  }, []);
+  const leafCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const item of libraryItems)
+      leafIndex.forEach((leaf, key) => {
+        if (leafMatches(leaf, item)) m.set(key, (m.get(key) ?? 0) + 1);
+      });
+    return m;
+  }, [libraryItems, leafIndex]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -111,15 +213,17 @@ export default function LibraryWarehouse({
     if (scope === "favorites") pool = pool.filter((i) => favoriteIds.includes(i.id));
     else if (scope === "recent")
       pool = recentIds.map((id) => pool.find((i) => i.id === id)).filter((i): i is LibraryItem => Boolean(i));
-    else if (scope !== "all") pool = pool.filter((i) => i.category === scope);
+
+    const selected = Array.from(selectedLeaves).map((k) => leafIndex.get(k)).filter(Boolean) as WhLeaf[];
 
     return pool.filter((item) => {
       if (kindTab !== "all" && itemKind(item) !== kindTab) return false;
+      if (selected.length && !selected.some((l) => leafMatches(l, item))) return false;
       if (!needle) return true;
       const haystack = [item.name, item.description, ...item.tags, item.author].join(" ").toLowerCase();
       return haystack.includes(needle);
     });
-  }, [favoriteIds, kindTab, libraryItems, query, recentIds, scope]);
+  }, [favoriteIds, kindTab, leafIndex, libraryItems, query, recentIds, scope, selectedLeaves]);
 
   const handleImport = async (item: LibraryItem) => {
     await onImport(item);
@@ -220,16 +324,77 @@ export default function LibraryWarehouse({
             <Clock className="h-4 w-4" /> Recent
           </button>
 
-          <div className="px-2 pb-1.5 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            Categories
+          <div className="flex items-center justify-between px-2 pb-1.5 pt-3">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Categories</span>
+            {selectedLeaves.size > 0 ? (
+              <button
+                onClick={() => setSelectedLeaves(new Set())}
+                className="text-[10px] font-medium text-[#f0a13a] hover:text-[#f6b75e]"
+              >
+                Clear ({selectedLeaves.size})
+              </button>
+            ) : null}
           </div>
-          {LIBRARY_CATEGORIES.map((category) => (
-            <button key={category.id} className={railBtn(scope === category.id)} onClick={() => setScope(category.id)}>
-              <span className="truncate">{category.label}</span>
-              <span className="ml-auto text-[11px] opacity-70">{counts.get(category.id) ?? 0}</span>
-            </button>
-          ))}
 
+          {/* Expandable category tree — click a category to expand, tick
+              subcategories to filter (union of the selected leaves). */}
+          {LIBRARY_CATEGORIES.map((category) => {
+            const subs = subsFor(category.id);
+            const isOpen = expanded.has(category.id);
+            return (
+              <div key={category.id}>
+                <button
+                  className="flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-[13px] text-slate-200 transition hover:bg-white/5 hover:text-white"
+                  onClick={() => toggleExpanded(category.id)}
+                  aria-expanded={isOpen}
+                >
+                  {isOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  )}
+                  <span className="flex-1 truncate font-medium">{category.label}</span>
+                  <span className="text-[11px] text-slate-500">{counts.get(category.id) ?? 0}</span>
+                </button>
+                {isOpen ? (
+                  <div className="mb-1 ml-2 border-l border-[#34353c] pl-1.5">
+                    {subs.map((sub) => (
+                      <div key={sub.label || category.id} className="mb-0.5">
+                        {sub.label ? (
+                          <div className="px-2 pb-0.5 pt-1.5 text-[10px] uppercase tracking-[0.1em] text-slate-600">
+                            {sub.label}
+                          </div>
+                        ) : null}
+                        {sub.leaves.map((leaf) => {
+                          const on = selectedLeaves.has(leaf.key);
+                          const count = leafCounts.get(leaf.key) ?? 0;
+                          return (
+                            <button
+                              key={leaf.key}
+                              onClick={() => toggleLeaf(leaf.key)}
+                              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition ${
+                                on ? "text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
+                                  on ? "border-[#f0a13a] bg-[#f0a13a] text-[#1c1206]" : "border-[#4a4b52]"
+                                }`}
+                              >
+                                {on ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+                              </span>
+                              <span className="flex-1 truncate">{leaf.label}</span>
+                              <span className={`text-[11px] ${on ? "text-[#f0a13a]" : "text-slate-600"}`}>{count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
 
         {/* Grid */}
