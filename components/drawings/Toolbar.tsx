@@ -13,7 +13,6 @@ import {
   Eye,
   FileText,
   Grid2X2,
-  Hammer,
   Home,
   Layers3,
   Magnet,
@@ -35,6 +34,7 @@ import {
   Type,
   Redo2,
   Undo2,
+  Warehouse,
 } from "lucide-react";
 
 import { PATTERNS, type PatternType } from "@/lib/drawings/patterns";
@@ -111,6 +111,7 @@ interface ToolbarProps {
   onNewProject: () => void;
   onSaveProject: () => void;
   onExportPDF: () => void;
+  onOpenWarehouse: () => void;
   onLogout: () => void;
   onBackToDashboard?: () => void;
   /** Label for the back button. Defaults to "Dashboard"; pass the linked project name to orient users. */
@@ -386,6 +387,7 @@ export default function Toolbar({
   onNewProject,
   onSaveProject,
   onExportPDF,
+  onOpenWarehouse,
   onLogout,
   onBackToDashboard,
   backLabel = "Dashboard",
@@ -407,20 +409,14 @@ export default function Toolbar({
     {
       id: "properties",
       label: "Properties",
-      description: "Selection styles and sheet metadata",
+      description: "Selection styles, shading and import",
       icon: <Settings2 className="h-4 w-4" />,
     },
     {
-      id: "library",
-      label: "Library",
-      description: "Reusable drawings and objects",
-      icon: <Layers3 className="h-4 w-4" />,
-    },
-    {
-      id: "details",
-      label: "Tools and SVG",
-      description: "SVG import, title blocks, and details",
-      icon: <Hammer className="h-4 w-4" />,
+      id: "titleblock",
+      label: "Title block",
+      description: "Sheet title block and metadata",
+      icon: <FileText className="h-4 w-4" />,
     },
     {
       id: "projects",
@@ -946,6 +942,16 @@ export default function Toolbar({
             </div>
           </div>
         </Dropdown>
+
+        <button
+          type="button"
+          className={`${menuButton} border border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20 hover:text-amber-100`}
+          onClick={() => run(onOpenWarehouse)}
+          title="Open the drawing & BOQ warehouse in a new tab"
+        >
+          <Warehouse className="h-4 w-4" />
+          <span>Warehouse</span>
+        </button>
 
         <div className="ml-auto flex items-center gap-2 pl-2">
           <span className="hidden rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-400 md:inline-flex">

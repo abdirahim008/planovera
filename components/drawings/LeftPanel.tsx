@@ -5,11 +5,9 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import {
   Layers3,
   SlidersHorizontal,
-  Library as LibraryIcon,
-  Wrench,
+  LayoutTemplate,
   FolderOpen,
   UploadCloud,
-  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import { LibraryThumbnail, displayLibraryName } from "./LibraryThumbnail";
@@ -105,7 +103,7 @@ interface LeftPanelProps {
   onDeleteLibraryItem: (item: LibraryItem) => void;
 }
 
-export type DrawingPanelTab = "library" | "properties" | "details" | "projects" | "admin";
+export type DrawingPanelTab = "properties" | "titleblock" | "projects" | "admin";
 
 export default function LeftPanel({
   layout = "top",
@@ -148,9 +146,8 @@ export default function LeftPanel({
 }: LeftPanelProps) {
   const isAdmin = session.role === "admin";
   const tabs: Array<{ id: DrawingPanelTab; label: string; short: string; icon: LucideIcon; subtitle: string }> = [
-    { id: "properties", label: "Properties", short: "Prop", icon: SlidersHorizontal, subtitle: "Selection & style" },
-    { id: "library", label: "Library", short: "Lib", icon: LibraryIcon, subtitle: "Reusable drawings & objects" },
-    { id: "details", label: "Tools", short: "Tool", icon: Wrench, subtitle: "Drafting, import & title block" },
+    { id: "properties", label: "Properties", short: "Prop", icon: SlidersHorizontal, subtitle: "Selection, style & import" },
+    { id: "titleblock", label: "Title block", short: "Title", icon: LayoutTemplate, subtitle: "Sheet title block & metadata" },
     { id: "projects", label: "Projects", short: "Proj", icon: FolderOpen, subtitle: "Saved drawing packages" },
     ...(isAdmin ? [{ id: "admin" as const, label: "Publish", short: "Pub", icon: UploadCloud, subtitle: "Publish to the shared library" }] : []),
   ];
@@ -166,7 +163,7 @@ export default function LeftPanel({
     }
     setLocalActiveTray(next);
   };
-  const tab = activeTrayValue ?? "library";
+  const tab = activeTrayValue ?? "properties";
   const [hatchScale, setHatchScale] = useState(1);
   const [hatchColor, setHatchColor] = useState("#0f172a");
   const [strokeColor, setStrokeColor] = useState("#0f172a");
@@ -182,59 +179,12 @@ export default function LeftPanel({
   const svgFileInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [savedLogos, setSavedLogos] = useState<Array<{ id: string; dataUrl: string }>>([]);
-  const [beamWidth, setBeamWidth] = useState(400);
-  const [beamDepth, setBeamDepth] = useState(400);
-  const [beamTopBars, setBeamTopBars] = useState(2);
-  const [beamBottomBars, setBeamBottomBars] = useState(3);
-  const [beamBarDia, setBeamBarDia] = useState(16);
-  const [beamStirrupDia, setBeamStirrupDia] = useState(8);
-  const [beamStirrupSpacing, setBeamStirrupSpacing] = useState(150);
-  const [columnView, setColumnView] = useState<StructuralView>("plan");
-  const [columnWidth, setColumnWidth] = useState(300);
-  const [columnDepth, setColumnDepth] = useState(300);
-  const [columnBars, setColumnBars] = useState(8);
-  const [columnBarDia, setColumnBarDia] = useState(16);
-  const [columnTieDia, setColumnTieDia] = useState(8);
-  const [columnTieSpacing, setColumnTieSpacing] = useState(150);
-  const [columnStoreyMode, setColumnStoreyMode] = useState<StoreyMode>("single");
-  const [footingView, setFootingView] = useState<StructuralView>("plan");
-  const [footingWidth, setFootingWidth] = useState(1800);
-  const [footingLength, setFootingLength] = useState(1800);
-  const [footingDepth, setFootingDepth] = useState(500);
-  const [footingColumnWidth, setFootingColumnWidth] = useState(300);
-  const [footingColumnDepth, setFootingColumnDepth] = useState(300);
-  const [footingBarDia, setFootingBarDia] = useState(16);
-  const [footingBarCountX, setFootingBarCountX] = useState(7);
-  const [footingBarCountY, setFootingBarCountY] = useState(7);
-  const [wallLength, setWallLength] = useState(3600);
-  const [wallThickness, setWallThickness] = useState(200);
-  const [openingType, setOpeningType] = useState<OpeningType>("door");
-  const [openingWidth, setOpeningWidth] = useState(900);
-  const [openingOffset, setOpeningOffset] = useState(1350);
   const [publishName, setPublishName] = useState("Library Drawing");
   const [publishCategory, setPublishCategory] = useState<LibraryCategory>("details");
   const [publishDescription, setPublishDescription] = useState(
     "Editable drawing block prepared by the admin studio.",
   );
   const [publishTags, setPublishTags] = useState("library, editable, drawing");
-
-  const favoriteItems = useMemo(
-    () =>
-      favoriteIds
-        .map((id) => libraryItems.find((item) => item.id === id))
-        .filter((item): item is LibraryItem => Boolean(item)),
-    [favoriteIds, libraryItems],
-  );
-
-  const recentItems = useMemo(
-    () =>
-      recentIds
-        .map((id) => libraryItems.find((item) => item.id === id))
-        .filter((item): item is LibraryItem => Boolean(item))
-        .filter((item) => !favoriteIds.includes(item.id))
-        .slice(0, 6),
-    [favoriteIds, libraryItems, recentIds],
-  );
 
   const updateTitleBlock =<K extends keyof TitleBlockData>(
     key: K,
@@ -267,10 +217,6 @@ export default function LeftPanel({
       }
     };
     reader.readAsDataURL(file);
-  };
-
-  const setNumber = (setter: (value: number) => void) => (value: string) => {
-    setter(Number(value) || 0);
   };
 
   useEffect(() => {
@@ -341,51 +287,6 @@ export default function LeftPanel({
     setParametricDraft(defaults);
     onUpdateParametricBlock(defaults);
   };
-
-  const insertBeamDetail = () =>
-    onAddParametricBlock("beam-detail", {
-      widthMm: beamWidth,
-      depthMm: beamDepth,
-      topBars: beamTopBars,
-      bottomBars: beamBottomBars,
-      barDiaMm: beamBarDia,
-      stirrupDiaMm: beamStirrupDia,
-      stirrupSpacingMm: beamStirrupSpacing,
-    });
-
-  const insertColumnDetail = () =>
-    onAddParametricBlock("column-detail", {
-      view: columnView,
-      widthMm: columnWidth,
-      depthMm: columnDepth,
-      mainBars: columnBars,
-      barDiaMm: columnBarDia,
-      tieDiaMm: columnTieDia,
-      tieSpacingMm: columnTieSpacing,
-      storeyMode: columnStoreyMode,
-    });
-
-  const insertFootingDetail = () =>
-    onAddParametricBlock("footing-detail", {
-      view: footingView,
-      footingWidthMm: footingWidth,
-      footingLengthMm: footingLength,
-      footingDepthMm: footingDepth,
-      columnWidthMm: footingColumnWidth,
-      columnDepthMm: footingColumnDepth,
-      barDiaMm: footingBarDia,
-      barCountX: footingBarCountX,
-      barCountY: footingBarCountY,
-    });
-
-  const insertWallOpening = () =>
-    onAddParametricBlock("wall-opening", {
-      wallLengthMm: wallLength,
-      wallThicknessMm: wallThickness,
-      openingType,
-      openingWidthMm: openingWidth,
-      openingOffsetMm: openingOffset,
-    });
 
   const handleSvgFile = (file?: File | null) => {
     if (!file) return;
@@ -1051,6 +952,80 @@ export default function LeftPanel({
               </div>
             </div>
 
+            {/* Import any SVG / DXF / vector-PDF onto the canvas, then keep editing. */}
+            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Import drawing</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Drop or choose an SVG, AutoCAD DXF, or vector PDF. It is converted to an editable drawing on the current sheet.
+                </p>
+              </div>
+              <div
+                className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-center"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleSvgDrop}
+              >
+                <input
+                  ref={svgFileInputRef}
+                  type="file"
+                  accept=".svg,.dxf,.pdf,image/svg+xml,application/pdf"
+                  className="hidden"
+                  onChange={handleSvgUploadChange}
+                />
+                <p className="text-sm font-semibold text-slate-900">Upload SVG, DXF or PDF file</p>
+                {svgUploadName ? (
+                  <p className="mt-2 text-xs font-semibold text-sky-600">Loaded: {svgUploadName}</p>
+                ) : null}
+                {svgUploadError ? (
+                  <p className="mt-2 text-xs font-semibold text-red-500">{svgUploadError}</p>
+                ) : null}
+                <button className="btn mt-3" type="button" onClick={() => svgFileInputRef.current?.click()}>
+                  Select file
+                </button>
+              </div>
+              {svgText.trim() ? (
+                <>
+                  {svgText.trim().includes("<svg") ? (
+                    <div className="flex h-32 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`}
+                        alt="Import preview"
+                        className="max-h-full max-w-full"
+                        onError={(event) => {
+                          (event.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button className="btn btn-primary" onClick={() => svgText.trim() && onAddSvg(svgText)}>
+                      Insert drawing
+                    </button>
+                    <button className="btn" onClick={clearSvgImport}>
+                      Clear
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "titleblock" ? (
+          <div className="space-y-5">
+            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+              <div>
+                <label className="label">Project name</label>
+                <input
+                  className="input"
+                  value={projectName}
+                  onChange={(event) => onProjectNameChange(event.target.value)}
+                  placeholder="Project name"
+                />
+              </div>
+            </div>
+
             <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Sheet and title block</h3>
@@ -1138,6 +1113,10 @@ export default function LeftPanel({
               </div>
 
               <div>
+                <label className="label">Project title</label>
+                <input className="input" value={titleBlockData.projectTitle} onChange={(event) => updateTitleBlock("projectTitle", event.target.value)} />
+              </div>
+              <div>
                 <label className="label">Drawing title</label>
                 <input className="input" value={titleBlockData.drawingTitle} onChange={(event) => updateTitleBlock("drawingTitle", event.target.value)} />
               </div>
@@ -1150,6 +1129,20 @@ export default function LeftPanel({
                   <label className="label">Revision</label>
                   <input className="input" value={titleBlockData.revision} onChange={(event) => updateTitleBlock("revision", event.target.value)} />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Scale</label>
+                  <input className="input" value={titleBlockData.scale} onChange={(event) => updateTitleBlock("scale", event.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Date</label>
+                  <input type="date" className="input" value={titleBlockData.date} onChange={(event) => updateTitleBlock("date", event.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Sheet reference</label>
+                <input className="input" value={titleBlockData.sheet} onChange={(event) => updateTitleBlock("sheet", event.target.value)} />
               </div>
 
               {(titleBlockData.template ?? "minimal") !== "minimal" ? (
@@ -1203,668 +1196,6 @@ export default function LeftPanel({
                 <button className="btn btn-danger" onClick={onRemoveTitleBlock}>
                   Remove
                 </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "library" ? (
-          <div className="space-y-5">
-            {/* Browse launcher — the full grid lives in the warehouse overlay so
-                it never crowds the canvas. */}
-            <button
-              type="button"
-              onClick={onOpenLibrary}
-              className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.05)] transition hover:border-amber-300 hover:bg-amber-50/40"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
-                <LayoutGrid className="h-5 w-5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-slate-900">Browse library</span>
-                <span className="block text-[12px] text-slate-500">
-                  {libraryItems.length} reusable drawings & objects
-                </span>
-              </span>
-            </button>
-
-            {favoriteItems.length > 0 ? (
-              <div>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Favorites
-                </div>
-                <div className="space-y-1.5">
-                  {favoriteItems.map((item) => (
-                    <button
-                      key={`fav-${item.id}`}
-                      type="button"
-                      onClick={() => void onInsertLibraryItem(item)}
-                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-left transition hover:bg-amber-50"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
-                        <div className="truncate text-[11px] text-slate-500">
-                          {item.category} · {item.assetType === "drawing" ? "Template" : "Object"}
-                        </div>
-                      </div>
-                      <span className="text-amber-500" aria-hidden>★</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {recentItems.length > 0 ? (
-              <div>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Recently used
-                </div>
-                <div className="space-y-1.5">
-                  {recentItems.map((item) => (
-                    <button
-                      key={`recent-${item.id}`}
-                      type="button"
-                      onClick={() => void onInsertLibraryItem(item)}
-                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{displayLibraryName(item.name)}</div>
-                        <div className="truncate text-[11px] text-slate-500">
-                          {item.category} · {item.assetType === "drawing" ? "Template" : "Object"}
-                        </div>
-                      </div>
-                      <span className="text-[11px] text-slate-400">Insert</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {favoriteItems.length === 0 && recentItems.length === 0 ? (
-              <p className="text-[12px] leading-5 text-slate-500">
-                Open the library to browse, search and insert drawings. Items you star or use
-                recently appear here for quick re-use.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {tab === "details" ? (
-          <div className="space-y-6">
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <label className="label">Project name</label>
-                <input
-                  className="input"
-                  value={projectName}
-                  onChange={(event) => onProjectNameChange(event.target.value)}
-                  placeholder="Project name"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn btn-primary" onClick={onSaveProject}>
-                  Save project
-                </button>
-                <button className="btn" onClick={onApplyTitleBlock}>
-                  Refresh title block
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Beam detailing</h3>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Generate a full editable beam detail from just the beam size and reinforcement values.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Width mm</label>
-                  <input className="input" type="number" value={beamWidth} onChange={(event) => setNumber(setBeamWidth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Depth mm</label>
-                  <input className="input" type="number" value={beamDepth} onChange={(event) => setNumber(setBeamDepth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Top bars</label>
-                  <input className="input" type="number" value={beamTopBars} onChange={(event) => setNumber(setBeamTopBars)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Bottom bars</label>
-                  <input className="input" type="number" value={beamBottomBars} onChange={(event) => setNumber(setBeamBottomBars)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Main bar dia</label>
-                  <input className="input" type="number" value={beamBarDia} onChange={(event) => setNumber(setBeamBarDia)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Stirrup dia</label>
-                  <input className="input" type="number" value={beamStirrupDia} onChange={(event) => setNumber(setBeamStirrupDia)(event.target.value)} />
-                </div>
-                <div className="col-span-2">
-                  <label className="label">Stirrup spacing mm</label>
-                  <input className="input" type="number" value={beamStirrupSpacing} onChange={(event) => setNumber(setBeamStirrupSpacing)(event.target.value)} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setBeamWidth(400);
-                    setBeamDepth(400);
-                    setBeamTopBars(2);
-                    setBeamBottomBars(3);
-                    setBeamBarDia(16);
-                    setBeamStirrupDia(8);
-                    setBeamStirrupSpacing(150);
-                  }}
-                >
-                  400 x 400 preset
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setBeamWidth(200);
-                    setBeamDepth(200);
-                    setBeamTopBars(2);
-                    setBeamBottomBars(2);
-                    setBeamBarDia(12);
-                    setBeamStirrupDia(8);
-                    setBeamStirrupSpacing(150);
-                  }}
-                >
-                  200 x 200 preset
-                </button>
-                <button className="btn btn-primary col-span-2" onClick={insertBeamDetail}>
-                  Insert beam detailing
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Column detailing</h3>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Use one simple block for column plan or section, then edit the same inserted block later from Properties.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">View</label>
-                  <select className="input" value={columnView} onChange={(event) => setColumnView(event.target.value as StructuralView)}>
-                    <option value="plan">Plan</option>
-                    <option value="section">Section</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Storey</label>
-                  <select className="input" value={columnStoreyMode} onChange={(event) => setColumnStoreyMode(event.target.value as StoreyMode)}>
-                    <option value="single">Single storey</option>
-                    <option value="multi">Multi storey</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Column width</label>
-                  <input className="input" type="number" value={columnWidth} onChange={(event) => setNumber(setColumnWidth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Column depth</label>
-                  <input className="input" type="number" value={columnDepth} onChange={(event) => setNumber(setColumnDepth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Main bars</label>
-                  <input className="input" type="number" value={columnBars} onChange={(event) => setNumber(setColumnBars)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Bar dia</label>
-                  <input className="input" type="number" value={columnBarDia} onChange={(event) => setNumber(setColumnBarDia)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Tie dia</label>
-                  <input className="input" type="number" value={columnTieDia} onChange={(event) => setNumber(setColumnTieDia)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Tie spacing</label>
-                  <input className="input" type="number" value={columnTieSpacing} onChange={(event) => setNumber(setColumnTieSpacing)(event.target.value)} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn" onClick={() => {
-                  setColumnView("plan");
-                  setColumnWidth(300);
-                  setColumnDepth(300);
-                  setColumnBars(8);
-                  setColumnBarDia(16);
-                  setColumnTieDia(8);
-                  setColumnTieSpacing(150);
-                  setColumnStoreyMode("single");
-                }}>
-                  300 x 300 preset
-                </button>
-                <button className="btn" onClick={() => {
-                  setColumnView("section");
-                  setColumnWidth(230);
-                  setColumnDepth(300);
-                  setColumnBars(6);
-                  setColumnBarDia(16);
-                  setColumnTieDia(8);
-                  setColumnTieSpacing(150);
-                  setColumnStoreyMode("multi");
-                }}>
-                  Section preset
-                </button>
-                <button className="btn btn-primary col-span-2" onClick={insertColumnDetail}>
-                  Insert column detailing
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Column footing detailing</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Create either the footing plan or the cross section from one compact form.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">View</label>
-                  <select className="input" value={footingView} onChange={(event) => setFootingView(event.target.value as StructuralView)}>
-                    <option value="plan">Plan</option>
-                    <option value="section">Cross section</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Bar dia</label>
-                  <input className="input" type="number" value={footingBarDia} onChange={(event) => setNumber(setFootingBarDia)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Footing width</label>
-                  <input className="input" type="number" value={footingWidth} onChange={(event) => setNumber(setFootingWidth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Footing length</label>
-                  <input className="input" type="number" value={footingLength} onChange={(event) => setNumber(setFootingLength)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Footing depth</label>
-                  <input className="input" type="number" value={footingDepth} onChange={(event) => setNumber(setFootingDepth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Column width</label>
-                  <input className="input" type="number" value={footingColumnWidth} onChange={(event) => setNumber(setFootingColumnWidth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Column depth</label>
-                  <input className="input" type="number" value={footingColumnDepth} onChange={(event) => setNumber(setFootingColumnDepth)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Bars X / Y</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input className="input" type="number" value={footingBarCountX} onChange={(event) => setNumber(setFootingBarCountX)(event.target.value)} />
-                    <input className="input" type="number" value={footingBarCountY} onChange={(event) => setNumber(setFootingBarCountY)(event.target.value)} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn" onClick={() => {
-                  setFootingView("plan");
-                  setFootingWidth(1800);
-                  setFootingLength(1800);
-                  setFootingDepth(500);
-                  setFootingColumnWidth(300);
-                  setFootingColumnDepth(300);
-                  setFootingBarDia(16);
-                  setFootingBarCountX(7);
-                  setFootingBarCountY(7);
-                }}>
-                  Plan preset
-                </button>
-                <button className="btn" onClick={() => {
-                  setFootingView("section");
-                  setFootingWidth(2000);
-                  setFootingLength(1800);
-                  setFootingDepth(550);
-                  setFootingColumnWidth(300);
-                  setFootingColumnDepth(300);
-                  setFootingBarDia(16);
-                  setFootingBarCountX(8);
-                  setFootingBarCountY(8);
-                }}>
-                  Section preset
-                </button>
-                <button className="btn btn-primary col-span-2" onClick={insertFootingDetail}>
-                  Insert footing detailing
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Wall, door, and window blocks</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Keep wall openings lightweight with a simple hosted wall segment or a ready door/window block.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Wall length</label>
-                  <input className="input" type="number" value={wallLength} onChange={(event) => setNumber(setWallLength)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Thickness</label>
-                  <input className="input" type="number" value={wallThickness} onChange={(event) => setNumber(setWallThickness)(event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Opening type</label>
-                  <select className="input" value={openingType} onChange={(event) => setOpeningType(event.target.value as OpeningType)}>
-                    <option value="door">Door</option>
-                    <option value="window">Window</option>
-                    <option value="opening">Opening</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Opening width</label>
-                  <input className="input" type="number" value={openingWidth} onChange={(event) => setNumber(setOpeningWidth)(event.target.value)} />
-                </div>
-                <div className="col-span-2">
-                  <label className="label">Offset from wall start</label>
-                  <input className="input" type="number" value={openingOffset} onChange={(event) => setNumber(setOpeningOffset)(event.target.value)} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn" onClick={() => onAddParametricBlock("door-opening", { openingWidthMm: 900 })}>
-                  Door block
-                </button>
-                <button className="btn" onClick={() => onAddParametricBlock("window-opening", { openingWidthMm: 1200 })}>
-                  Window block
-                </button>
-                <button className="btn btn-primary col-span-2" onClick={insertWallOpening}>
-                  Insert hosted opening wall
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">SVG import</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Upload an SVG file or paste SVG markup, render it onto the canvas, and continue editing with the drafting tools.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                {ADMIN_SVG_TEMPLATES.map((template) => (
-                  <button
-                    key={template.id}
-                    className="btn justify-between"
-                    onClick={() => {
-                      setSvgText(template.svg);
-                      setPublishName(template.name);
-                      setPublishCategory(template.category);
-                      setPublishDescription(template.description);
-                    }}
-                  >
-                    <span>{template.name}</span>
-                    <span className="text-[11px] text-slate-500">{template.category}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div
-                className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-center"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={handleSvgDrop}
-              >
-                <input
-                  ref={svgFileInputRef}
-                  type="file"
-                  accept=".svg,.dxf,.pdf,image/svg+xml,application/pdf"
-                  className="hidden"
-                  onChange={handleSvgUploadChange}
-                />
-                <p className="text-sm font-semibold text-slate-900">Upload SVG, DXF or PDF file</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Choose or drag a .svg, AutoCAD .dxf, or vector .pdf file here. DXF and vector PDF are converted to an editable drawing; review it below, then insert or publish to the library.
-                </p>
-                {svgUploadName ? (
-                  <p className="mt-2 text-xs font-semibold text-sky-600">Loaded: {svgUploadName}</p>
-                ) : null}
-                {svgUploadError ? (
-                  <p className="mt-2 text-xs font-semibold text-red-500">{svgUploadError}</p>
-                ) : null}
-                <button className="btn mt-3" type="button" onClick={() => svgFileInputRef.current?.click()}>
-                  Select SVG / DXF / PDF file
-                </button>
-              </div>
-
-              <div>
-                <label className="label">SVG code</label>
-                <textarea
-                  className="input min-h-[220px] resize-y font-mono text-xs leading-6"
-                  value={svgText}
-                  onChange={(event) => setSvgText(event.target.value)}
-                  placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">...</svg>'
-                  spellCheck={false}
-                />
-              </div>
-
-              {svgText.trim().includes("<svg") ? (
-                <div>
-                  <label className="label">Live preview</label>
-                  <div className="flex h-44 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`}
-                      alt="SVG preview"
-                      className="max-h-full max-w-full"
-                      onError={(event) => {
-                        (event.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn btn-primary" onClick={() => svgText.trim() && onAddSvg(svgText)}>
-                  Insert SVG
-                </button>
-                <button className="btn" onClick={clearSvgImport}>
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900">Quick detail blocks</h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Add common drafting references without leaving the canvas.
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {DETAIL_BLOCKS.map((item) => (
-                  <button key={item.id} className="btn justify-start" onClick={() => onAddSvg(item.svg)}>
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Title block and sheet data</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Keep drawing metadata consistent before saving or exporting.
-                </p>
-              </div>
-
-              <div>
-                <label className="label">Project title</label>
-                <input className="input" value={titleBlockData.projectTitle} onChange={(event) => updateTitleBlock("projectTitle", event.target.value)} />
-              </div>
-              <div>
-                <label className="label">Drawing title</label>
-                <input className="input" value={titleBlockData.drawingTitle} onChange={(event) => updateTitleBlock("drawingTitle", event.target.value)} />
-              </div>
-              <div>
-                <label className="label">Client</label>
-                <input className="input" value={titleBlockData.client} onChange={(event) => updateTitleBlock("client", event.target.value)} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Drawing number</label>
-                  <input className="input" value={titleBlockData.drawingNo} onChange={(event) => updateTitleBlock("drawingNo", event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Revision</label>
-                  <input className="input" value={titleBlockData.revision} onChange={(event) => updateTitleBlock("revision", event.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Scale</label>
-                  <input className="input" value={titleBlockData.scale} onChange={(event) => updateTitleBlock("scale", event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Date</label>
-                  <input type="date" className="input" value={titleBlockData.date} onChange={(event) => updateTitleBlock("date", event.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Drawn by</label>
-                  <input className="input" value={titleBlockData.drawnBy} onChange={(event) => updateTitleBlock("drawnBy", event.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Checked by</label>
-                  <input className="input" value={titleBlockData.checkedBy} onChange={(event) => updateTitleBlock("checkedBy", event.target.value)} />
-                </div>
-              </div>
-              <div>
-                <label className="label">Sheet reference</label>
-                <input className="input" value={titleBlockData.sheet} onChange={(event) => updateTitleBlock("sheet", event.target.value)} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn btn-primary" onClick={onApplyTitleBlock}>
-                  Apply title block
-                </button>
-                <button className="btn btn-danger" onClick={onRemoveTitleBlock}>
-                  Remove
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Fill, hatch, and stroke</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Apply fills to the selected object or ungroup a library block to style sub-elements.
-                </p>
-              </div>
-
-              <div>
-                <label className="label">Fill color</label>
-                <div className="flex items-center gap-3">
-                  <input type="color" value={hatchColor} onChange={(event) => setHatchColor(event.target.value)} className="h-11 w-11 rounded-xl border border-slate-200 bg-white p-1" />
-                  <input className="input font-mono uppercase" value={hatchColor} onChange={(event) => setHatchColor(event.target.value)} />
-                </div>
-              </div>
-
-              <div>
-                <label className="label">Pattern scale ({hatchScale.toFixed(1)})</label>
-                <input
-                  type="range"
-                  min="0.3"
-                  max="4"
-                  step="0.1"
-                  value={hatchScale}
-                  onChange={(event) => setHatchScale(parseFloat(event.target.value))}
-                  className="w-full accent-slate-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button className="btn" onClick={() => onApplyPattern("solid", hatchScale, hatchColor)}>
-                  Solid fill
-                </button>
-                {PATTERNS.map((pattern) => (
-                  <button key={pattern.id} className="btn justify-start" onClick={() => onApplyPattern(pattern.id, hatchScale, hatchColor)}>
-                    {pattern.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-900">Stroke</span>
-                  <button
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${hasStroke ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}
-                    onClick={() => {
-                      const next = !hasStroke;
-                      setHasStroke(next);
-                      onUpdateStroke(strokeColor, strokeWidth, next);
-                    }}
-                  >
-                    {hasStroke ? "Enabled" : "Disabled"}
-                  </button>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={strokeColor}
-                    onChange={(event) => {
-                      setStrokeColor(event.target.value);
-                      onUpdateStroke(event.target.value, strokeWidth, hasStroke);
-                    }}
-                    className="h-11 w-11 rounded-xl border border-slate-200 bg-white p-1"
-                  />
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="40"
-                    step="0.5"
-                    value={strokeWidth}
-                    onChange={(event) => {
-                      const next = parseFloat(event.target.value);
-                      setStrokeWidth(next);
-                      onUpdateStroke(strokeColor, next, hasStroke);
-                    }}
-                    className="w-full accent-slate-900"
-                  />
-                  <span className="w-12 text-right text-sm text-slate-600">{strokeWidth.toFixed(1)}</span>
-                </div>
-                <div>
-                  <label className="label">Line type</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className={`btn ${lineStyle === "solid" ? "btn-primary" : ""}`}
-                      onClick={() => applyLineStyle("solid")}
-                    >
-                      Solid
-                    </button>
-                    <button
-                      className={`btn ${lineStyle === "dashed" ? "btn-primary" : ""}`}
-                      onClick={() => applyLineStyle("dashed")}
-                    >
-                      Dashed
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           </div>

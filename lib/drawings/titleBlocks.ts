@@ -243,73 +243,97 @@ async function buildBlock(fabric: FabricMod, canvas: FabricCanvas, d: TitleBlock
 }
 
 // ---- Consultant strip: page border + vertical right-edge strip + logo ------
+// Laid out as a fully ruled title block: a generously-spaced identity grid is
+// pinned to the bottom (each datum in its own bordered cell) and the upper
+// sections (notes / revisions / client / consultant) share the remaining
+// height. Every section and grid row is divided by a horizontal rule so the
+// block reads cleanly instead of crowding the text into one corner.
 async function buildStrip(fabric: FabricMod, canvas: FabricCanvas, d: TitleBlockData, w: number, h: number): Promise<void> {
   addPageBorder(fabric, canvas, w, h);
   const m = Math.max(14, Math.min(w, h) * 0.02) + 4;
-  const SW = 168;
+  const SW = 182;
   const x = w - m - SW;
   const top = m;
   const SH = h - 2 * m;
+  const PAD = 6;
+  const col = SW * 0.5;
 
   const frame = new fabric.Rect({ left: x, top, width: SW, height: SH, fill: "#ffffff", stroke: STROKE, strokeWidth: 1.4 });
   canvas.add(tag(frame, { lock: true }));
 
-  // section heights (top -> bottom)
-  const notesH = SH * 0.26;
-  const revH = SH * 0.16;
-  const clientH = SH * 0.24;
-  const consH = SH * 0.1;
-  const ySec = [0, notesH, notesH + revH, notesH + revH + clientH, notesH + revH + clientH + consH];
-  const lines: FabricObject[] = ySec.slice(1).map((yy) => new fabric.Line([0, yy, SW, yy], { stroke: STROKE, strokeWidth: 0.6 }));
+  // --- Vertical geometry --------------------------------------------------
+  // Identity grid (5 label/value rows) pinned to the bottom, with a title cell
+  // above it. Heights are derived so rows always fill the block exactly.
+  const ID_ROWS = 5;
+  const idTop = Math.max(SH * 0.42, SH - 168);
+  const titleH = Math.max(30, Math.min(46, SH - idTop - ID_ROWS * 24));
+  const gridTop = idTop + titleH;
+  const rowH = (SH - gridTop) / ID_ROWS;
+
+  // Upper sections share everything above the identity block.
+  const upper = idTop;
+  const consH = Math.max(40, upper * 0.16);
+  const clientH = Math.max(86, upper * 0.34);
+  const revH = Math.max(50, upper * 0.2);
+  const notesH = Math.max(44, upper - consH - clientH - revH);
+  const yRev = notesH;
+  const yClient = notesH + revH;
+  const yCons = notesH + revH + clientH;
+
+  // --- Rules (separators) -------------------------------------------------
+  const lines: FabricObject[] = [];
+  const hr = (yy: number) => lines.push(new fabric.Line([0, yy, SW, yy], { stroke: STROKE, strokeWidth: 0.6 }));
+  [yRev, yClient, yCons, idTop, gridTop].forEach(hr);
+  for (let i = 1; i < ID_ROWS; i += 1) hr(gridTop + i * rowH);
+  // Vertical divider down the two-column identity grid.
+  lines.push(new fabric.Line([col, gridTop, col, SH], { stroke: STROKE, strokeWidth: 0.6 }));
 
   const texts: FabricObject[] = [];
   const t = (text: string, lx: number, ly: number, size: number, o: Parameters<typeof makeText>[5] = {}) =>
-    texts.push(makeText(fabric, text, lx, ly, size, { width: o.width ?? SW - lx - 4, ...o }));
+    texts.push(makeText(fabric, text, lx, ly, size, { width: o.width ?? SW - lx - PAD, ...o }));
 
-  // Notes
-  t("NOTES", 4, 4, 7, { bold: true, color: "#666" });
-  t(v(d.projectDescription ? "Refer to general notes and the standard details manual." : "All dimensions in millimetres unless noted otherwise."), 4, 14, 7.5);
-  // Revisions
-  t("REVISIONS", 4, ySec[1] + 4, 7, { bold: true, color: "#666" });
-  t("REV   BY   CHK   DATE   APPROVED", 4, ySec[1] + 13, 6.5, { color: "#444" });
-  // Client / project (with logo)
-  t("CLIENT", 4, ySec[2] + 4, 7, { bold: true, color: "#666" });
-  const logoBoxTop = top + ySec[2] + 14;
-  // logo is added to the canvas in absolute coords (not in the group) so the image scales correctly
-  await addLogo(fabric, canvas, d.logoDataUrl, { left: x + 4, top: logoBoxTop, w: 54, h: 32 });
-  t(v(d.client, "Client"), 62, ySec[2] + 16, 8, { bold: true, field: "client", width: SW - 66 });
-  t(v(d.projectDescription || d.projectTitle), 4, ySec[2] + 52, 7.5, { field: "projectDescription" });
-  // Consultant
-  t("CONSULTANT", 4, ySec[3] + 4, 7, { bold: true, color: "#666" });
-  t(v(d.consultant, "Consulting Engineers"), 4, ySec[3] + 13, 8, { bold: true, field: "consultant" });
-  // Drawing identity (bottom). The drawing title can wrap to several lines, so
-  // measure its rendered height and flow the label/value grid beneath it rather
-  // than using fixed offsets — a long title would otherwise overlap the grid.
-  const b = ySec[4];
-  t("DRAWING TITLE", 4, b + 4, 7, { bold: true, color: "#666" });
-  const titleValue = makeText(fabric, v(d.drawingTitle), 4, b + 12, 9, {
-    bold: true,
-    field: "drawingTitle",
-    width: SW - 8,
-  });
-  texts.push(titleValue);
-  const titleHeight = (titleValue as unknown as { height?: number }).height ?? 11;
-  const col = SW * 0.5;
-  const pair = (l1: string, v1: string, f1: keyof TitleBlockData | undefined, l2: string, v2: string, f2: keyof TitleBlockData | undefined, ry: number) => {
-    t(l1, 4, ry, 6.5, { bold: true, color: "#666", width: col - 6 });
-    t(v1, 4, ry + 7, 8, { field: f1, width: col - 6 });
-    t(l2, col + 4, ry, 6.5, { bold: true, color: "#666", width: col - 6 });
-    t(v2, col + 4, ry + 7, 8, { field: f2, width: col - 6 });
+  // --- Notes --------------------------------------------------------------
+  t("NOTES", PAD, 6, 7.5, { bold: true, color: "#555" });
+  t(
+    "All dimensions are in millimetres unless noted otherwise. Refer to the general notes and the standard details manual.",
+    PAD,
+    19,
+    8,
+    { color: "#333" },
+  );
+  // --- Revisions ----------------------------------------------------------
+  t("REVISIONS", PAD, yRev + 6, 7.5, { bold: true, color: "#555" });
+  t("REV     BY     CHK     DATE", PAD, yRev + 18, 7.5, { color: "#444" });
+  // --- Client (with logo) -------------------------------------------------
+  t("CLIENT", PAD, yClient + 6, 7.5, { bold: true, color: "#555" });
+  // The logo is added in absolute canvas coords (outside the group) so it scales correctly.
+  await addLogo(fabric, canvas, d.logoDataUrl, { left: x + PAD, top: top + yClient + 18, w: 58, h: 34 });
+  t(v(d.client, "Client"), 70, yClient + 20, 9.5, { bold: true, field: "client", width: SW - 70 - PAD });
+  t(v(d.projectDescription || d.projectTitle), PAD, yClient + 58, 8, { field: "projectDescription", width: SW - 2 * PAD });
+  // --- Consultant ---------------------------------------------------------
+  t("CONSULTANT", PAD, yCons + 6, 7.5, { bold: true, color: "#555" });
+  t(v(d.consultant, "Consulting Engineers"), PAD, yCons + 18, 9.5, { bold: true, field: "consultant", width: SW - 2 * PAD });
+  // --- Identity: drawing title cell --------------------------------------
+  t("DRAWING TITLE", PAD, idTop + 6, 7.5, { bold: true, color: "#555" });
+  t(v(d.drawingTitle), PAD, idTop + 18, 10, { bold: true, field: "drawingTitle", width: SW - 2 * PAD });
+  // --- Identity: ruled label/value grid ----------------------------------
+  const cell = (label: string, value: string, field: keyof TitleBlockData | undefined, rowIdx: number, right: boolean) => {
+    const lx = right ? col + PAD : PAD;
+    const cw = col - PAD - 3;
+    const ry = gridTop + rowIdx * rowH;
+    t(label, lx, ry + 4, 6.8, { bold: true, color: "#666", width: cw });
+    t(value, lx, ry + 13, 9, { field, width: cw });
   };
-  const rowGap = 18;
-  // First grid row starts below the title; never above the original baseline so
-  // short titles keep the familiar spacing.
-  let ry = Math.max(b + 30, b + 12 + Math.max(11, titleHeight) + 6);
-  pair("DRAWING No.", v(d.drawingNo), "drawingNo", "REV", v(d.revision), "revision", ry);
-  pair("SCALE", v(d.scale), "scale", "DATE", v(d.date), "date", (ry += rowGap));
-  pair("DESIGNED", v(d.designedBy), "designedBy", "DRAWN", v(d.drawnBy), "drawnBy", (ry += rowGap));
-  pair("CHECKED", v(d.checkedBy), "checkedBy", "APPROVED", v(d.approvedBy), "approvedBy", (ry += rowGap));
-  pair("JOB No.", v(d.jobNo), "jobNo", "STATUS", v(d.status), "status", (ry += rowGap));
+  cell("DRAWING No.", v(d.drawingNo), "drawingNo", 0, false);
+  cell("REV", v(d.revision), "revision", 0, true);
+  cell("SCALE", v(d.scale), "scale", 1, false);
+  cell("DATE", v(d.date), "date", 1, true);
+  cell("DESIGNED", v(d.designedBy), "designedBy", 2, false);
+  cell("DRAWN", v(d.drawnBy), "drawnBy", 2, true);
+  cell("CHECKED", v(d.checkedBy), "checkedBy", 3, false);
+  cell("APPROVED", v(d.approvedBy), "approvedBy", 3, true);
+  cell("JOB No.", v(d.jobNo), "jobNo", 4, false);
+  cell("STATUS", v(d.status), "status", 4, true);
 
   const group = new fabric.Group([...lines, ...texts], { left: x, top, subTargetCheck: false, lockRotation: true });
   canvas.add(tag(group));
