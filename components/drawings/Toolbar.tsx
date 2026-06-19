@@ -5,14 +5,10 @@ import type { ReactNode } from "react";
 import {
   BrickWall,
   Circle,
-  Columns3,
-  Construction,
-  CornerDownRight,
   DoorOpen,
   Download,
   Eye,
   FileText,
-  Grid2X2,
   Home,
   Layers3,
   Magnet,
@@ -20,7 +16,6 @@ import {
   MoveUpRight,
   MousePointer2,
   Move,
-  PaintBucket,
   PanelLeftClose,
   PanelLeftOpen,
   PencilLine,
@@ -37,7 +32,7 @@ import {
   Warehouse,
 } from "lucide-react";
 
-import { PATTERNS, type PatternType } from "@/lib/drawings/patterns";
+import { type PatternType } from "@/lib/drawings/patterns";
 import { PAPER_SIZES, PaperSizeKey, Orientation } from "@/lib/drawings/paper";
 import type { Page } from "@/lib/drawings/fabricHelpers";
 import { DETAIL_BLOCKS, type UserSession } from "@/lib/drawings/appModel";
@@ -126,9 +121,6 @@ const menuItem =
 
 const activeToolClass = "bg-sky-500/15 text-sky-300 hover:bg-sky-500/15 hover:text-sky-300";
 
-const svgDoc = (viewBox: string, body: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" fill="none">${body}</svg>`;
-
 function formatSavedAgo(iso: string) {
   const then = new Date(iso).getTime();
   if (!Number.isFinite(then)) return "Saved";
@@ -141,207 +133,6 @@ function formatSavedAgo(iso: string) {
   const diffDay = Math.floor(diffHr / 24);
   return `Saved ${diffDay}d ago`;
 }
-
-const REINFORCEMENT_BLOCKS = [
-  {
-    name: "Longitudinal straight bar",
-    type: "svg" as const,
-    icon: <Minus className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 360 80",
-      `<path d="M36 40 H324" stroke="#0f172a" stroke-width="10" stroke-linecap="round"/>
-       <circle cx="36" cy="40" r="8" fill="#0f172a"/>
-       <circle cx="324" cy="40" r="8" fill="#0f172a"/>
-       <text x="180" y="68" text-anchor="middle" font-family="Arial" font-size="18" fill="#334155">T16 LONGITUDINAL BAR</text>`,
-    ),
-  },
-  {
-    name: "Bent corner bar",
-    type: "svg" as const,
-    icon: <CornerDownRight className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 260 220",
-      `<path d="M40 180 H178 Q210 180 210 148 V42" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-       <circle cx="40" cy="180" r="8" fill="#0f172a"/>
-       <circle cx="210" cy="42" r="8" fill="#0f172a"/>
-       <path d="M162 156 L198 192 M184 134 L222 172" stroke="#94a3b8" stroke-width="3"/>
-       <text x="126" y="206" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">BENT CORNER BAR</text>`,
-    ),
-  },
-  {
-    name: "U bar with hooks",
-    type: "svg" as const,
-    icon: <Columns3 className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 280 220",
-      `<path d="M58 46 V154 Q58 182 86 182 H194 Q222 182 222 154 V46" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-       <path d="M58 46 H92 M222 46 H188" stroke="#0f172a" stroke-width="10" stroke-linecap="round"/>
-       <text x="140" y="210" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">U BAR / STARTER</text>`,
-    ),
-  },
-  {
-    name: "Circular rebar dot",
-    type: "svg" as const,
-    icon: <Circle className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 120 120",
-      `<circle cx="60" cy="52" r="18" fill="#0f172a"/>
-       <circle cx="60" cy="52" r="22" fill="none" stroke="#94a3b8" stroke-width="2"/>
-       <text x="60" y="98" text-anchor="middle" font-family="Arial" font-size="13" fill="#334155">REBAR DOT</text>`,
-    ),
-  },
-  {
-    name: "Closed stirrup",
-    type: "svg" as const,
-    icon: <Square className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 220 220",
-      `<rect x="48" y="42" width="124" height="136" rx="18" stroke="#0f172a" stroke-width="9"/>
-       <path d="M148 42 H178 V72" stroke="#0f172a" stroke-width="9" stroke-linecap="round"/>
-       <path d="M172 56 L190 38" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-       <text x="110" y="208" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">CLOSED STIRRUP</text>`,
-    ),
-  },
-  {
-    name: "Hooked bar (one end)",
-    type: "svg" as const,
-    icon: <CornerDownRight className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 360 140",
-      `<path d="M40 70 H300 V36" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-       <circle cx="40" cy="70" r="8" fill="#0f172a"/>
-       <text x="170" y="118" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">HOOKED BAR — ONE END</text>`,
-    ),
-  },
-  {
-    name: "Hooked bar (both ends)",
-    type: "svg" as const,
-    icon: <Columns3 className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 360 140",
-      `<path d="M60 36 V70 H300 V36" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-       <text x="180" y="118" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">HOOKED BAR — BOTH ENDS</text>`,
-    ),
-  },
-  {
-    name: "L-shaped corner bar",
-    type: "svg" as const,
-    icon: <CornerDownRight className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 260 260",
-      `<path d="M40 220 H220 V40" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-       <circle cx="40" cy="220" r="8" fill="#0f172a"/>
-       <circle cx="220" cy="40" r="8" fill="#0f172a"/>
-       <text x="130" y="248" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">L-SHAPED BAR</text>`,
-    ),
-  },
-  {
-    name: "Crank bar (Z-shape)",
-    type: "svg" as const,
-    icon: <CornerDownRight className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 360 200",
-      `<path d="M40 150 H140 L220 60 H320" stroke="#0f172a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-       <circle cx="40" cy="150" r="8" fill="#0f172a"/>
-       <circle cx="320" cy="60" r="8" fill="#0f172a"/>
-       <text x="180" y="186" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">CRANK BAR</text>`,
-    ),
-  },
-  {
-    name: "Lap splice",
-    type: "svg" as const,
-    icon: <Minus className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 420 120",
-      `<path d="M30 52 H260" stroke="#0f172a" stroke-width="10" stroke-linecap="round"/>
-       <path d="M160 70 H390" stroke="#0f172a" stroke-width="10" stroke-linecap="round"/>
-       <circle cx="30" cy="52" r="8" fill="#0f172a"/>
-       <circle cx="390" cy="70" r="8" fill="#0f172a"/>
-       <path d="M160 36 V86 M260 36 V86" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 4"/>
-       <text x="210" y="22" text-anchor="middle" font-family="Arial" font-size="13" fill="#334155">LAP LENGTH</text>
-       <text x="210" y="108" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">LAP SPLICE</text>`,
-    ),
-  },
-  {
-    name: "Spiral / helix tie",
-    type: "svg" as const,
-    icon: <Circle className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 220 260",
-      `<path d="M40 40 C110 36, 110 76, 180 72 M40 80 C110 76, 110 116, 180 112 M40 120 C110 116, 110 156, 180 152 M40 160 C110 156, 110 196, 180 192 M40 200 C110 196, 110 236, 180 232" stroke="#0f172a" stroke-width="6" fill="none" stroke-linecap="round"/>
-       <text x="110" y="252" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">SPIRAL TIE</text>`,
-    ),
-  },
-  {
-    name: "Open stirrup (single leg)",
-    type: "svg" as const,
-    icon: <Square className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 220 220",
-      `<path d="M52 56 V178 H168 V56" stroke="#0f172a" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-       <path d="M52 56 L36 40 M168 56 L184 40" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-       <text x="110" y="208" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">OPEN STIRRUP</text>`,
-    ),
-  },
-  {
-    name: "Diamond / rhombus tie",
-    type: "svg" as const,
-    icon: <Square className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 220 220",
-      `<path d="M110 36 L188 110 L110 184 L32 110 Z" stroke="#0f172a" stroke-width="9" fill="none" stroke-linejoin="round"/>
-       <path d="M188 110 L208 90" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-       <text x="110" y="208" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">DIAMOND TIE</text>`,
-    ),
-  },
-  {
-    name: "Trapezoidal bend",
-    type: "svg" as const,
-    icon: <CornerDownRight className="h-4 w-4" />,
-    svg: svgDoc(
-      "0 0 360 200",
-      `<path d="M40 150 L120 60 H240 L320 150" stroke="#0f172a" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-       <circle cx="40" cy="150" r="8" fill="#0f172a"/>
-       <circle cx="320" cy="150" r="8" fill="#0f172a"/>
-       <text x="180" y="186" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">TRAPEZOIDAL BEND</text>`,
-    ),
-  },
-  {
-    name: "Column detailing plan",
-    type: "parametric" as const,
-    icon: <Grid2X2 className="h-4 w-4" />,
-    kind: "column-detail" as const,
-    params: { view: "plan", widthMm: 300, depthMm: 300, mainBars: 8, barDiaMm: 16, tieDiaMm: 8, tieSpacingMm: 150, storeyMode: "single" },
-  },
-  {
-    name: "Column detailing section",
-    type: "parametric" as const,
-    icon: <Columns3 className="h-4 w-4" />,
-    kind: "column-detail" as const,
-    params: { view: "section", widthMm: 300, depthMm: 300, mainBars: 8, barDiaMm: 16, tieDiaMm: 8, tieSpacingMm: 150, storeyMode: "multi" },
-  },
-  {
-    name: "Beam detailing",
-    type: "parametric" as const,
-    icon: <Construction className="h-4 w-4" />,
-    kind: "beam-detail" as const,
-    params: { widthMm: 400, depthMm: 400, topBars: 2, bottomBars: 3, barDiaMm: 16, stirrupDiaMm: 8, stirrupSpacingMm: 150 },
-  },
-  {
-    name: "Column footing plan",
-    type: "parametric" as const,
-    icon: <Construction className="h-4 w-4" />,
-    kind: "footing-detail" as const,
-    params: { view: "plan", footingWidthMm: 1800, footingLengthMm: 1800, footingDepthMm: 500, columnWidthMm: 300, columnDepthMm: 300, barDiaMm: 16, barCountX: 7, barCountY: 7 },
-  },
-  {
-    name: "Column footing cross section",
-    type: "parametric" as const,
-    icon: <Construction className="h-4 w-4" />,
-    kind: "footing-detail" as const,
-    params: { view: "section", footingWidthMm: 1800, footingLengthMm: 1800, footingDepthMm: 500, columnWidthMm: 300, columnDepthMm: 300, barDiaMm: 16, barCountX: 7, barCountY: 7 },
-  },
-] as const;
 
 export default function Toolbar({
   session,
@@ -505,10 +296,9 @@ export default function Toolbar({
             alt="Planovera"
             className="h-8 w-8 rounded-lg object-contain"
           />
-          <div className="hidden min-w-0 lg:block">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Planovera Studio</div>
+          <div className="hidden min-w-0 xl:block">
             <div className="flex items-center gap-2">
-              <div className="max-w-[220px] truncate text-xs font-semibold text-slate-200">{projectName}</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Studio</div>
               <span
                 className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
                   lastSavedAt ? "bg-emerald-500/10 text-emerald-300" : "bg-slate-700/60 text-slate-400"
@@ -732,156 +522,6 @@ export default function Toolbar({
           >
             <span className="inline-flex items-center gap-2"><Magnet className="h-4 w-4" /> Snapping</span>
             <span className="text-xs">{snapEnabled ? "On" : "Off"}</span>
-          </button>
-        </Dropdown>
-
-        <Dropdown id="format" label="Format" icon={<PaintBucket className="h-4 w-4" />} wide>
-          <div className="px-3 py-2">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Shading tool
-            </label>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="color"
-                value={fillColor}
-                onChange={(event) => setFillColor(event.target.value)}
-                className="h-9 w-10 rounded-lg border border-slate-200 bg-white p-1"
-              />
-              <input
-                value={fillColor}
-                onChange={(event) => setFillColor(event.target.value)}
-                className="input h-9 !rounded-lg !py-1 font-mono text-xs uppercase"
-              />
-            </div>
-            <button
-              className={`${menuItem} mt-2`}
-              disabled={!hasSelection}
-              onClick={() => run(() => onApplyPattern("solid", hatchScale, fillColor))}
-            >
-              <span>Apply solid fill</span>
-            </button>
-            <button
-              className={menuItem}
-              disabled={!hasSelection}
-              onClick={() => run(() => onApplyPattern("hatch", hatchScale, fillColor))}
-            >
-              <span>Apply diagonal shading</span>
-            </button>
-            {PATTERNS.map((pattern) => (
-              <button
-                key={pattern.id}
-                className={menuItem}
-                disabled={!hasSelection}
-                onClick={() => run(() => onApplyPattern(pattern.id, hatchScale, fillColor))}
-              >
-                <span>{pattern.label}</span>
-              </button>
-            ))}
-            <label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Hatch scale {hatchScale.toFixed(1)}
-            </label>
-            <input
-              type="range"
-              min="0.3"
-              max="4"
-              step="0.1"
-              value={hatchScale}
-              onChange={(event) => setHatchScale(parseFloat(event.target.value))}
-              className="w-full accent-slate-950"
-            />
-          </div>
-
-          <div className="my-1 border-t border-slate-100" />
-          <div className="px-3 py-2">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Stroke
-            </label>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="color"
-                value={strokeColor}
-                onChange={(event) => setStrokeColor(event.target.value)}
-                className="h-9 w-10 rounded-lg border border-slate-200 bg-white p-1"
-              />
-              <input
-                type="range"
-                min="0.5"
-                max="40"
-                step="0.5"
-                value={strokeWidth}
-                onChange={(event) => setStrokeWidth(parseFloat(event.target.value))}
-                className="min-w-0 flex-1 accent-slate-950"
-              />
-              <span className="w-10 text-right text-xs font-semibold text-slate-600">
-                {strokeWidth.toFixed(1)}
-              </span>
-            </div>
-            <button
-              className={`${menuItem} mt-2`}
-              disabled={!hasSelection}
-              onClick={() => run(() => onUpdateStroke(strokeColor, strokeWidth, true))}
-            >
-              <span>Apply stroke</span>
-            </button>
-            <button
-              className={menuItem}
-              disabled={!hasSelection}
-              onClick={() => run(() => onUpdateStroke(strokeColor, strokeWidth, false))}
-            >
-              <span>Remove stroke</span>
-            </button>
-            <button
-              className={menuItem}
-              disabled={!hasSelection}
-              onClick={() => run(() => onUpdateLineStyle("solid"))}
-            >
-              <span>Solid line type</span>
-            </button>
-            <button
-              className={menuItem}
-              disabled={!hasSelection}
-              onClick={() => run(() => onUpdateLineStyle("dashed"))}
-            >
-              <span>Dashed line type</span>
-            </button>
-          </div>
-        </Dropdown>
-
-        <Dropdown id="detailing" label="Detailing" icon={<Construction className="h-4 w-4" />} wide>
-          <div className="px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Smart structural detailing
-            </p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Keep the menu compact: insert editable beam, column, and footing details, plus a few quick reinforcement symbols.
-            </p>
-          </div>
-          {REINFORCEMENT_BLOCKS.map((item) => (
-            <button
-              key={item.name}
-              className={menuItem}
-              onClick={() =>
-                run(() => {
-                  if (item.type === "parametric") {
-                    onAddParametricBlock(item.kind, item.params);
-                    return;
-                  }
-                  onAddSvg(item.svg);
-                })
-              }
-            >
-              <span className="inline-flex items-center gap-2">
-                <span className="text-sky-300">{item.icon}</span>
-                {item.name}
-              </span>
-            </button>
-          ))}
-          <div className="my-1 border-t border-slate-100" />
-          <button className={menuItem} onClick={() => run(() => onSetToolMode("dimension"))}>
-            <span className="inline-flex items-center gap-2"><Ruler className="h-4 w-4" /> Dimension reinforcement</span>
-          </button>
-          <button className={menuItem} onClick={() => run(() => onSetToolMode("line"))}>
-            <span className="inline-flex items-center gap-2"><PencilLine className="h-4 w-4" /> Draw custom bar path</span>
           </button>
         </Dropdown>
 
