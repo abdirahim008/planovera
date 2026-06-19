@@ -67,6 +67,33 @@ const valueProps = [
   },
 ];
 
+// Generic sample data for the "See it in action" product previews — no real
+// project figures. The drawing imagery under /public/marketing is generic
+// standard-detail content (title blocks stripped).
+const boqPreviewRows = [
+  { kind: "section" as const, label: "A — Earthworks" },
+  { kind: "item" as const, no: "A.1", desc: "Clear and grub site", unit: "m²", qty: "2,400", rate: "3.50", amount: "8,400" },
+  { kind: "item" as const, no: "A.2", desc: "Excavate to formation level", unit: "m³", qty: "1,850", rate: "6.20", amount: "11,470" },
+  { kind: "subtotal" as const, label: "Subtotal — Earthworks", amount: "19,870" },
+  { kind: "section" as const, label: "B — Pavement" },
+  { kind: "item" as const, no: "B.1", desc: "Granular sub-base, 150 mm", unit: "m³", qty: "920", rate: "28.00", amount: "25,760" },
+  { kind: "item" as const, no: "B.2", desc: "Asphalt wearing course, 70 mm", unit: "m²", qty: "6,400", rate: "14.50", amount: "92,800" },
+  { kind: "subtotal" as const, label: "Subtotal — Pavement", amount: "118,560" },
+  { kind: "total" as const, label: "Total carried to summary", amount: "138,430" },
+];
+
+const warehouseTiles = [
+  { src: "/marketing/wh-kerb.png", label: "Kerb & sidewalk details", tag: "Civil · Roads" },
+  { src: "/marketing/wh-catchbasin.png", label: "Catch basin", tag: "Civil · Drainage" },
+  { src: "/marketing/wh-culvert.png", label: "Pipe culvert & headwall", tag: "Civil · Drainage" },
+  { src: "/marketing/wh-manhole.png", label: "Precast manhole", tag: "Civil · Drainage" },
+  { src: "/marketing/wh-retainingwall.png", label: "Retaining wall", tag: "Civil · Structures" },
+  { src: "/marketing/wh-solar.png", label: "Solar street lighting", tag: "Civil · Utilities" },
+];
+
+const studioMenus = ["File", "Edit", "View", "Trays", "Insert", "Tools", "Sheet", "Warehouse"];
+const studioTabs = ["Properties", "Title block", "Projects"];
+
 export default function LandingPage({ authenticated = false }: { authenticated?: boolean }) {
   // When the visitor already has a live session, point every call-to-action at
   // the workspace instead of bouncing through /login (which would just redirect
@@ -217,10 +244,10 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-txt-dim">
-                        SURP2/MOG/P3 · Road rehabilitation
+                        Sample portfolio · Road rehabilitation
                       </div>
                       <div className="mt-0.5 truncate text-[13px] font-bold tracking-tight text-txt">
-                        Package 3 — Saddexda Geed &amp; Hamarweyne Roads
+                        Package 2 — Riverside Avenue Upgrade
                       </div>
                     </div>
                     <span className="shrink-0 rounded-full border border-ok/20 bg-ok/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-ok">
@@ -232,10 +259,10 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
                   <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
                     {(
                       [
-                        ["Contract", "USD 962,540", "bg-accent/10 text-accent"],
-                        ["Physical", "46.0%", "bg-ok/10 text-ok"],
-                        ["Certified", "USD 157,209", "bg-accent/10 text-accent"],
-                        ["Remaining", "65.8%", "bg-warn/10 text-warn"],
+                        ["Contract", "USD 1,200,000", "bg-accent/10 text-accent"],
+                        ["Physical", "52.0%", "bg-ok/10 text-ok"],
+                        ["Certified", "USD 480,000", "bg-accent/10 text-accent"],
+                        ["Remaining", "60.0%", "bg-warn/10 text-warn"],
                       ] as const
                     ).map(([label, value, chip]) => (
                       <div key={label} className="rounded-xl border border-border bg-bg-surface px-2.5 py-2">
@@ -439,6 +466,204 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
                 <p className="mt-1.5 text-sm leading-6 text-txt-muted">{description}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* See it in action — three framed product previews (generic data). */}
+        <section className="border-t border-border py-16 lg:py-20">
+          <div className="max-w-2xl">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-accent">See it in action</span>
+            <h2 className="mt-3 text-3xl font-bold tracking-[-0.02em] text-txt sm:text-4xl">
+              The actual product — bills, drawings and a shared library.
+            </h2>
+            <p className="mt-4 text-base leading-7 text-txt-muted">
+              A spreadsheet-grade BOQ, a built-in drawing studio, and a warehouse of ready-made standard details — all in
+              one workspace, with no separate CAD tool to license.
+            </p>
+          </div>
+
+          <div className="mt-10 space-y-10">
+            {/* 1 · BOQ */}
+            <div>
+              <div className="overflow-hidden rounded-2xl border border-border bg-bg-surface shadow-sm">
+                <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-err/50" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-warn/50" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-ok/50" />
+                  <span className="ml-2 text-[11px] font-medium text-txt-muted">Bill of quantities — Roadworks · Sheet 1</span>
+                </div>
+                <div className="overflow-x-auto p-3 sm:p-4">
+                  <table className="w-full min-w-[620px] border-collapse text-left text-[12px]">
+                    <thead>
+                      <tr className="border-b border-border text-[9px] uppercase tracking-[0.1em] text-txt-dim">
+                        <th className="py-1.5 pr-3 font-semibold">Item</th>
+                        <th className="py-1.5 pr-3 font-semibold">Description</th>
+                        <th className="py-1.5 pr-3 font-semibold">Unit</th>
+                        <th className="py-1.5 pr-3 text-right font-semibold">Qty</th>
+                        <th className="py-1.5 pr-3 text-right font-semibold">Rate</th>
+                        <th className="py-1.5 text-right font-semibold">Amount (USD)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {boqPreviewRows.map((row, i) => {
+                        if (row.kind === "section")
+                          return (
+                            <tr key={i} className="bg-accent/5">
+                              <td colSpan={6} className="px-1 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-accent">
+                                {row.label}
+                              </td>
+                            </tr>
+                          );
+                        if (row.kind === "item")
+                          return (
+                            <tr key={i} className="border-b border-border/60">
+                              <td className="py-1.5 pr-3 font-mono tabular-nums text-txt-muted">{row.no}</td>
+                              <td className="py-1.5 pr-3 text-txt">{row.desc}</td>
+                              <td className="py-1.5 pr-3 text-txt-muted">{row.unit}</td>
+                              <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-txt">{row.qty}</td>
+                              <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-txt">{row.rate}</td>
+                              <td className="py-1.5 text-right font-mono tabular-nums text-txt">{row.amount}</td>
+                            </tr>
+                          );
+                        if (row.kind === "subtotal")
+                          return (
+                            <tr key={i} className="border-b border-border">
+                              <td colSpan={5} className="py-1.5 pr-3 text-right text-[11px] font-semibold text-txt-muted">{row.label}</td>
+                              <td className="py-1.5 text-right font-mono font-semibold tabular-nums text-txt">{row.amount}</td>
+                            </tr>
+                          );
+                        return (
+                          <tr key={i}>
+                            <td colSpan={5} className="py-2 pr-3 text-right text-[12px] font-bold uppercase tracking-[0.06em] text-txt">{row.label}</td>
+                            <td className="py-2 text-right font-mono text-[13px] font-bold tabular-nums text-accent">{row.amount}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-txt-muted">
+                <span className="font-semibold text-txt">Bills of quantities.</span> Spreadsheet-grade editing, Excel
+                paste/import, section subtotals and live totals — the same figures flow straight into payments and progress.
+              </p>
+            </div>
+
+            {/* 2 · Drawing studio (full module) */}
+            <div>
+              <div className="overflow-hidden rounded-2xl border border-[#34353c] bg-[#141519] shadow-sm">
+                {/* top toolbar */}
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-[#34353c] bg-[#202127] px-3 py-2">
+                  <span className="flex items-center gap-1.5 rounded-md bg-[#15161a] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f0a13a]">
+                    <PencilRuler size={12} /> Studio
+                  </span>
+                  <span className="hidden rounded-md border border-[#3a3b42] px-2 py-1 text-[10px] text-slate-300 sm:inline">
+                    Package 2 — Riverside Avenue
+                  </span>
+                  <span className="mx-1 hidden h-4 w-px bg-[#34353c] sm:block" />
+                  {studioMenus.map((m) => (
+                    <span
+                      key={m}
+                      className={`rounded-md px-2 py-1 text-[10px] font-medium ${
+                        m === "Warehouse"
+                          ? "border border-[#f0a13a]/40 bg-[#f0a13a]/10 text-[#f0a13a]"
+                          : "text-slate-300"
+                      }`}
+                    >
+                      {m}
+                    </span>
+                  ))}
+                  <span className="ml-auto hidden rounded-md border border-[#3a3b42] px-2 py-1 text-[10px] text-slate-400 md:inline">
+                    Zoom 60%
+                  </span>
+                </div>
+                <div className="flex">
+                  {/* left tab rail */}
+                  <div className="hidden w-28 shrink-0 flex-col gap-0.5 border-r border-[#34353c] bg-[#1a1b20] p-2 sm:flex">
+                    {studioTabs.map((t) => (
+                      <span
+                        key={t}
+                        className={`rounded-md px-2 py-1.5 text-[11px] ${
+                          t === "Title block" ? "bg-[#f0a13a] font-medium text-[#1c1206]" : "text-slate-300"
+                        }`}
+                      >
+                        {t}
+                      </span>
+                    ))}
+                    <span className="mt-1 rounded-md px-2 py-1.5 text-[11px] text-slate-500">Publish</span>
+                  </div>
+                  {/* canvas with a generated drawing on an A3 sheet */}
+                  <div
+                    className="min-w-0 flex-1 p-4"
+                    style={{
+                      backgroundColor: "#26272e",
+                      backgroundImage:
+                        "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
+                      backgroundSize: "22px 22px",
+                    }}
+                  >
+                    <div className="mx-auto max-w-2xl rounded-sm bg-white p-2 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/marketing/studio-drawing.png"
+                        alt="Generated road cross-section drawing on the studio canvas"
+                        loading="lazy"
+                        className="h-auto w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-txt-muted">
+                <span className="font-semibold text-txt">Drawing studio.</span> A built-in CAD canvas — draw, import SVG/DXF/PDF,
+                add parametric reinforcement details and a clean title block, then export to PDF. No separate tool to license or learn.
+              </p>
+            </div>
+
+            {/* 3 · Warehouse */}
+            <div>
+              <div className="overflow-hidden rounded-2xl border border-[#34353c] bg-[#141519] shadow-sm">
+                <div className="flex items-center gap-3 border-b border-[#34353c] bg-[#202127] px-3 py-2.5">
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-100">
+                    <LayoutDashboard size={14} className="text-[#f0a13a]" /> Drawing library
+                  </span>
+                  <span className="flex flex-1 items-center gap-2 rounded-md border border-[#3a3b42] bg-[#15161a] px-2.5 py-1.5 text-[11px] text-slate-500">
+                    Search culverts, kerb, manhole, tank…
+                  </span>
+                  <span className="hidden text-[11px] text-slate-400 sm:inline">{warehouseTiles.length * 4} drawings</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-[#34353c] bg-[#17181c] px-3 py-1.5">
+                  {["All", "Drawings", "Parts", "Cross sections", "Drainage", "Structures"].map((c, i) => (
+                    <span
+                      key={c}
+                      className={`rounded-md px-2 py-1 text-[10px] font-medium ${
+                        i === 0 ? "bg-[#f0a13a] text-[#1c1206]" : "text-slate-300"
+                      }`}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 p-3 sm:grid-cols-3">
+                  {warehouseTiles.map((tile) => (
+                    <div key={tile.src} className="overflow-hidden rounded-lg border border-[#34353c] bg-[#1a1b20]">
+                      <div className="flex h-24 items-center justify-center bg-white p-1.5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={tile.src} alt={tile.label} loading="lazy" className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <div className="px-2 py-1.5">
+                        <div className="truncate text-[11px] font-medium text-slate-100">{tile.label}</div>
+                        <div className="truncate text-[9px] text-slate-500">{tile.tag}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-txt-muted">
+                <span className="font-semibold text-txt">Warehouse.</span> A shared library of standard details and complete
+                sheets. Filter by category, preview, and import straight onto your canvas — so teams reuse work instead of redrawing it.
+              </p>
+            </div>
           </div>
         </section>
 
