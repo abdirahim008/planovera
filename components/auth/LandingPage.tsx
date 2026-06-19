@@ -1,71 +1,7 @@
 import Image from "next/image";
 
 import LandingSignOut from "@/components/auth/LandingSignOut";
-import {
-  ArrowRight,
-  CheckCircle2,
-  ClipboardList,
-  FileText,
-  LayoutDashboard,
-  Link2,
-  MapPinned,
-  PencilRuler,
-  ShieldCheck,
-} from "lucide-react";
-
-const moduleCards = [
-  {
-    label: "Portfolio",
-    description: "Live dashboards across every project and programme.",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "BOQ",
-    description: "Spreadsheet-grade bills of quantities with Excel import.",
-    icon: FileText,
-  },
-  {
-    label: "Progress",
-    description: "Planned-versus-actual tracking with earned value.",
-    icon: CheckCircle2,
-  },
-  {
-    label: "Payments",
-    description: "FIDIC-style certificates, retention and advance recovery.",
-    icon: ShieldCheck,
-  },
-  {
-    label: "Documents",
-    description: "Generate, store and version project paperwork.",
-    icon: ClipboardList,
-  },
-  {
-    label: "Project map",
-    description: "Geo-locate sites and visualise your portfolio.",
-    icon: MapPinned,
-  },
-];
-
-const valueProps = [
-  {
-    title: "One source of truth",
-    description:
-      "BOQs, payments, progress and documents stay linked, so the numbers reconcile automatically across every report.",
-    icon: Link2,
-  },
-  {
-    title: "Built for the field",
-    description:
-      "Site notes, checklists, correspondence and meeting minutes capture the work where it actually happens.",
-    icon: ClipboardList,
-  },
-  {
-    title: "Drawings included",
-    description:
-      "An integrated technical drawing studio is built in, so there is no separate CAD tool to license or learn.",
-    icon: PencilRuler,
-  },
-];
+import { ArrowRight, CheckCircle2, LayoutDashboard, PencilRuler } from "lucide-react";
 
 // Generic sample data for the "See it in action" product previews — no real
 // project figures. The drawing imagery under /public/marketing is generic
@@ -439,36 +375,6 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
           </div>
         </section>
 
-        <section className="border-t border-border py-16 lg:py-20">
-          <div className="max-w-2xl">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-accent">
-              One workspace
-            </span>
-            <h2 className="mt-3 text-3xl font-bold tracking-[-0.02em] text-txt sm:text-4xl">
-              Every discipline, in the same place.
-            </h2>
-            <p className="mt-4 text-base leading-7 text-txt-muted">
-              Stop stitching together spreadsheets, email threads, and drawing files. Planovera connects each module so
-              your team works from a single, current picture of the project.
-            </p>
-          </div>
-
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {moduleCards.map(({ label, description, icon: Icon }) => (
-              <div
-                key={label}
-                className="group rounded-2xl border border-border bg-bg-surface p-5 transition hover:border-accent/30 hover:bg-bg-hover"
-              >
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-blue-500/15 text-accent transition group-hover:bg-blue-500/25">
-                  <Icon size={20} />
-                </span>
-                <div className="mt-4 text-base font-semibold text-txt">{label}</div>
-                <p className="mt-1.5 text-sm leading-6 text-txt-muted">{description}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* See it in action — three framed product previews (generic data). */}
         <section className="border-t border-border py-16 lg:py-20">
           <div className="max-w-2xl">
@@ -664,20 +570,6 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
                 sheets. Filter by category, preview, and import straight onto your canvas — so teams reuse work instead of redrawing it.
               </p>
             </div>
-          </div>
-        </section>
-
-        <section className="border-t border-border py-16 lg:py-20">
-          <div className="grid gap-8 lg:grid-cols-3">
-            {valueProps.map(({ title, description, icon: Icon }) => (
-              <div key={title} className="flex flex-col gap-3">
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-teal-300/20 bg-teal-400/10 text-teal-300">
-                  <Icon size={20} />
-                </span>
-                <h3 className="text-lg font-semibold text-txt">{title}</h3>
-                <p className="text-sm leading-7 text-txt-muted">{description}</p>
-              </div>
-            ))}
           </div>
         </section>
 
