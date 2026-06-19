@@ -3169,6 +3169,7 @@ export default function Editor({
         onNewProject={handleNewProject}
         onSaveProject={() => void handleSaveProject()}
         onExportPDF={() => void handleExportPDF()}
+        onOpenWarehouse={() => window.open("/drawings/library", "planovera-library")}
         onLogout={() => {
           const supabase = getSupabaseBrowserClient();
           if (authConfigured) {
