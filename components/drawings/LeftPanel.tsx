@@ -1160,6 +1160,15 @@ export default function LeftPanel({
                     <label className="label">Project description</label>
                     <textarea className="input min-h-[56px] resize-y" value={titleBlockData.projectDescription ?? ""} onChange={(event) => updateTitleBlock("projectDescription", event.target.value)} />
                   </div>
+                  <div>
+                    <label className="label">Notes (consultant strip)</label>
+                    <textarea
+                      className="input min-h-[72px] resize-y"
+                      value={titleBlockData.notes ?? ""}
+                      onChange={(event) => updateTitleBlock("notes", event.target.value)}
+                      placeholder="All dimensions are in millimetres unless noted otherwise…"
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label">Designed by</label>

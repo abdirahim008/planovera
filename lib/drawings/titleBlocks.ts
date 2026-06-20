@@ -262,28 +262,29 @@ async function buildStrip(fabric: FabricMod, canvas: FabricCanvas, d: TitleBlock
   canvas.add(tag(frame, { lock: true }));
 
   // --- Vertical geometry --------------------------------------------------
-  // Identity grid (5 label/value rows) pinned to the bottom, with a title cell
-  // above it. Heights are derived so rows always fill the block exactly.
+  // Everything is bottom-aligned: the identity grid, the drawing-title cell, the
+  // consultant and client blocks sit together at the foot of the strip (compact,
+  // no wasted space), and the editable NOTES area fills the flexible top. There
+  // is no separate revisions row.
+  // The bottom block (client + consultant + drawing title + identity grid) fills
+  // roughly the lower half of the strip with compact, content-sized cells; the
+  // editable NOTES area takes the upper portion. Rows stay tight so no cell is
+  // left half-empty.
   const ID_ROWS = 5;
-  const idTop = Math.max(SH * 0.42, SH - 168);
-  const titleH = Math.max(30, Math.min(46, SH - idTop - ID_ROWS * 24));
-  const gridTop = idTop + titleH;
-  const rowH = (SH - gridTop) / ID_ROWS;
-
-  // Upper sections share everything above the identity block.
-  const upper = idTop;
-  const consH = Math.max(40, upper * 0.16);
-  const clientH = Math.max(86, upper * 0.34);
-  const revH = Math.max(50, upper * 0.2);
-  const notesH = Math.max(44, upper - consH - clientH - revH);
-  const yRev = notesH;
-  const yClient = notesH + revH;
-  const yCons = notesH + revH + clientH;
+  const rowH = Math.min(26, Math.max(22, SH * 0.035));
+  const gridH = ID_ROWS * rowH;
+  const titleH = Math.min(78, Math.max(62, SH * 0.1)); // room for 2–3 line titles
+  const consH = 40;
+  const clientH = Math.min(104, Math.max(90, SH * 0.13));
+  const gridTop = SH - gridH;
+  const yTitle = gridTop - titleH;
+  const yCons = yTitle - consH;
+  const yClient = Math.max(SH * 0.24, yCons - clientH);
 
   // --- Rules (separators) -------------------------------------------------
   const lines: FabricObject[] = [];
   const hr = (yy: number) => lines.push(new fabric.Line([0, yy, SW, yy], { stroke: STROKE, strokeWidth: 0.6 }));
-  [yRev, yClient, yCons, idTop, gridTop].forEach(hr);
+  [yClient, yCons, yTitle, gridTop].forEach(hr);
   for (let i = 1; i < ID_ROWS; i += 1) hr(gridTop + i * rowH);
   // Vertical divider down the two-column identity grid.
   lines.push(new fabric.Line([col, gridTop, col, SH], { stroke: STROKE, strokeWidth: 0.6 }));
@@ -292,30 +293,27 @@ async function buildStrip(fabric: FabricMod, canvas: FabricCanvas, d: TitleBlock
   const t = (text: string, lx: number, ly: number, size: number, o: Parameters<typeof makeText>[5] = {}) =>
     texts.push(makeText(fabric, text, lx, ly, size, { width: o.width ?? SW - lx - PAD, ...o }));
 
-  // --- Notes --------------------------------------------------------------
+  // --- Notes (editable — type general notes here) -------------------------
   t("NOTES", PAD, 6, 7.5, { bold: true, color: "#555" });
   t(
-    "All dimensions are in millimetres unless noted otherwise. Refer to the general notes and the standard details manual.",
+    v(d.notes, "All dimensions are in millimetres unless noted otherwise. Refer to the general notes and the standard details manual."),
     PAD,
-    19,
+    18,
     8,
-    { color: "#333" },
+    { field: "notes", color: "#333" },
   );
-  // --- Revisions ----------------------------------------------------------
-  t("REVISIONS", PAD, yRev + 6, 7.5, { bold: true, color: "#555" });
-  t("REV     BY     CHK     DATE", PAD, yRev + 18, 7.5, { color: "#444" });
   // --- Client (with logo) -------------------------------------------------
-  t("CLIENT", PAD, yClient + 6, 7.5, { bold: true, color: "#555" });
+  t("CLIENT", PAD, yClient + 5, 7.5, { bold: true, color: "#555" });
   // The logo is added in absolute canvas coords (outside the group) so it scales correctly.
-  await addLogo(fabric, canvas, d.logoDataUrl, { left: x + PAD, top: top + yClient + 18, w: 58, h: 34 });
-  t(v(d.client, "Client"), 70, yClient + 20, 9.5, { bold: true, field: "client", width: SW - 70 - PAD });
-  t(v(d.projectDescription || d.projectTitle), PAD, yClient + 58, 8, { field: "projectDescription", width: SW - 2 * PAD });
+  await addLogo(fabric, canvas, d.logoDataUrl, { left: x + PAD, top: top + yClient + 16, w: 52, h: 30 });
+  t(v(d.client, "Client"), 62, yClient + 18, 9, { bold: true, field: "client", width: SW - 62 - PAD });
+  t(v(d.projectDescription || d.projectTitle), PAD, yClient + 50, 7.5, { field: "projectDescription", width: SW - 2 * PAD });
   // --- Consultant ---------------------------------------------------------
-  t("CONSULTANT", PAD, yCons + 6, 7.5, { bold: true, color: "#555" });
-  t(v(d.consultant, "Consulting Engineers"), PAD, yCons + 18, 9.5, { bold: true, field: "consultant", width: SW - 2 * PAD });
-  // --- Identity: drawing title cell --------------------------------------
-  t("DRAWING TITLE", PAD, idTop + 6, 7.5, { bold: true, color: "#555" });
-  t(v(d.drawingTitle), PAD, idTop + 18, 10, { bold: true, field: "drawingTitle", width: SW - 2 * PAD });
+  t("CONSULTANT", PAD, yCons + 5, 7.5, { bold: true, color: "#555" });
+  t(v(d.consultant, "Consulting Engineers"), PAD, yCons + 16, 9, { bold: true, field: "consultant", width: SW - 2 * PAD });
+  // --- Identity: drawing-title cell (room for long titles) ---------------
+  t("DRAWING TITLE", PAD, yTitle + 5, 7.5, { bold: true, color: "#555" });
+  t(v(d.drawingTitle), PAD, yTitle + 16, 9.5, { bold: true, field: "drawingTitle", width: SW - 2 * PAD });
   // --- Identity: ruled label/value grid ----------------------------------
   const cell = (label: string, value: string, field: keyof TitleBlockData | undefined, rowIdx: number, right: boolean) => {
     const lx = right ? col + PAD : PAD;

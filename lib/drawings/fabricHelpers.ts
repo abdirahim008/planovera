@@ -115,6 +115,7 @@ export interface TitleBlockData {
   status?: string;
   consultant?: string;
   projectDescription?: string;
+  notes?: string;
 }
 
 // Build the selected title-block template (and page border, for the bordered
