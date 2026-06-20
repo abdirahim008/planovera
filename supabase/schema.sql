@@ -1893,6 +1893,15 @@ begin
     raise exception 'Billing plan not found.';
   end if;
 
+  -- Keep the organization's account type in sync with the chosen plan so the
+  -- INDIVIDUAL/ORG classification follows the admin's selection: individual
+  -- plans mark the workspace personal (single-seat), organization plans make it
+  -- shared (admin-allocated seats).
+  update public.organizations
+  set personal = (plan_record.audience = 'individual'),
+      updated_at = timezone('utc', now())
+  where id = org_uuid;
+
   select count(*)
   into active_members
   from public.organization_members

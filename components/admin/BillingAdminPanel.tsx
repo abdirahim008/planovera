@@ -1510,21 +1510,61 @@ export default function BillingAdminPanel() {
             </div>
 
             <div>
+              <label className="label">Account type</label>
+              <select
+                className="input"
+                value={editor.isPersonal ? "individual" : "organization"}
+                onChange={(event) => {
+                  const individual = event.target.value === "individual";
+                  setEditor((current) => {
+                    if (!current) return current;
+                    const nextPlan =
+                      plans.find((plan) => plan.audience === (individual ? "individual" : "organization"))?.code ??
+                      current.planCode;
+                    return {
+                      ...current,
+                      isPersonal: individual,
+                      planCode: nextPlan,
+                      seatCount: individual ? "1" : current.seatCount,
+                    };
+                  });
+                }}
+              >
+                <option value="individual">Individual — single user</option>
+                <option value="organization">Organization — multiple seats</option>
+              </select>
+              <p className="mt-1 text-xs leading-5 text-txt-dim">
+                Individual accounts are fixed at one seat. Organization accounts let you set the seat count below.
+              </p>
+            </div>
+
+            <div>
               <label className="label">Plan</label>
               <select
                 className="input"
                 value={editor.planCode}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const code = event.target.value;
+                  const audience = plans.find((plan) => plan.code === code)?.audience;
                   setEditor((current) =>
-                    current ? { ...current, planCode: event.target.value } : current,
-                  )
-                }
+                    current
+                      ? {
+                          ...current,
+                          planCode: code,
+                          isPersonal: audience ? audience === "individual" : current.isPersonal,
+                          seatCount: audience === "individual" ? "1" : current.seatCount,
+                        }
+                      : current,
+                  );
+                }}
               >
-                {plans.map((plan) => (
-                  <option key={plan.id} value={plan.code}>
-                    {plan.name} · {formatMoney(plan.base_price_cents)}
-                  </option>
-                ))}
+                {plans
+                  .filter((plan) => plan.audience === (editor.isPersonal ? "individual" : "organization"))
+                  .map((plan) => (
+                    <option key={plan.id} value={plan.code}>
+                      {plan.name} · {formatMoney(plan.base_price_cents)}
+                    </option>
+                  ))}
               </select>
             </div>
 
