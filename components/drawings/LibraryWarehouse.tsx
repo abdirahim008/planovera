@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, Pencil, Trash2, ChevronRight, ChevronDown } from "lucide-react";
+import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, Pencil, Trash2, ChevronRight, ChevronDown, SlidersHorizontal } from "lucide-react";
 import {
   LIBRARY_CATEGORIES,
   type LibraryCategory,
@@ -144,6 +144,7 @@ export default function LibraryWarehouse({
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [kindTab, setKindTab] = useState<Kind>("all");
+  const [showFilters, setShowFilters] = useState(false);
   const [justImported, setJustImported] = useState<Record<string, number>>({});
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [expanded, setExpanded] = useState<Set<LibraryCategory>>(() => new Set<LibraryCategory>(["civil" as LibraryCategory]));
@@ -244,14 +245,14 @@ export default function LibraryWarehouse({
     }`;
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#141519]" aria-label="Drawing library">
+    <div className="flex h-screen w-full flex-col overflow-x-hidden bg-[#141519]" aria-label="Drawing library">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[#34353c] bg-[#202127] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#34353c] bg-[#202127] px-4 py-3">
         <span className="flex items-center gap-2 text-[15px] font-medium text-slate-100">
           <LayoutGrid className="h-5 w-5 text-[#f0a13a]" />
           Drawing library
         </span>
-        <div className="flex max-w-md flex-1 items-center gap-2 rounded-lg border border-[#3a3b42] bg-[#15161a] px-3 py-2">
+        <div className="order-last flex w-full items-center gap-2 rounded-lg border border-[#3a3b42] bg-[#15161a] px-3 py-2 md:order-none md:w-auto md:max-w-md md:flex-1">
           <Search className="h-4 w-4 shrink-0 text-slate-500" />
           <input
             autoFocus
@@ -280,7 +281,8 @@ export default function LibraryWarehouse({
       </div>
 
       {/* Type tabs — Drawings (complete sheets) vs Parts (reusable details). */}
-      <div className="flex items-center gap-1 border-b border-[#34353c] bg-[#17181c] px-3 py-1.5">
+      <div className="flex items-center gap-2 border-b border-[#34353c] bg-[#17181c] px-3 py-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {([
           { id: "all", label: "All", icon: LayoutGrid, count: kindCounts.all },
           { id: "drawing", label: "Drawings", icon: Layers, count: kindCounts.drawing },
@@ -293,7 +295,7 @@ export default function LibraryWarehouse({
               key={t.id}
               type="button"
               onClick={() => setKindTab(t.id)}
-              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] transition ${
+              className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] transition ${
                 active ? "bg-[#f0a13a] font-medium text-[#1c1206]" : "text-slate-300 hover:bg-white/5 hover:text-white"
               }`}
             >
@@ -303,12 +305,39 @@ export default function LibraryWarehouse({
             </button>
           );
         })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowFilters(true)}
+          className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#3a3b42] px-3 py-1.5 text-[13px] text-slate-300 transition hover:bg-white/5 hover:text-white md:hidden"
+        >
+          <SlidersHorizontal className="h-4 w-4" /> Filters
+          {selectedLeaves.size > 0 ? (
+            <span className="rounded-full bg-[#f0a13a] px-1.5 text-[10px] font-semibold text-[#1c1206]">{selectedLeaves.size}</span>
+          ) : null}
+        </button>
       </div>
 
       {/* Body */}
-      <div className="flex min-h-0 flex-1">
-        {/* Left rail */}
-        <div className="w-48 shrink-0 overflow-y-auto border-r border-[#34353c] bg-[#1a1b20] p-2">
+      <div className="relative flex min-h-0 flex-1">
+        {/* Backdrop for the mobile filter drawer */}
+        {showFilters ? (
+          <div onClick={() => setShowFilters(false)} className="absolute inset-0 z-20 bg-black/50 md:hidden" aria-hidden />
+        ) : null}
+        {/* Left rail — inline on desktop, slide-over filter drawer on mobile/tablet */}
+        <div
+          className={`${showFilters ? "block" : "hidden"} absolute inset-y-0 left-0 z-30 w-64 max-w-[80%] overflow-y-auto border-r border-[#34353c] bg-[#1a1b20] p-2 shadow-2xl md:static md:block md:w-48 md:max-w-none md:shrink-0 md:shadow-none`}
+        >
+          <div className="mb-1 flex items-center justify-between px-1 md:hidden">
+            <span className="text-[12px] font-semibold text-slate-200">Filters</span>
+            <button
+              onClick={() => setShowFilters(false)}
+              aria-label="Close filters"
+              className="rounded-md p-1 text-slate-400 transition hover:bg-white/5 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
           <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
             Browse
           </div>
@@ -404,7 +433,7 @@ export default function LibraryWarehouse({
               No drawings match the current search.
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3.5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:gap-3.5">
               {items.map((item) => {
                 const isFavorite = favoriteIds.includes(item.id);
                 const imported = Boolean(justImported[item.id]);
