@@ -399,14 +399,14 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
                   <span className="ml-2 text-[11px] font-medium text-txt-muted">Bill of quantities — Roadworks · Sheet 1</span>
                 </div>
                 <div className="overflow-x-auto p-3 sm:p-4">
-                  <table className="w-full min-w-[620px] border-collapse text-left text-[12px]">
+                  <table className="w-full border-collapse text-left text-[12px] sm:min-w-[620px]">
                     <thead>
                       <tr className="border-b border-border text-[9px] uppercase tracking-[0.1em] text-txt-dim">
                         <th className="py-1.5 pr-3 font-semibold">Item</th>
                         <th className="py-1.5 pr-3 font-semibold">Description</th>
-                        <th className="py-1.5 pr-3 font-semibold">Unit</th>
-                        <th className="py-1.5 pr-3 text-right font-semibold">Qty</th>
-                        <th className="py-1.5 pr-3 text-right font-semibold">Rate</th>
+                        <th className="hidden py-1.5 pr-3 font-semibold sm:table-cell">Unit</th>
+                        <th className="hidden py-1.5 pr-3 text-right font-semibold sm:table-cell">Qty</th>
+                        <th className="hidden py-1.5 pr-3 text-right font-semibold sm:table-cell">Rate</th>
                         <th className="py-1.5 text-right font-semibold">Amount (USD)</th>
                       </tr>
                     </thead>
@@ -425,9 +425,9 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
                             <tr key={i} className="border-b border-border/60">
                               <td className="py-1.5 pr-3 font-mono tabular-nums text-txt-muted">{row.no}</td>
                               <td className="py-1.5 pr-3 text-txt">{row.desc}</td>
-                              <td className="py-1.5 pr-3 text-txt-muted">{row.unit}</td>
-                              <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-txt">{row.qty}</td>
-                              <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-txt">{row.rate}</td>
+                              <td className="hidden py-1.5 pr-3 text-txt-muted sm:table-cell">{row.unit}</td>
+                              <td className="hidden py-1.5 pr-3 text-right font-mono tabular-nums text-txt sm:table-cell">{row.qty}</td>
+                              <td className="hidden py-1.5 pr-3 text-right font-mono tabular-nums text-txt sm:table-cell">{row.rate}</td>
                               <td className="py-1.5 text-right font-mono tabular-nums text-txt">{row.amount}</td>
                             </tr>
                           );
