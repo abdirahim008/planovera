@@ -121,6 +121,28 @@ export async function deleteSharedLibraryItem(id: string): Promise<{ error?: str
   return error ? { error: error.message } : {};
 }
 
+// Admin-only metadata edit for a shared drawing (name / category / description /
+// tags). The heavy SVG itself is managed via the upload scripts; this only
+// curates the searchable metadata. RLS restricts writes to platform admins.
+export async function updateSharedLibraryItem(
+  id: string,
+  fields: { name: string; category: string; description: string; tags: string[] },
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Not connected." };
+  const { error } = await supabase
+    .from("drawing_library_items")
+    .update({
+      name: fields.name,
+      category: fields.category,
+      description: fields.description,
+      tags: fields.tags,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
 // Merge remote (DB) library items with the static seed set, de-duped by name.
 function mergeWithSeed(remoteItems: LibraryItem[]): LibraryItem[] {
   const seen = new Set(remoteItems.map((item) => item.name.toLowerCase()));
