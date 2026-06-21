@@ -9,11 +9,8 @@ import {
   type LibraryItem,
 } from "@/lib/drawings/appModel";
 import {
-  deleteSharedLibraryItem,
-  fetchCurrentUserRole,
   fetchDrawingLibrary,
   fetchLibraryItemSvg,
-  postLibraryEdit,
   postLibraryImport,
 } from "@/lib/drawings/libraryBridge";
 
@@ -24,7 +21,6 @@ export default function DrawingLibraryPage() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,9 +35,6 @@ export default function DrawingLibraryPage() {
       .finally(() => {
         if (active) setLoading(false);
       });
-    fetchCurrentUserRole().then((role) => {
-      if (active) setIsAdmin(role === "admin");
-    });
     return () => {
       active = false;
     };
@@ -63,21 +56,6 @@ export default function DrawingLibraryPage() {
     setRecentIds((current) => [item.id, ...current.filter((id) => id !== item.id)]);
   }, []);
 
-  // Hand the drawing to the studio tab for an admin clean-up + republish.
-  const handleEdit = useCallback((item: LibraryItem) => {
-    postLibraryEdit(item.id);
-  }, []);
-
-  const handleDelete = useCallback(async (item: LibraryItem) => {
-    if (!window.confirm(`Remove "${item.name}" from the shared library? This cannot be undone.`)) return;
-    const { error } = await deleteSharedLibraryItem(item.id);
-    if (error) {
-      window.alert(`Delete failed: ${error}`);
-      return;
-    }
-    setItems((current) => current.filter((entry) => entry.id !== item.id));
-  }, []);
-
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#141519] text-[13px] text-slate-400">
@@ -94,9 +72,6 @@ export default function DrawingLibraryPage() {
       onToggleFavorite={handleToggleFavorite}
       onImport={handleImport}
       onResolveSvg={fetchLibraryItemSvg}
-      isAdmin={isAdmin}
-      onEdit={handleEdit}
-      onDelete={handleDelete}
       onClose={() => window.close()}
     />
   );
