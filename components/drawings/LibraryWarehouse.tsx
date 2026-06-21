@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, Pencil, Trash2, ChevronRight, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, ChevronRight, ChevronDown, SlidersHorizontal } from "lucide-react";
 import {
   LIBRARY_CATEGORIES,
   type LibraryCategory,
@@ -109,10 +109,6 @@ interface LibraryWarehouseProps {
   // Resolve an item's full SVG for the large preview (seed items carry it; DB
   // items fetch it by id on demand).
   onResolveSvg?: (item: LibraryItem) => Promise<string>;
-  // Admin-only: edit (open in studio for clean-up + republish) and delete.
-  isAdmin?: boolean;
-  onEdit?: (item: LibraryItem) => void;
-  onDelete?: (item: LibraryItem) => void | Promise<void>;
   onClose?: () => void;
 }
 
@@ -136,9 +132,6 @@ export default function LibraryWarehouse({
   onToggleFavorite,
   onImport,
   onResolveSvg,
-  isAdmin = false,
-  onEdit,
-  onDelete,
   onClose,
 }: LibraryWarehouseProps) {
   const [query, setQuery] = useState("");
@@ -489,34 +482,6 @@ export default function LibraryWarehouse({
                     >
                       <ZoomIn className="h-4 w-4" />
                     </button>
-
-                    {/* Admin actions — edit (clean up + republish) and delete. */}
-                    {isAdmin && item.source !== "seed" ? (
-                      <div className="absolute left-1.5 top-1.5 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100">
-                        {onEdit ? (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(item)}
-                            aria-label={`Edit ${displayLibraryName(item.name)}`}
-                            title="Edit in studio"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#3a3b42] bg-[#141519]/70 text-slate-200 transition hover:bg-[#f0a13a] hover:text-[#1c1206]"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        ) : null}
-                        {onDelete ? (
-                          <button
-                            type="button"
-                            onClick={() => void onDelete(item)}
-                            aria-label={`Delete ${displayLibraryName(item.name)}`}
-                            title="Delete from library"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#3a3b42] bg-[#141519]/70 text-slate-200 transition hover:bg-red-500 hover:text-white"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
 
                     <div className="flex items-start gap-1.5 px-2.5 py-2">
                       <div className="min-w-0 flex-1">

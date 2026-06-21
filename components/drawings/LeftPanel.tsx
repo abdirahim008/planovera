@@ -149,7 +149,6 @@ export default function LeftPanel({
     { id: "properties", label: "Properties", short: "Prop", icon: SlidersHorizontal, subtitle: "Selection, style & import" },
     { id: "titleblock", label: "Title block", short: "Title", icon: LayoutTemplate, subtitle: "Sheet title block & metadata" },
     { id: "projects", label: "Projects", short: "Proj", icon: FolderOpen, subtitle: "Saved drawing packages" },
-    ...(isAdmin ? [{ id: "admin" as const, label: "Publish", short: "Pub", icon: UploadCloud, subtitle: "Publish to the shared library" }] : []),
   ];
 
   const [localActiveTray, setLocalActiveTray] = useState<DrawingPanelTab | null>(

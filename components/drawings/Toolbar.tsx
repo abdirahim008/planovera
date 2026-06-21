@@ -215,16 +215,6 @@ export default function Toolbar({
       description: "Saved drawing packages",
       icon: <FileText className="h-4 w-4" />,
     },
-    ...(session.role === "admin"
-      ? [
-          {
-            id: "admin" as const,
-            label: "Publish",
-            description: "Shared library publishing",
-            icon: <PanelLeftOpen className="h-4 w-4" />,
-          },
-        ]
-      : []),
   ];
   const [openMenu, setOpenMenu] = useState<MenuName | null>(null);
   const [fillColor, setFillColor] = useState("#dbeafe");
