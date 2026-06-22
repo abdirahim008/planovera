@@ -1792,7 +1792,11 @@ export default function Editor({
           canvas.requestRenderAll();
           commitHistory();
         })
-        .catch(() => {});
+        .catch((error) => {
+          setMessage(
+            `Could not render the drawing: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
     };
 
     if (currentPage.json) {
