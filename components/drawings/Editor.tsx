@@ -307,9 +307,14 @@ function mergeLibraryItems(remoteItems: LibraryItem[]): LibraryItem[] {
 export default function Editor({
   embedded = false,
   linkedProject = null,
+  editLibraryId = null,
 }: {
   embedded?: boolean;
   linkedProject?: LinkedProjectContext | null;
+  // When set (admin "Edit in canvas" deep-link), the studio opens this warehouse
+  // drawing for editing once it has finished booting — deterministic, no reliance
+  // on the cross-tab import queue.
+  editLibraryId?: string | null;
 } = {}) {
   const router = useRouter();
   const setActiveModule = useAppStore((state) => state.setActiveModule);
@@ -2061,6 +2066,17 @@ export default function Editor({
       });
     });
   }, [fetchLibrarySvg, handleAddSvg, handleEditLibraryItem, handleInsertLibraryItem, libraryItems, recordLibraryUse]);
+
+  // Admin "Edit in canvas" deep-link: once the studio has finished booting (so the
+  // DB library items + the admin session are loaded), open the requested drawing
+  // for editing exactly once. URL-driven, so there's no race with the cross-tab
+  // queue and no empty canvas if the studio opens before the warehouse data lands.
+  const editDeepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (!booted || !editLibraryId || editDeepLinkHandledRef.current) return;
+    editDeepLinkHandledRef.current = true;
+    void handleEditLibraryItem(editLibraryId);
+  }, [booted, editLibraryId, handleEditLibraryItem]);
 
   const handleUpdateParametricBlock = useCallback(
     async (params: Partial<ParametricBlockParams>) => {
