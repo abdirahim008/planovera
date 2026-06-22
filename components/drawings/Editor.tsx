@@ -69,6 +69,7 @@ import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-b
 type FabricMod = typeof FabricNS;
 type ToolMode =
   | "select"
+  | "marquee"
   | "pan"
   | "line"
   | "dimension"
@@ -412,6 +413,10 @@ export default function Editor({
   });
   const toolModeRef = useRef<ToolMode>("select");
   const snapEnabledRef = useRef(true);
+  // Box-select ("marquee") tool: drag a rectangle to select every object whose
+  // centre falls inside it — reliable on dense imported drawings where pressing
+  // anywhere lands on a line.
+  const marqueeRef = useRef<{ start?: { x: number; y: number }; rect?: FabricNS.FabricObject | null }>({});
   const dimStateRef = useRef<{
     step: number;
     p1?: { x: number; y: number };
@@ -1346,6 +1351,30 @@ export default function Editor({
         return;
       }
 
+      if (toolModeRef.current === "marquee" && event.button === 0) {
+        const point = canvas.getScenePoint(event);
+        canvas.selection = false;
+        canvas.discardActiveObject();
+        const rect = new fabricMod.Rect({
+          left: point.x,
+          top: point.y,
+          width: 0,
+          height: 0,
+          fill: "rgba(37,99,235,0.12)",
+          stroke: "#2563eb",
+          strokeWidth: 1,
+          strokeDashArray: [4, 3],
+          strokeUniform: true,
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+        });
+        marqueeRef.current = { start: { x: point.x, y: point.y }, rect };
+        canvas.add(rect);
+        canvas.requestRenderAll();
+        return;
+      }
+
       if ((toolModeRef.current === "door" || toolModeRef.current === "window") && event.button === 0) {
         const point: { x: number; y: number } = canvas.getScenePoint(event);
         const host = findNearestWall(point);
@@ -1625,6 +1654,20 @@ export default function Editor({
         return;
       }
 
+      if (toolModeRef.current === "marquee" && marqueeRef.current.start && marqueeRef.current.rect) {
+        const point = canvas.getScenePoint(event);
+        const start = marqueeRef.current.start;
+        marqueeRef.current.rect.set({
+          left: Math.min(start.x, point.x),
+          top: Math.min(start.y, point.y),
+          width: Math.abs(point.x - start.x),
+          height: Math.abs(point.y - start.y),
+        });
+        marqueeRef.current.rect.setCoords();
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (toolModeRef.current === "door" || toolModeRef.current === "window") {
         const point: { x: number; y: number } = canvas.getScenePoint(event);
         const host = findNearestWall(point);
@@ -1771,6 +1814,45 @@ export default function Editor({
 
     canvas.on("mouse:up", () => {
       isDragging = false;
+
+      if (toolModeRef.current === "marquee" && marqueeRef.current.start) {
+        const rect = marqueeRef.current.rect;
+        const box = rect ? rect.getBoundingRect() : null;
+        if (rect) canvas.remove(rect);
+        marqueeRef.current = {};
+        if (box && box.width > 2 && box.height > 2) {
+          const cx0 = box.left;
+          const cy0 = box.top;
+          const cx1 = box.left + box.width;
+          const cy1 = box.top + box.height;
+          const hits = canvas.getObjects().filter((obj) => {
+            if (obj.selectable === false || obj === rect) return false;
+            const b = obj.getBoundingRect();
+            const cx = b.left + b.width / 2;
+            const cy = b.top + b.height / 2;
+            return cx >= cx0 && cx <= cx1 && cy >= cy0 && cy <= cy1;
+          });
+          canvas.discardActiveObject();
+          if (hits.length === 1) {
+            canvas.setActiveObject(hits[0]);
+          } else if (hits.length > 1) {
+            canvas.setActiveObject(new fabricMod.ActiveSelection(hits, { canvas }));
+          }
+          setMessage(
+            hits.length
+              ? `Selected ${hits.length} object${hits.length === 1 ? "" : "s"} — drag to move, or delete/group them.`
+              : "Nothing in the box — drag across the part you want.",
+          );
+        }
+        // Drop back to normal select so the new selection can be dragged.
+        setToolMode("select");
+        toolModeRef.current = "select";
+        canvas.selection = true;
+        canvas.defaultCursor = "default";
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (toolModeRef.current === "select") {
         canvas.selection = true;
         canvas.defaultCursor = "default";
@@ -3260,6 +3342,13 @@ export default function Editor({
           </span>
           <span className="text-amber-700">Remove unneeded notes, clean up, then save.</span>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              className={`btn ${toolMode === "marquee" ? "btn-primary" : ""}`}
+              onClick={() => handleSetToolMode(toolMode === "marquee" ? "select" : "marquee")}
+              title="Drag a box across any part of the drawing to select everything inside it — even on a dense drawing"
+            >
+              {toolMode === "marquee" ? "Drag a box…" : "Select area"}
+            </button>
             <button
               className="btn"
               onClick={handleUngroupDrawing}
