@@ -146,6 +146,26 @@ export function cleanStructuralSvg(svg, opts = {}) {
   return { svg: head + body, removedPaths, removedUses, removedImages };
 }
 
+// Boost hairline strokes so the drawing reads crisply on screen. The source
+// PDFs use print-weight hairlines (e.g. 0.12 / 0.72 units in a ~1191-wide
+// viewBox) which fall well under a pixel once the sheet is scaled to fit the
+// canvas, so the drawing looks faint. We scale every stroke and floor it at a
+// fraction of the sheet width — viewBox-relative so larger sheets (which get
+// shrunk more to fit) land at the same on-screen weight. Existing heavier
+// strokes are only ever raised, never thinned, so the line-weight hierarchy is
+// preserved.
+export function boostStrokeWidths(svg, opts = {}) {
+  const scale = opts.scale ?? 1.8;
+  const minFrac = opts.minFrac ?? 0.00035;
+  const vb = svg.match(/viewBox="([\d.\- ]+)"/);
+  const W = vb ? parseFloat(vb[1].trim().split(/\s+/)[2]) : 1191;
+  const min = W * minFrac;
+  return svg.replace(/stroke-width="([\d.]+)"/g, (_m, w) => {
+    const next = Math.max(min, parseFloat(w) * scale);
+    return `stroke-width="${Number(next.toFixed(2))}"`;
+  });
+}
+
 // --- standalone test ----------------------------------------------------------
 if (process.argv[1] && process.argv[1].replace(/\\/g, "/").endsWith("clean-structural-svg.mjs")) {
   const [, , inFile, outFile, bandArg] = process.argv;
