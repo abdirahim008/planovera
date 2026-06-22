@@ -12,7 +12,6 @@ import {
   fetchCurrentUserRole,
   fetchDrawingLibrary,
   fetchLibraryItemSvg,
-  postLibraryEdit,
   postLibraryImport,
 } from "@/lib/drawings/libraryBridge";
 
@@ -60,12 +59,12 @@ export default function DrawingLibraryPage() {
     setRecentIds((current) => [item.id, ...current.filter((id) => id !== item.id)]);
   }, []);
 
-  // Admin: open the drawing on the studio canvas for a clean-up. Mirrors the
-  // admin panel — enqueue the edit, then open/focus the studio tab; the studio
-  // loads it on a fresh sheet and offers "Save changes to library".
+  // Admin: open the drawing on the studio canvas for a clean-up. The id rides in
+  // the URL so the studio loads it deterministically once booted, then offers
+  // "Save changes to library".
   const handleEditInCanvas = useCallback((item: LibraryItem) => {
-    postLibraryEdit(item.id);
-    window.open("/drawings/studio", "planovera-studio");
+    const url = `/drawings/studio?editLibraryId=${encodeURIComponent(item.id)}`;
+    window.open(url, "planovera-studio");
   }, []);
 
   if (loading) {

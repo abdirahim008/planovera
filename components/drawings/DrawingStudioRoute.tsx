@@ -24,6 +24,7 @@ function toLinkedProject(project: Project) {
 export default function DrawingStudioRoute() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
+  const editLibraryId = searchParams.get("editLibraryId");
   const projects = useAppStore((state) => state.projects);
   const selectedProject = useAppStore((state) => state.project);
   const selectProject = useAppStore((state) => state.selectProject);
@@ -75,5 +76,5 @@ export default function DrawingStudioRoute() {
     );
   }
 
-  return <Editor linkedProject={toLinkedProject(activeProject)} />;
+  return <Editor linkedProject={toLinkedProject(activeProject)} editLibraryId={editLibraryId} />;
 }

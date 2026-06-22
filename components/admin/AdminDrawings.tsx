@@ -13,7 +13,6 @@ import { displayLibraryName } from "@/components/drawings/LibraryThumbnail";
 import {
   deleteSharedLibraryItem,
   fetchDrawingLibrary,
-  postLibraryEdit,
   updateSharedLibraryItem,
 } from "@/lib/drawings/libraryBridge";
 
@@ -61,13 +60,14 @@ export default function AdminDrawings() {
     });
   }, [items, search, categoryFilter]);
 
-  // Open the drawing on the studio canvas for an admin clean-up. We enqueue the
-  // edit action first, then open (or focus) the studio tab; the studio drains the
-  // queue on load/focus, loads the SVG on a fresh sheet, and offers "Save changes
-  // to library" which overwrites this warehouse item's svg + thumbnail.
+  // Open the drawing on the studio canvas for an admin clean-up. The drawing id
+  // is passed in the URL, so the studio loads it deterministically once booted
+  // (no cross-tab queue race / empty canvas). It opens in a dedicated studio tab;
+  // there the admin edits and clicks "Save changes to library", which overwrites
+  // this warehouse item's svg + thumbnail.
   const handleEditInCanvas = useCallback((item: LibraryItem) => {
-    postLibraryEdit(item.id);
-    window.open("/drawings/studio", "planovera-studio");
+    const url = `/drawings/studio?editLibraryId=${encodeURIComponent(item.id)}`;
+    window.open(url, "planovera-studio");
     setNotice(`Opening “${displayLibraryName(item.name)}” in the canvas editor…`);
   }, []);
 
