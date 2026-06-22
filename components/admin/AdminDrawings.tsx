@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, RefreshCcw, Search, Trash2 } from "lucide-react";
+import { Pencil, PencilRuler, RefreshCcw, Search, Trash2 } from "lucide-react";
 
 import Modal from "@/components/ui/Modal";
 import {
@@ -13,6 +13,7 @@ import { displayLibraryName } from "@/components/drawings/LibraryThumbnail";
 import {
   deleteSharedLibraryItem,
   fetchDrawingLibrary,
+  postLibraryEdit,
   updateSharedLibraryItem,
 } from "@/lib/drawings/libraryBridge";
 
@@ -59,6 +60,16 @@ export default function AdminDrawings() {
       return [item.name, item.description, ...item.tags].join(" ").toLowerCase().includes(needle);
     });
   }, [items, search, categoryFilter]);
+
+  // Open the drawing on the studio canvas for an admin clean-up. We enqueue the
+  // edit action first, then open (or focus) the studio tab; the studio drains the
+  // queue on load/focus, loads the SVG on a fresh sheet, and offers "Save changes
+  // to library" which overwrites this warehouse item's svg + thumbnail.
+  const handleEditInCanvas = useCallback((item: LibraryItem) => {
+    postLibraryEdit(item.id);
+    window.open("/drawings/studio", "planovera-studio");
+    setNotice(`Opening “${displayLibraryName(item.name)}” in the canvas editor…`);
+  }, []);
 
   const handleDelete = useCallback(async (item: LibraryItem) => {
     setBusyId(item.id);
@@ -108,8 +119,8 @@ export default function AdminDrawings() {
         <h2 className="text-lg font-semibold text-txt">Drawing warehouse</h2>
         <p className="mt-1 text-sm leading-6 text-txt-muted">
           Curate the shared drawing library. New drawings are uploaded with the admin scripts; here you edit the
-          searchable metadata (name, category, tags) and remove items. Bundled sample drawings aren’t shown — only
-          published warehouse items.
+          searchable metadata (name, category, tags), open a drawing on the canvas to clean it up and save it back, and
+          remove items. Bundled sample drawings aren’t shown — only published warehouse items.
         </p>
       </div>
 
@@ -175,7 +186,14 @@ export default function AdminDrawings() {
                 {item.tags.length ? (
                   <div className="mt-1 line-clamp-2 text-xs text-txt-muted">{item.tags.join(", ")}</div>
                 ) : null}
-                <div className="mt-auto flex items-center gap-2 pt-2">
+                <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEditInCanvas(item)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs font-medium text-accent transition hover:bg-accent/20"
+                  >
+                    <PencilRuler size={13} /> Edit in canvas
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
@@ -189,7 +207,7 @@ export default function AdminDrawings() {
                     }
                     className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-txt transition hover:bg-bg-hover"
                   >
-                    <Pencil size={13} /> Edit
+                    <Pencil size={13} /> Metadata
                   </button>
                   <button
                     type="button"

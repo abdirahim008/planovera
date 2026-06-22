@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, BookCopy, CreditCard, PencilRuler } from "lucide-react";
+import { ArrowLeft, BarChart3, BookCopy, CreditCard, PencilRuler } from "lucide-react";
 
 import AdminDrawings from "@/components/admin/AdminDrawings";
 import AdminLibrary from "@/components/admin/AdminLibrary";
+import AdminOverview from "@/components/admin/AdminOverview";
 import BillingAdminPanel from "@/components/admin/BillingAdminPanel";
 
-type Tab = "billing" | "library" | "drawings";
+type Tab = "overview" | "billing" | "library" | "drawings";
 
-// The admin curates the BOQ library and the drawing warehouse from this console
-// (not from the studio / warehouse front end).
+// The admin watches platform usage and curates the BOQ library and the drawing
+// warehouse from this console (not from the studio / warehouse front end).
 export default function AdminConsole() {
-  const [tab, setTab] = useState<Tab>("billing");
+  const [tab, setTab] = useState<Tab>("overview");
 
   const tabs: Array<{ id: Tab; label: string; icon: typeof CreditCard }> = [
+    { id: "overview", label: "Overview", icon: BarChart3 },
     { id: "billing", label: "Billing Ops", icon: CreditCard },
     { id: "library", label: "BOQ Library", icon: BookCopy },
     { id: "drawings", label: "Drawing Warehouse", icon: PencilRuler },
@@ -49,6 +51,7 @@ export default function AdminConsole() {
         </div>
 
         <div className="rounded-2xl border border-border bg-bg p-6">
+          {tab === "overview" ? <AdminOverview /> : null}
           {tab === "billing" ? <BillingAdminPanel /> : null}
           {tab === "library" ? <AdminLibrary embedded /> : null}
           {tab === "drawings" ? <AdminDrawings /> : null}
