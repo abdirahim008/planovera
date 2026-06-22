@@ -41,6 +41,7 @@ import type { DrawingPanelTab } from "./LeftPanel";
 
 type ToolMode =
   | "select"
+  | "marquee"
   | "pan"
   | "line"
   | "dimension"
