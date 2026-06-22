@@ -12,7 +12,8 @@ import {
 import { displayLibraryName } from "@/components/drawings/LibraryThumbnail";
 import {
   deleteSharedLibraryItem,
-  fetchDrawingLibrary,
+  fetchSharedLibraryItems,
+  fetchSharedLibraryThumbnails,
   updateSharedLibraryItem,
 } from "@/lib/drawings/libraryBridge";
 
@@ -38,13 +39,28 @@ export default function AdminDrawings() {
   const [confirmDelete, setConfirmDelete] = useState<LibraryItem | null>(null);
   const [editor, setEditor] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
-    const list = await fetchDrawingLibrary();
-    // Only DB-backed (curatable) drawings — the bundled seed set is read-only.
-    setItems(list.filter((item) => item.source !== "seed"));
-    setLoading(false);
+    setThumbs({});
+    try {
+      // Metadata only — fast and resilient. Never let a failed/slow request leave
+      // the grid stuck on "Loading…"; surface the reason instead.
+      const { items: list, error } = await fetchSharedLibraryItems();
+      setItems(list);
+      setNotice(error ? `Could not load warehouse drawings: ${error}` : null);
+      // Stream thumbnails in afterwards so a heavy thumbnail payload never blocks
+      // the drawings from showing up.
+      if (!error && list.length > 0) {
+        void fetchSharedLibraryThumbnails().then(setThumbs);
+      }
+    } catch (error) {
+      setItems([]);
+      setNotice(`Could not load warehouse drawings: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -173,11 +189,15 @@ export default function AdminDrawings() {
           {filtered.map((item) => (
             <div key={item.id} className="flex flex-col overflow-hidden rounded-xl border border-border bg-bg-surface">
               <div className="flex h-28 items-center justify-center border-b border-border bg-white p-2">
-                {item.thumbnail ? (
+                {thumbs[item.id] ?? item.thumbnail ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.thumbnail} alt={item.name} className="max-h-full max-w-full object-contain" />
+                  <img
+                    src={thumbs[item.id] ?? item.thumbnail}
+                    alt={item.name}
+                    className="max-h-full max-w-full object-contain"
+                  />
                 ) : (
-                  <span className="text-xs text-txt-dim">No preview</span>
+                  <span className="text-xs text-txt-dim">{Object.keys(thumbs).length === 0 ? "Loading preview…" : "No preview"}</span>
                 )}
               </div>
               <div className="flex flex-1 flex-col gap-1 p-3">

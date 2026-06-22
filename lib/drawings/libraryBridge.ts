@@ -143,6 +143,47 @@ export async function updateSharedLibraryItem(
   return error ? { error: error.message } : {};
 }
 
+// Admin warehouse list — metadata only (no svg, no thumbnail), so the grid
+// loads instantly even with a large library and never hangs on a multi-MB
+// payload. Thumbnails are streamed in afterwards via fetchSharedLibraryThumbnails.
+// Returns an error string instead of throwing so the caller can always clear its
+// loading state and show what went wrong.
+export async function fetchSharedLibraryItems(): Promise<{ items: LibraryItem[]; error?: string }> {
+  if (!isSupabaseConfigured()) return { items: [] };
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { items: [] };
+  try {
+    const { data, error } = await supabase
+      .from("drawing_library_items")
+      .select("id,name,category,description,tags,author_id,author_name,updated_at")
+      .order("updated_at", { ascending: false });
+    if (error) return { items: [], error: error.message };
+    return { items: (data as LibraryItemRecord[]).map(mapLibraryRecord) };
+  } catch (error) {
+    return { items: [], error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// Deferred bulk thumbnail fetch for the admin grid: one query, id → thumbnail.
+// Kept separate from the list so a slow/large thumbnail payload never blocks (or
+// breaks) the drawings from appearing.
+export async function fetchSharedLibraryThumbnails(): Promise<Record<string, string>> {
+  if (!isSupabaseConfigured()) return {};
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return {};
+  try {
+    const { data, error } = await supabase.from("drawing_library_items").select("id,thumbnail");
+    if (error || !data) return {};
+    const map: Record<string, string> = {};
+    for (const row of data as Array<{ id: string; thumbnail: string | null }>) {
+      if (row.thumbnail) map[row.id] = row.thumbnail;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 // Merge remote (DB) library items with the static seed set, de-duped by name.
 function mergeWithSeed(remoteItems: LibraryItem[]): LibraryItem[] {
   const seen = new Set(remoteItems.map((item) => item.name.toLowerCase()));
@@ -159,12 +200,18 @@ export async function fetchDrawingLibrary(): Promise<LibraryItem[]> {
   if (!isSupabaseConfigured()) return loadLibraryItems();
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return loadLibraryItems();
-  const { data, error } = await supabase
-    .from("drawing_library_items")
-    .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
-    .order("updated_at", { ascending: false });
-  if (error || !data) return loadLibraryItems();
-  return mergeWithSeed((data as LibraryItemRecord[]).map(mapLibraryRecord));
+  try {
+    const { data, error } = await supabase
+      .from("drawing_library_items")
+      .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+      .order("updated_at", { ascending: false });
+    if (error || !data) return loadLibraryItems();
+    return mergeWithSeed((data as LibraryItemRecord[]).map(mapLibraryRecord));
+  } catch {
+    // Network/transport error — fall back to the local seed set rather than
+    // throwing (which would leave callers stuck on their loading state).
+    return loadLibraryItems();
+  }
 }
 
 // Resolve a library item's full SVG for a large preview (seed items carry it;
