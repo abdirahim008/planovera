@@ -67,25 +67,37 @@ export async function addSvgToCanvas(
 ): Promise<FabricObject> {
   const group = await createSvgObject(fabric, svgString);
 
-  // Scale the imported drawing so it never exceeds ~80 % of the canvas
-  // (only shrinks if it's larger than the paper — never enlarges small icons).
+  // Add first so getBoundingRect() reflects the real rendered extent.
+  canvas.add(group);
+  group.setCoords();
+
   const maxRatio = opts?.maxFitRatio ?? 0.8;
   const cw = canvas.getWidth()  / (canvas.getZoom() || 1);
   const ch = canvas.getHeight() / (canvas.getZoom() || 1);
-  const gw = (group.width  ?? 1) * (group.scaleX ?? 1);
-  const gh = (group.height ?? 1) * (group.scaleY ?? 1);
-  const fit = Math.min((cw * maxRatio) / gw, (ch * maxRatio) / gh, 1);
+
+  // Fit + centre on the ACTUAL drawing bounds, not the SVG's declared
+  // width/height. Real imported drawings often have a padded viewBox or an
+  // offset origin, so the declared box doesn't match where the geometry sits —
+  // centring on it would push the visible drawing off the sheet (blank canvas).
+  // getBoundingRect() gives the true scene-space extent, so the fit and centre
+  // always frame the geometry the user actually sees.
+  let rect = group.getBoundingRect();
+  const fit = Math.min((cw * maxRatio) / rect.width, (ch * maxRatio) / rect.height, 1);
   if (fit < 1) {
-    group.scale(fit * (group.scaleX ?? 1));
+    group.scale((group.scaleX ?? 1) * fit);
+    group.setCoords();
+    rect = group.getBoundingRect();
   }
 
-  // Centre it
+  // Shift so the geometry's bounding box is centred on the paper. Translating
+  // left/top moves the bounding rect by the same delta regardless of the
+  // group's origin, so this lands the real content dead-centre.
   group.set({
-    left: (cw - (group.width  ?? 0) * (group.scaleX ?? 1)) / 2,
-    top:  (ch - (group.height ?? 0) * (group.scaleY ?? 1)) / 2,
+    left: (group.left ?? 0) + ((cw - rect.width) / 2 - rect.left),
+    top:  (group.top  ?? 0) + ((ch - rect.height) / 2 - rect.top),
   });
+  group.setCoords();
 
-  canvas.add(group);
   canvas.setActiveObject(group);
   canvas.requestRenderAll();
   return group;
