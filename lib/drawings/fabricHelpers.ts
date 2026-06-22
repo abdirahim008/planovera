@@ -63,7 +63,7 @@ export async function addSvgToCanvas(
   fabric: FabricMod,
   canvas: FabricCanvas,
   svgString: string,
-  opts?: { maxFitRatio?: number }
+  opts?: { maxFitRatio?: number; separateText?: boolean }
 ): Promise<FabricObject> {
   const group = await createSvgObject(fabric, svgString);
 
@@ -98,8 +98,65 @@ export async function addSvgToCanvas(
   });
   group.setCoords();
 
+  if (opts?.separateText) {
+    const graphics = separateTextObjects(fabric, canvas, group);
+    canvas.requestRenderAll();
+    return graphics;
+  }
+
   canvas.setActiveObject(group);
   canvas.requestRenderAll();
+  return group;
+}
+
+// Pull text out of a freshly-imported, already-positioned group so each label
+// becomes a top-level IText — directly clickable (single click selects, double
+// click edits) instead of buried inside the group. The linework stays grouped
+// as one movable unit. Each text's world transform is baked in first, so nothing
+// shifts when it leaves the group.
+function separateTextObjects(
+  fabric: FabricMod,
+  canvas: FabricCanvas,
+  group: FabricObject,
+): FabricObject {
+  const container = group as unknown as {
+    getObjects?: () => FabricObject[];
+    remove?: (...objs: FabricObject[]) => void;
+  };
+  const children = typeof container.getObjects === "function" ? container.getObjects() : [];
+  const isText = (o: FabricObject) => o.type === "i-text" || o.type === "text" || o.type === "textbox";
+  const texts = children.filter(isText);
+  if (texts.length === 0) {
+    canvas.setActiveObject(group);
+    return group;
+  }
+
+  // World transform of each text, computed BEFORE detaching from the group. In
+  // Fabric v6 a grouped child's calcTransformMatrix() already includes the
+  // group's transform, so this is the full canvas-space matrix as-is.
+  const placements = texts.map((text) => ({
+    text,
+    decomp: fabric.util.qrDecompose(text.calcTransformMatrix()),
+  }));
+
+  container.remove?.(...texts); // graphics remain grouped; group bbox re-fits
+
+  for (const { text, decomp } of placements) {
+    text.set({
+      originX: "center",
+      originY: "center",
+      left: decomp.translateX,
+      top: decomp.translateY,
+      scaleX: decomp.scaleX,
+      scaleY: decomp.scaleY,
+      angle: decomp.angle,
+      skewX: decomp.skewX,
+    } as Partial<FabricObject>);
+    text.setCoords();
+    canvas.add(text);
+  }
+  group.setCoords();
+  canvas.setActiveObject(group);
   return group;
 }
 

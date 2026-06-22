@@ -1787,7 +1787,9 @@ export default function Editor({
       const svg = pendingLoadRef.current;
       if (!svg) return;
       pendingLoadRef.current = null;
-      void addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg))
+      // Separate text into top-level objects so labels/dimensions are directly
+      // clickable and editable (no need to drill into the drawing group first).
+      void addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg), { separateText: true })
         .then(() => {
           canvas.requestRenderAll();
           commitHistory();
