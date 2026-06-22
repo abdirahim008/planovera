@@ -9,8 +9,10 @@ import {
   type LibraryItem,
 } from "@/lib/drawings/appModel";
 import {
+  fetchCurrentUserRole,
   fetchDrawingLibrary,
   fetchLibraryItemSvg,
+  postLibraryEdit,
   postLibraryImport,
 } from "@/lib/drawings/libraryBridge";
 
@@ -22,11 +24,13 @@ export default function DrawingLibraryPage() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     document.title = "Drawing library · Planovera";
     setFavoriteIds(loadFavoriteIds());
     setRecentIds(loadRecentIds());
+    void fetchCurrentUserRole().then((role) => setIsAdmin(role === "admin"));
     let active = true;
     fetchDrawingLibrary()
       .then((list) => {
@@ -56,6 +60,14 @@ export default function DrawingLibraryPage() {
     setRecentIds((current) => [item.id, ...current.filter((id) => id !== item.id)]);
   }, []);
 
+  // Admin: open the drawing on the studio canvas for a clean-up. Mirrors the
+  // admin panel — enqueue the edit, then open/focus the studio tab; the studio
+  // loads it on a fresh sheet and offers "Save changes to library".
+  const handleEditInCanvas = useCallback((item: LibraryItem) => {
+    postLibraryEdit(item.id);
+    window.open("/drawings/studio", "planovera-studio");
+  }, []);
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#141519] text-[13px] text-slate-400">
@@ -71,6 +83,7 @@ export default function DrawingLibraryPage() {
       recentIds={recentIds}
       onToggleFavorite={handleToggleFavorite}
       onImport={handleImport}
+      onEdit={isAdmin ? handleEditInCanvas : undefined}
       onResolveSvg={fetchLibraryItemSvg}
       onClose={() => window.close()}
     />

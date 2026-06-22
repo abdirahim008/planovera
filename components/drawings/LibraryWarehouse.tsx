@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, ChevronRight, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { Search, X, Star, Clock, LayoutGrid, Check, ZoomIn, Layers, Puzzle, ChevronRight, ChevronDown, SlidersHorizontal, PencilRuler } from "lucide-react";
 import {
   LIBRARY_CATEGORIES,
   type LibraryCategory,
@@ -106,6 +106,9 @@ interface LibraryWarehouseProps {
   // Import sends the item to the studio tab (or canvas). The browser stays open
   // so several items can be imported in a row.
   onImport: (item: LibraryItem) => void | Promise<void>;
+  // Admin-only: open a warehouse drawing on the studio canvas for a clean-up.
+  // When omitted (non-admins), the Edit affordance is hidden entirely.
+  onEdit?: (item: LibraryItem) => void;
   // Resolve an item's full SVG for the large preview (seed items carry it; DB
   // items fetch it by id on demand).
   onResolveSvg?: (item: LibraryItem) => Promise<string>;
@@ -131,6 +134,7 @@ export default function LibraryWarehouse({
   recentIds,
   onToggleFavorite,
   onImport,
+  onEdit,
   onResolveSvg,
   onClose,
 }: LibraryWarehouseProps) {
@@ -472,6 +476,21 @@ export default function LibraryWarehouse({
                       </div>
                     </button>
 
+                    {/* Admin: open this warehouse drawing on the canvas to clean
+                        it up and save it back. Seed (bundled) items aren't
+                        DB-backed, so there's nothing to overwrite — hide it. */}
+                    {onEdit && item.source !== "seed" ? (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(item)}
+                        aria-label={`Edit ${displayLibraryName(item.name)} in canvas`}
+                        title="Edit in canvas"
+                        className="absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-[#3a3b42] bg-[#141519]/70 text-slate-200 opacity-0 transition hover:bg-[#f0a13a] hover:text-[#1c1206] group-hover:opacity-100"
+                      >
+                        <PencilRuler className="h-4 w-4" />
+                      </button>
+                    ) : null}
+
                     {/* Zoom / preview — larger crisp view without importing. */}
                     <button
                       type="button"
@@ -535,6 +554,18 @@ export default function LibraryWarehouse({
                 </div>
               </div>
               <div className="ml-auto flex items-center gap-2">
+                {onEdit && preview.item.source !== "seed" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEdit(preview.item);
+                      setPreview(null);
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#3a3b42] px-3 py-1.5 text-[12px] font-medium text-slate-200 transition hover:bg-white/5 hover:text-white"
+                  >
+                    <PencilRuler className="h-4 w-4" /> Edit in canvas
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
