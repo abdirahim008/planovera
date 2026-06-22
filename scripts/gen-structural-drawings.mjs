@@ -18,10 +18,14 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { optimize } from "svgo";
 import { cleanStructuralSvg, boostStrokeWidths } from "./clean-structural-svg.mjs";
+
+const require = createRequire(import.meta.url);
+const pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -78,10 +82,20 @@ const SOURCES = [
   },
 ];
 
-function pdfToCleanSvg(pdf, page, band) {
+async function pdfToCleanSvg(pdf, page, band) {
   const tmp = join(tmpdir(), `st-${process.pid}-${page}.svg`);
   execFileSync("pdftocairo", ["-svg", "-f", String(page), "-l", String(page), pdf, tmp], { stdio: "ignore" });
-  const raw = readFileSync(tmp, "utf8");
+  let raw = readFileSync(tmp, "utf8");
+
+  // Recover real text from the PDF (empty for sheets whose text was flattened to
+  // outlines in the original CAD export). When present, drop pdftocairo's
+  // outlined glyph text — defs + <use> placements — so we can replace it with
+  // editable <text>; sheets with no recoverable text keep their text-as-paths.
+  const textParts = await extractEditableText(pdf, page, band);
+  if (textParts.length > 0) {
+    raw = raw.replace(/<g id="glyph-[^"]*">[\s\S]*?<\/g>/g, "").replace(/<use\b[^>]*\/>/g, "");
+  }
+
   const { data } = optimize(raw, {
     multipass: false,
     floatPrecision: 2,
@@ -90,7 +104,46 @@ function pdfToCleanSvg(pdf, page, band) {
   const cleaned = cleanStructuralSvg(data, { band });
   // Boost the source's print-weight hairlines so the drawing reads crisply on
   // the canvas instead of looking faint.
-  return { ...cleaned, svg: boostStrokeWidths(cleaned.svg) };
+  let svg = boostStrokeWidths(cleaned.svg);
+  // Inject the recovered text as editable <text> (Fabric turns these into
+  // editable IText on the canvas). Title-block text is already skipped below.
+  if (textParts.length > 0) {
+    svg = svg.replace(/<\/svg>\s*$/, `${textParts.join("")}</svg>`);
+  }
+  return { ...cleaned, svg, textCount: textParts.length };
+}
+
+// Extract the PDF's real text as positioned, editable <text> elements, omitting
+// anything inside the bottom title-block band. Returns [] when the page has no
+// recoverable text (its text was outlined into vector curves).
+async function extractEditableText(pdf, page, band) {
+  const data = new Uint8Array(readFileSync(pdf));
+  const doc = await pdfjs.getDocument({ data, useSystemFonts: true, verbosity: 0 }).promise;
+  try {
+    const pg = await doc.getPage(page);
+    const { height: H } = pg.getViewport({ scale: 1 });
+    const bandTop = H * (1 - band);
+    const tc = await pg.getTextContent();
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const parts = [];
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const t = it.transform; // [a,b,c,d,e,f] in PDF space (y-up)
+      const x = t[4];
+      const y = H - t[5]; // → SVG viewBox space (y-down); viewBox matches PDF pts
+      if (y >= bandTop) continue; // title-block text — omit
+      const size = Math.hypot(t[0], t[1]) || Math.abs(t[3]);
+      if (!(size > 0.5)) continue;
+      const angle = -Math.atan2(t[1], t[0]) * (180 / Math.PI);
+      const rot = Math.abs(angle) > 0.5 ? ` transform="rotate(${angle.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})"` : "";
+      parts.push(
+        `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${size.toFixed(2)}" font-family="Arial, sans-serif" fill="#000"${rot}>${esc(it.str)}</text>`,
+      );
+    }
+    return parts;
+  } finally {
+    await doc.destroy();
+  }
 }
 
 // Thumbnail = the page rendered top-cropped (title strip excluded), ~300px wide.
@@ -122,7 +175,7 @@ for (const src of SOURCES) {
   for (const sheet of src.sheets) {
     const code = `${src.prefix}-${String(sheet.page).padStart(2, "0")}`;
     const t0 = Date.now();
-    const { svg, removedPaths, removedUses, removedImages } = pdfToCleanSvg(src.pdf, sheet.page, src.band);
+    const { svg, removedPaths, removedUses, removedImages, textCount } = await pdfToCleanSvg(src.pdf, sheet.page, src.band);
     const thumbnail = pdfToThumbDataUrl(src.pdf, sheet.page, src.band);
     writeFileSync(join(SVG_OUT, `${code}.svg`), svg);
     out.push({
@@ -138,7 +191,7 @@ for (const src of SOURCES) {
     });
     console.log(
       `✓ ${code}  "${sheet.name}"  ${Math.round(svg.length / 1024)}KB  ` +
-        `(−${removedPaths}p −${removedUses}u −${removedImages}i)  ${Date.now() - t0}ms`,
+        `(−${removedPaths}p −${removedUses}u −${removedImages}i +${textCount}t)  ${Date.now() - t0}ms`,
     );
   }
 }
