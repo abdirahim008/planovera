@@ -63,7 +63,7 @@ export async function addSvgToCanvas(
   fabric: FabricMod,
   canvas: FabricCanvas,
   svgString: string,
-  opts?: { maxFitRatio?: number; separateText?: boolean }
+  opts?: { maxFitRatio?: number; ungroup?: boolean }
 ): Promise<FabricObject> {
   const group = await createSvgObject(fabric, svgString);
 
@@ -98,10 +98,10 @@ export async function addSvgToCanvas(
   });
   group.setCoords();
 
-  if (opts?.separateText) {
-    const graphics = separateTextObjects(fabric, canvas, group);
+  if (opts?.ungroup) {
+    const objects = ungroupSvgObjects(fabric, canvas, group);
     canvas.requestRenderAll();
-    return graphics;
+    return objects[0] ?? group;
   }
 
   canvas.setActiveObject(group);
@@ -109,40 +109,38 @@ export async function addSvgToCanvas(
   return group;
 }
 
-// Pull text out of a freshly-imported, already-positioned group so each label
-// becomes a top-level IText — directly clickable (single click selects, double
-// click edits) instead of buried inside the group. The linework stays grouped
-// as one movable unit. Each text's world transform is baked in first, so nothing
-// shifts when it leaves the group.
-function separateTextObjects(
+// Dissolve a freshly-imported, already-positioned group into individual
+// top-level objects, so a rubber-band drag selects exactly the portion the user
+// dragged over (instead of grabbing the whole drawing), each label is directly
+// clickable/editable, and any subset can be moved or re-grouped on its own. Each
+// child's world transform is baked in first so nothing shifts. In Fabric v6 a
+// grouped child's calcTransformMatrix() already includes the group's transform,
+// so it's the full canvas-space matrix as-is.
+function ungroupSvgObjects(
   fabric: FabricMod,
   canvas: FabricCanvas,
   group: FabricObject,
-): FabricObject {
+): FabricObject[] {
   const container = group as unknown as {
     getObjects?: () => FabricObject[];
-    remove?: (...objs: FabricObject[]) => void;
+    removeAll?: () => FabricObject[];
   };
-  const children = typeof container.getObjects === "function" ? container.getObjects() : [];
-  const isText = (o: FabricObject) => o.type === "i-text" || o.type === "text" || o.type === "textbox";
-  const texts = children.filter(isText);
-  if (texts.length === 0) {
+  const children = typeof container.getObjects === "function" ? [...container.getObjects()] : [];
+  if (children.length === 0) {
     canvas.setActiveObject(group);
-    return group;
+    return [group];
   }
 
-  // World transform of each text, computed BEFORE detaching from the group. In
-  // Fabric v6 a grouped child's calcTransformMatrix() already includes the
-  // group's transform, so this is the full canvas-space matrix as-is.
-  const placements = texts.map((text) => ({
-    text,
-    decomp: fabric.util.qrDecompose(text.calcTransformMatrix()),
+  const placements = children.map((child) => ({
+    child,
+    decomp: fabric.util.qrDecompose(child.calcTransformMatrix()),
   }));
 
-  container.remove?.(...texts); // graphics remain grouped; group bbox re-fits
+  canvas.remove(group);
+  container.removeAll?.(); // detach children from the group
 
-  for (const { text, decomp } of placements) {
-    text.set({
+  for (const { child, decomp } of placements) {
+    child.set({
       originX: "center",
       originY: "center",
       left: decomp.translateX,
@@ -152,12 +150,11 @@ function separateTextObjects(
       angle: decomp.angle,
       skewX: decomp.skewX,
     } as Partial<FabricObject>);
-    text.setCoords();
-    canvas.add(text);
+    child.setCoords();
+    canvas.add(child);
   }
-  group.setCoords();
-  canvas.setActiveObject(group);
-  return group;
+  canvas.discardActiveObject(); // start with nothing selected, ready to marquee
+  return children;
 }
 
 // -----------------------------------------------------------------
