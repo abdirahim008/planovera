@@ -1787,9 +1787,10 @@ export default function Editor({
       const svg = pendingLoadRef.current;
       if (!svg) return;
       pendingLoadRef.current = null;
-      // Separate text into top-level objects so labels/dimensions are directly
-      // clickable and editable (no need to drill into the drawing group first).
-      void addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg), { separateText: true })
+      // Ungroup the drawing into individual objects so a rubber-band drag selects
+      // just the portion dragged (not the whole drawing), labels are directly
+      // editable, and any subset can be moved or re-grouped on its own.
+      void addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg), { ungroup: true })
         .then(() => {
           canvas.requestRenderAll();
           commitHistory();
