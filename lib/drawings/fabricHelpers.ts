@@ -12,6 +12,183 @@ type FabricMod = typeof FabricNS;
 type FabricCanvas = FabricNS.Canvas;
 type FabricObject = FabricNS.FabricObject;
 
+// Split one path's `d` into its individual subpaths, each rewritten as a
+// self-contained absolute path string. pdftocairo/svgo merge many disconnected
+// segments (often spanning the whole sheet) into a single <path>, so importing
+// them as one object means selecting any part grabs geometry in other sections.
+// Splitting at every moveto makes each contiguous stroke its own object.
+function splitPathSubpaths(d: string): string[] {
+  const re = /([MmLlHhVvCcSsQqTtAaZz])|(-?\d*\.?\d+(?:e[-+]?\d+)?)/gi;
+  const toks: Array<string | number> = [];
+  let mm: RegExpExecArray | null;
+  while ((mm = re.exec(d))) toks.push(mm[1] || parseFloat(mm[2]));
+  const f = (n: number) => Number(n.toFixed(2)).toString();
+  const subs: string[] = [];
+  let cur: string[] = [];
+  const flush = () => {
+    if (cur.length) subs.push(cur.join(" "));
+    cur = [];
+  };
+  let i = 0;
+  let cmd: string | null = null;
+  let x = 0,
+    y = 0,
+    sx = 0,
+    sy = 0;
+  const num = () => toks[i++] as number;
+  while (i < toks.length) {
+    if (typeof toks[i] === "string") cmd = toks[i++] as string;
+    const rel: boolean = typeof cmd === "string" && cmd === cmd.toLowerCase();
+    switch (cmd?.toUpperCase()) {
+      case "M": {
+        let nx = num(),
+          ny = num();
+        if (rel) {
+          nx += x;
+          ny += y;
+        }
+        flush();
+        x = nx;
+        y = ny;
+        sx = x;
+        sy = y;
+        cur.push(`M ${f(x)} ${f(y)}`);
+        cmd = rel ? "l" : "L"; // implicit lineto for further pairs
+        break;
+      }
+      case "L": {
+        let nx = num(),
+          ny = num();
+        if (rel) {
+          nx += x;
+          ny += y;
+        }
+        x = nx;
+        y = ny;
+        cur.push(`L ${f(x)} ${f(y)}`);
+        break;
+      }
+      case "H": {
+        let nx = num();
+        if (rel) nx += x;
+        x = nx;
+        cur.push(`L ${f(x)} ${f(y)}`);
+        break;
+      }
+      case "V": {
+        let ny = num();
+        if (rel) ny += y;
+        y = ny;
+        cur.push(`L ${f(x)} ${f(y)}`);
+        break;
+      }
+      case "C": {
+        let x1 = num(),
+          y1 = num(),
+          x2 = num(),
+          y2 = num(),
+          nx = num(),
+          ny = num();
+        if (rel) {
+          x1 += x;
+          y1 += y;
+          x2 += x;
+          y2 += y;
+          nx += x;
+          ny += y;
+        }
+        cur.push(`C ${f(x1)} ${f(y1)} ${f(x2)} ${f(y2)} ${f(nx)} ${f(ny)}`);
+        x = nx;
+        y = ny;
+        break;
+      }
+      case "S": {
+        let x2 = num(),
+          y2 = num(),
+          nx = num(),
+          ny = num();
+        if (rel) {
+          x2 += x;
+          y2 += y;
+          nx += x;
+          ny += y;
+        }
+        cur.push(`S ${f(x2)} ${f(y2)} ${f(nx)} ${f(ny)}`);
+        x = nx;
+        y = ny;
+        break;
+      }
+      case "Q": {
+        let x1 = num(),
+          y1 = num(),
+          nx = num(),
+          ny = num();
+        if (rel) {
+          x1 += x;
+          y1 += y;
+          nx += x;
+          ny += y;
+        }
+        cur.push(`Q ${f(x1)} ${f(y1)} ${f(nx)} ${f(ny)}`);
+        x = nx;
+        y = ny;
+        break;
+      }
+      case "T": {
+        let nx = num(),
+          ny = num();
+        if (rel) {
+          nx += x;
+          ny += y;
+        }
+        cur.push(`T ${f(nx)} ${f(ny)}`);
+        x = nx;
+        y = ny;
+        break;
+      }
+      case "A": {
+        const rx = num(),
+          ry = num(),
+          rot = num(),
+          laf = num(),
+          swf = num();
+        let nx = num(),
+          ny = num();
+        if (rel) {
+          nx += x;
+          ny += y;
+        }
+        cur.push(`A ${f(rx)} ${f(ry)} ${f(rot)} ${laf} ${swf} ${f(nx)} ${f(ny)}`);
+        x = nx;
+        y = ny;
+        break;
+      }
+      case "Z": {
+        cur.push("Z");
+        x = sx;
+        y = sy;
+        break;
+      }
+      default:
+        i++;
+    }
+  }
+  flush();
+  return subs;
+}
+
+// Rewrite an SVG so every multi-subpath <path> becomes one <path> per subpath,
+// keeping all other attributes. Leaves single-subpath paths untouched.
+export function splitSvgSubpaths(svg: string): string {
+  return svg.replace(/<path\b([^>]*?)\/>/g, (full, attrs: string) => {
+    const dm = attrs.match(/\bd="([^"]*)"/);
+    if (!dm) return full;
+    const parts = splitPathSubpaths(dm[1]);
+    if (parts.length <= 1) return full;
+    return parts.map((sd) => `<path${attrs.replace(/\bd="[^"]*"/, `d="${sd}"`)}/>`).join("");
+  });
+}
+
 export async function createSvgObject(
   fabric: FabricMod,
   svgString: string,
@@ -149,18 +326,14 @@ export function ungroupSvgObjects(
       scaleY: decomp.scaleY,
       angle: decomp.angle,
       skewX: decomp.skewX,
-      // Hit-test on actual line pixels, not the (often huge) bounding box of a
-      // thin/diagonal stroke. Without this, a mousedown in the white space
-      // between lines lands on some object's bbox and drags it, so a rubber-band
-      // marquee can never start. Per-object (not canvas-wide) so a re-grouped
-      // drawing stays easy to click anywhere.
-      perPixelTargetFind: true,
+      // Splitting yields many small line segments; per-object offscreen caching
+      // is far slower than just drawing them, so turn it off (≈15× faster render
+      // at a few thousand objects).
+      objectCaching: false,
     } as Partial<FabricObject>);
     child.setCoords();
     canvas.add(child);
   }
-  // A few px of slack so clicking *near* a thin line still selects it.
-  (canvas as unknown as { targetFindTolerance?: number }).targetFindTolerance = 5;
   canvas.discardActiveObject(); // start with nothing selected, ready to marquee
   return children;
 }
