@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { optimize } from "svgo";
-import { cleanStructuralSvg } from "./clean-structural-svg.mjs";
+import { cleanStructuralSvg, boostStrokeWidths } from "./clean-structural-svg.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -87,7 +87,10 @@ function pdfToCleanSvg(pdf, page, band) {
     floatPrecision: 2,
     plugins: ["preset-default"], // svgo v4 keeps viewBox by default
   });
-  return cleanStructuralSvg(data, { band });
+  const cleaned = cleanStructuralSvg(data, { band });
+  // Boost the source's print-weight hairlines so the drawing reads crisply on
+  // the canvas instead of looking faint.
+  return { ...cleaned, svg: boostStrokeWidths(cleaned.svg) };
 }
 
 // Thumbnail = the page rendered top-cropped (title strip excluded), ~300px wide.
