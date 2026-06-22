@@ -14,6 +14,7 @@ import {
   Magnet,
   Minus,
   MoveUpRight,
+  BoxSelect,
   MousePointer2,
   Move,
   PanelLeftClose,
@@ -188,6 +189,7 @@ export default function Toolbar({
   const hasSelection = selectedCount > 0;
   const toolMenuItems: Array<{ id: ToolMode; label: string; icon: ReactNode }> = [
     { id: "select", label: "Select / move", icon: <MousePointer2 className="h-4 w-4" /> },
+    { id: "marquee", label: "Select area (box)", icon: <BoxSelect className="h-4 w-4" /> },
     { id: "pan", label: "Pan canvas", icon: <Move className="h-4 w-4" /> },
     { id: "line", label: "Line tool", icon: <Minus className="h-4 w-4" /> },
     { id: "wall", label: "Wall line tool", icon: <Minus className="h-4 w-4" /> },

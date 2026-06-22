@@ -2091,7 +2091,21 @@ export default function Editor({
         );
       } else {
         const svg = item.svg || (await fetchLibrarySvg(item.id));
-        if (svg) await handleAddSvg(svg);
+        const canvas = fabricRef.current;
+        if (svg && canvas && fabricMod) {
+          try {
+            // Import warehouse drawings split + ungrouped — same as the admin
+            // edit flow — so their text is directly editable and any section can
+            // be box-selected. Available to every user, not just admins.
+            await addSvgToCanvas(fabricMod, canvas, splitSvgSubpaths(sanitizeSvgMarkup(svg)), {
+              ungroup: true,
+            });
+            commitHistory();
+            setMessage("Drawing imported — text is editable; use Select area to grab a section.");
+          } catch (error) {
+            setMessage(`Drawing import failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
       }
       // Persist the insert into the page JSON right away. Otherwise a canvas
       // re-create (a zoom/tool/focus-driven re-render reloads currentPage.json)
@@ -2099,7 +2113,15 @@ export default function Editor({
       // — the "appears then disappears" report when importing from the library tab.
       void saveCurrentPage();
     },
-    [fetchLibrarySvg, handleAddParametricBlock, handleAddSvg, recordLibraryUse, saveCurrentPage],
+    [
+      commitHistory,
+      fabricMod,
+      fetchLibrarySvg,
+      handleAddParametricBlock,
+      recordLibraryUse,
+      saveCurrentPage,
+      setMessage,
+    ],
   );
 
   // Admin: open a library drawing for editing on a fresh, isolated sheet (no
