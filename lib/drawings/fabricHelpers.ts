@@ -149,10 +149,18 @@ export function ungroupSvgObjects(
       scaleY: decomp.scaleY,
       angle: decomp.angle,
       skewX: decomp.skewX,
+      // Hit-test on actual line pixels, not the (often huge) bounding box of a
+      // thin/diagonal stroke. Without this, a mousedown in the white space
+      // between lines lands on some object's bbox and drags it, so a rubber-band
+      // marquee can never start. Per-object (not canvas-wide) so a re-grouped
+      // drawing stays easy to click anywhere.
+      perPixelTargetFind: true,
     } as Partial<FabricObject>);
     child.setCoords();
     canvas.add(child);
   }
+  // A few px of slack so clicking *near* a thin line still selects it.
+  (canvas as unknown as { targetFindTolerance?: number }).targetFindTolerance = 5;
   canvas.discardActiveObject(); // start with nothing selected, ready to marquee
   return children;
 }
