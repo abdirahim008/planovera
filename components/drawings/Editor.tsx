@@ -24,6 +24,7 @@ import {
   createOrUpdateTitleBlock,
   createSvgObject,
   exportPagesToPDF,
+  splitSvgSubpaths,
   ungroupSvgObjects,
 } from "@/lib/drawings/fabricHelpers";
 import { extractSegments, findSnapPoint, renderSnapMarker } from "@/lib/drawings/snapping";
@@ -1870,10 +1871,11 @@ export default function Editor({
       const svg = pendingLoadRef.current;
       if (!svg) return;
       pendingLoadRef.current = null;
-      // Ungroup the drawing into individual objects so a rubber-band drag selects
-      // just the portion dragged (not the whole drawing), labels are directly
-      // editable, and any subset can be moved or re-grouped on its own.
-      void addSvgToCanvas(fabricMod, canvas, sanitizeSvgMarkup(svg), { ungroup: true })
+      // Split merged multi-subpath paths so each contiguous stroke is its own
+      // object, then ungroup — so selecting one section never drags geometry that
+      // was merged across sections, a rubber-band grabs just the dragged portion,
+      // labels are directly editable, and any subset can be moved or re-grouped.
+      void addSvgToCanvas(fabricMod, canvas, splitSvgSubpaths(sanitizeSvgMarkup(svg)), { ungroup: true })
         .then(() => {
           canvas.requestRenderAll();
           commitHistory();
