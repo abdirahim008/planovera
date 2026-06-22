@@ -116,7 +116,7 @@ export async function addSvgToCanvas(
 // child's world transform is baked in first so nothing shifts. In Fabric v6 a
 // grouped child's calcTransformMatrix() already includes the group's transform,
 // so it's the full canvas-space matrix as-is.
-function ungroupSvgObjects(
+export function ungroupSvgObjects(
   fabric: FabricMod,
   canvas: FabricCanvas,
   group: FabricObject,

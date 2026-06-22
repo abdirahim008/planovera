@@ -24,6 +24,7 @@ import {
   createOrUpdateTitleBlock,
   createSvgObject,
   exportPagesToPDF,
+  ungroupSvgObjects,
 } from "@/lib/drawings/fabricHelpers";
 import { extractSegments, findSnapPoint, renderSnapMarker } from "@/lib/drawings/snapping";
 import { PATTERNS, PatternType } from "@/lib/drawings/patterns";
@@ -2378,6 +2379,42 @@ export default function Editor({
     setMessage("Objects grouped into a reusable block.");
   }, [commitHistory, fabricMod, setMessage]);
 
+  // Edit-banner convenience: combine the whole drawing into one block (so it
+  // moves/places as a single unit) or split it back into individual objects (so
+  // a marquee selects just a portion and labels are directly editable).
+  const handleGroupDrawing = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !fabricMod) return;
+    const objects = canvas.getObjects().filter((o) => o.selectable !== false);
+    if (objects.length < 2) {
+      setMessage("Nothing to combine yet.");
+      return;
+    }
+    canvas.discardActiveObject();
+    canvas.remove(...objects);
+    const group = new fabricMod.Group(objects);
+    canvas.add(group);
+    canvas.setActiveObject(group);
+    canvas.requestRenderAll();
+    commitHistory();
+    setMessage("Drawing combined into one block — drag to move it as a unit.");
+  }, [commitHistory, fabricMod, setMessage]);
+
+  const handleUngroupDrawing = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !fabricMod) return;
+    const groups = canvas.getObjects().filter((o) => o.type === "group");
+    if (groups.length === 0) {
+      setMessage("The drawing is already split into individual objects.");
+      return;
+    }
+    groups.forEach((group) => ungroupSvgObjects(fabricMod, canvas, group));
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+    commitHistory();
+    setMessage("Drawing split into objects — drag a box to select any portion.");
+  }, [commitHistory, fabricMod, setMessage]);
+
   const handleBringFront = useCallback(() => {
     const canvas = fabricRef.current;
     const active = canvas?.getActiveObject();
@@ -3223,6 +3260,20 @@ export default function Editor({
           </span>
           <span className="text-amber-700">Remove unneeded notes, clean up, then save.</span>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              className="btn"
+              onClick={handleUngroupDrawing}
+              title="Split the drawing into individual parts — drag a box to select any portion, or click a label to edit it"
+            >
+              Ungroup
+            </button>
+            <button
+              className="btn"
+              onClick={handleGroupDrawing}
+              title="Combine the whole drawing into one block so it moves and places as a single unit"
+            >
+              Group
+            </button>
             <button className="btn btn-primary" onClick={() => void handleUpdateLibraryItem()}>
               Save changes to library
             </button>
