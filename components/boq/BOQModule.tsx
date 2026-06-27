@@ -26,6 +26,7 @@ import {
   Search,
   ListPlus,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 // Type-only import (erased at build); the ~430 KB runtime library is loaded on
 // demand inside exportBOQToExcel so it never ships in the BOQ module's chunk.
@@ -1152,6 +1153,197 @@ function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
+// ─── AI Draft Modal ───────────────────────────────────────────────
+// Describe the works in plain language; the server route drafts a BOQ via the
+// configured AI provider. The draft is reviewed here and applied through the
+// same store actions as the library (replace or append) — nothing is written
+// until the user accepts it.
+function AiDraftModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { boqSheets, loadBOQFromLibrary, appendBOQFromLibrary } = useAppStore();
+  const [brief, setBrief] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<BOQSheet[] | null>(null);
+
+  const hasExistingContent = useMemo(
+    () =>
+      boqSheets.some((sheet) =>
+        sheet.rows.some(
+          (r) =>
+            (r.description && r.description.trim()) ||
+            (r.qty && r.qty.trim()) ||
+            (r.rate && r.rate.trim())
+        )
+      ),
+    [boqSheets]
+  );
+
+  const reset = () => {
+    setBrief("");
+    setError(null);
+    setDraft(null);
+    setLoading(false);
+  };
+
+  const close = () => {
+    reset();
+    onClose();
+  };
+
+  const itemCount = useMemo(
+    () => (draft ? draft.reduce((n, s) => n + s.rows.filter((r) => r.type === "item").length, 0) : 0),
+    [draft]
+  );
+
+  const generate = async () => {
+    const trimmed = brief.trim();
+    if (trimmed.length < 3) {
+      setError("Describe the works to draft a BOQ.");
+      return;
+    }
+    setError(null);
+    setDraft(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/ai/boq", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ brief: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Could not generate a draft. Please try again.");
+        return;
+      }
+      const sheets = Array.isArray(data?.sheets) ? (data.sheets as BOQSheet[]) : [];
+      if (sheets.length === 0) {
+        setError("The draft came back empty. Try a more specific description.");
+        return;
+      }
+      setDraft(sheets);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const apply = (mode: "replace" | "append") => {
+    if (!draft) return;
+    if (mode === "replace") loadBOQFromLibrary(draft);
+    else appendBOQFromLibrary(draft, "AI draft");
+    close();
+  };
+
+  return (
+    <Modal open={open} onClose={close} title="Draft BOQ with AI" width={620}>
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-txt-muted">
+            Describe the works
+          </label>
+          <textarea
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            rows={4}
+            placeholder="e.g. 4 km rural gravel road with two 2-cell box culverts and side drains, plus road signs and markings."
+            className="w-full resize-y rounded-md border border-border bg-bg-raised px-3 py-2 text-sm text-txt outline-none focus:border-accent"
+          />
+          <p className="mt-1 text-[11px] text-txt-dim">
+            The AI estimates structure, items, units and quantities. Rates are left blank
+            for the engineer to fill.
+          </p>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-red-400" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {!draft && (
+          <div className="flex justify-end">
+            <Button variant="primary" disabled={loading} onClick={generate}>
+              <Sparkles size={14} /> {loading ? "Drafting…" : "Generate draft"}
+            </Button>
+          </div>
+        )}
+
+        {draft && (
+          <>
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+              <strong>Review before use.</strong> AI-drafted quantities are estimates — check
+              every line and set rates before relying on this BOQ.
+            </div>
+
+            <div className="max-h-[300px] space-y-3 overflow-auto rounded-md border border-border bg-bg-raised/30 p-3">
+              {draft.map((sheet) => (
+                <div key={sheet.id}>
+                  <div className="mb-1 text-xs font-semibold text-accent">{sheet.name}</div>
+                  <div className="space-y-0.5">
+                    {sheet.rows.map((r) => (
+                      <div key={r.id} className="flex items-baseline gap-2 text-[12px]">
+                        {r.type === "item" ? (
+                          <>
+                            <span className="w-10 flex-shrink-0 text-txt-dim">{r.itemNo}</span>
+                            <span className="flex-1 text-txt">{r.description}</span>
+                            <span className="flex-shrink-0 text-txt-muted">
+                              {r.qty} {r.unit}
+                            </span>
+                          </>
+                        ) : (
+                          <span
+                            className={`flex-1 ${
+                              r.type === "header"
+                                ? "font-semibold text-txt"
+                                : "italic text-txt-muted"
+                            }`}
+                          >
+                            {r.description}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {hasExistingContent && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+                <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-amber-400" />
+                <span>
+                  This project already has a BOQ. <strong>Replace</strong> discards it; choose{" "}
+                  <strong>Add as sheet(s)</strong> to keep it and append the draft.
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] text-txt-dim">
+                {draft.length} sheet{draft.length === 1 ? "" : "s"} · {itemCount} item
+                {itemCount === 1 ? "" : "s"}
+              </p>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button variant="ghost" onClick={() => setDraft(null)}>
+                  Discard
+                </Button>
+                <Button variant="ghost" onClick={() => apply("replace")}>
+                  {hasExistingContent ? "Replace current BOQ" : "Load BOQ"}
+                </Button>
+                <Button variant="primary" onClick={() => apply("append")}>
+                  Add as sheet(s)
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Save to Library Modal ────────────────────────────────────────
 function SaveToLibraryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const authConfigured = isSupabaseConfigured();
@@ -1512,6 +1704,7 @@ export default function BOQModule() {
   // mode: 'list' | 'view' | 'edit'
   const [mode, setMode] = useState<"list" | "view" | "edit">(activeBOQId ? "view" : "list");
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showAiDraft, setShowAiDraft] = useState(false);
   const [showSaveLib, setShowSaveLib] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -1952,6 +2145,9 @@ export default function BOQModule() {
             </>
           ) : (
             <>
+              <Button size="sm" onClick={() => setShowAiDraft(true)}>
+                <Sparkles size={14} /> Draft with AI
+              </Button>
               <Button size="sm" onClick={() => setShowLibrary(true)}>
                 <Library size={14} /> Library
               </Button>
@@ -2029,6 +2225,7 @@ export default function BOQModule() {
       </div>
 
       <LibraryBrowser open={showLibrary} onClose={() => setShowLibrary(false)} />
+      <AiDraftModal open={showAiDraft} onClose={() => setShowAiDraft(false)} />
       {sheetCtxMenu && activeSheetContext && (
         <ContextMenu
           x={sheetCtxMenu.x}

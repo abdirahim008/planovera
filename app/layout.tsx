@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
+import GlobalAssistant from "@/components/agent/GlobalAssistant";
 
 export const metadata: Metadata = {
   title: "Planovera — Project Controls and Drawings",
@@ -20,7 +21,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <GlobalAssistant />
+      </body>
     </html>
   );
 }
