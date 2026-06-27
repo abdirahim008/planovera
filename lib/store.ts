@@ -2033,6 +2033,7 @@ interface AppState {
   moveActivity: (id: string, dir: "up" | "down") => void;
   pasteActivityAt: (anchorId: string, position: "above" | "below", clipboard: WorkPlanActivity[]) => void;
   fetchActivitiesFromBOQ: (boqId: string) => void;
+  loadWorkPlanFromDraft: (sheets: WorkPlanSheet[]) => void;
   pasteWorkPlanRows: (startRowIndex: number, startColKey: string, rawData: string) => void;
   clearWorkPlanRange: (r1: number, r2: number, c1: string, c2: string) => void;
 
@@ -3885,6 +3886,31 @@ export const useAppStore = create<AppState>()(
 
       renameWorkPlanSheet: (idx, name) =>
         set((s) => ({ workPlanSheets: s.workPlanSheets.map((sh, i) => (i === idx ? { ...sh, name } : sh)) })),
+
+      // Replace the working work plan with externally drafted sheets (AI agent).
+      // Mirrors loadBOQFromLibrary: fresh ids, sequential sort_order, scoped to
+      // the active project, and section spans recomputed from their children.
+      loadWorkPlanFromDraft: (sheets) =>
+        set((s) => {
+          const projectId = s.project?.id || "";
+          const next = sheets.map((sheet, i) => ({
+            ...sheet,
+            id: uuid(),
+            sort_order: i,
+            activities: recalcWorkPlanSections(
+              sheet.activities.map((a) => ({
+                ...a,
+                id: uuid(),
+                project_id: projectId,
+                rowType: a.rowType || "activity",
+              }))
+            ),
+          }));
+          return {
+            workPlanSheets: next.length ? next : s.workPlanSheets,
+            activeWorkPlanSheetIndex: 0,
+          };
+        }),
 
       addActivity: () =>
         set((s) => ({
