@@ -9,6 +9,7 @@ import {
   type AgentContext,
   type AgentModule,
   type AgentResponse,
+  type AgentTable,
 } from "@/lib/agent/types";
 import type { DocumentTemplateType } from "@/lib/supabase";
 
@@ -46,7 +47,12 @@ function buildSystemPrompt(ctx: AgentContext): string {
     "",
     "Answering questions:",
     "- If the user ASKS something about the current project (money certified, progress %, delayed activities, contract value, counts, dates, etc.), answer it directly from the project snapshot below and set action to {\"type\":\"none\"}.",
-    "- Use the exact figures from the snapshot; format money with the project currency. If the snapshot doesn't contain the answer, say you don't have that figure rather than guessing. Never invent numbers.",
+    "- For questions spanning MULTIPLE projects (\"list my projects\", \"which projects are behind schedule?\", \"total certified across projects\"), answer from the portfolio data below. This works even when no single project is active.",
+    "- Use the exact figures from the snapshot/portfolio; format money with the relevant project currency. If the data doesn't contain the answer, say you don't have that figure rather than guessing. Never invent numbers.",
+    "",
+    "Tables:",
+    "- When the user asks to LIST or COMPARE multiple items (projects with status, certificates, delayed activities, etc.), populate the optional top-level \"table\" field: {\"title\":\"<short>\",\"columns\":[...],\"rows\":[[...],[...]]}. Keep \"reply\" to a one-line lead-in. Each row must have one cell per column, all strings.",
+    "- Use a table only when it genuinely helps; for a single value or short answer, omit \"table\" and just use \"reply\".",
     "",
     "Rules:",
     "- Take action when the user's intent is clear; do not ask for confirmation of things they already said.",
@@ -69,11 +75,39 @@ function buildSystemPrompt(ctx: AgentContext): string {
       JSON.stringify(ctx.snapshot),
     );
   }
+  if (ctx.portfolio?.length) {
+    lines.push(
+      "",
+      "Portfolio (all projects — answer cross-project questions from this; scheduleStatus is progress vs time elapsed):",
+      JSON.stringify(ctx.portfolio),
+    );
+  }
   return lines.join("\n");
 }
 
 const str = (v: unknown): string =>
   typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+
+// Validate an optional table payload: bounded columns/rows, every cell a string,
+// each row padded/truncated to the column count. Returns null if unusable.
+function normalizeTable(raw: unknown): AgentTable | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Record<string, unknown>;
+  const columns = (Array.isArray(t.columns) ? t.columns : []).map(str).filter(Boolean).slice(0, 8);
+  if (columns.length === 0) return null;
+  const rawRows = Array.isArray(t.rows) ? t.rows : [];
+  const rows = rawRows
+    .slice(0, 60)
+    .map((r) => {
+      const cells = (Array.isArray(r) ? r : [r]).map(str);
+      // Pad/truncate to match the column count.
+      while (cells.length < columns.length) cells.push("");
+      return cells.slice(0, columns.length);
+    });
+  if (rows.length === 0) return null;
+  const title = str(t.title);
+  return { ...(title ? { title } : {}), columns, rows };
+}
 
 // Re-validate whatever the model emitted into a safe AgentAction. Anything
 // unexpected degrades to {type:"none"} so the client never acts on garbage.
@@ -192,14 +226,15 @@ export async function POST(req: Request) {
   }
 
   try {
-    const raw = await aiChatJSON<{ reply?: unknown; action?: unknown }>({
+    const raw = await aiChatJSON<{ reply?: unknown; action?: unknown; table?: unknown }>({
       system: buildSystemPrompt(context),
       messages,
-      maxTokens: 700,
+      maxTokens: 1500, // higher ceiling so a table answer isn't truncated
     });
     const response: AgentResponse = {
       reply: str(raw?.reply) || "Okay.",
       action: normalizeAction(raw?.action),
+      table: normalizeTable(raw?.table),
     };
     return NextResponse.json(response);
   } catch (err) {

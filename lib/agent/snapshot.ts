@@ -34,6 +34,7 @@ const today = () => new Date().toISOString().split("T")[0];
 // the full AppState) keeps the module decoupled; useAppStore.getState() satisfies it.
 interface SnapshotState {
   project: Project | null;
+  projects: Project[];
   savedBOQs: Array<{ project_id: string; sheets: Array<{ rows: Array<{ type: string; qty?: string; rate?: string; description?: string }> }> }>;
   certificates: PaymentCertificate[];
   savedWorkPlans: Array<{
@@ -230,4 +231,111 @@ export function buildProjectSnapshot(state: SnapshotState): ProjectSnapshot | nu
       checklistPending: checklist.filter((c) => c.status === "pending").length,
     },
   };
+}
+
+// ─── Portfolio summary (all projects) ────────────────────────────────────────
+// One slim row per project so the assistant can answer cross-project questions
+// ("which projects are behind schedule?", "list my projects with status"). Uses
+// the same commercial/progress/timeline math as the dashboard.
+
+export interface PortfolioRow {
+  name: string;
+  type: string;
+  role: string;
+  location: string;
+  currency: string;
+  contractValue: number;
+  certifiedToDate: number;
+  financialProgressPercent: number;
+  actualProgressPercent: number | null;
+  timeElapsedPercent: number | null;
+  scheduleStatus: "behind" | "on-track" | "ahead" | "no-baseline";
+  delayedActivities: number;
+  endDate: string;
+}
+
+function summarizeProject(state: SnapshotState, p: Project): PortfolioRow {
+  const id = p.id;
+
+  const projectCerts = state.certificates.filter((c) => c.project_id === id);
+  const calcs = projectCerts.map((c) => ({ status: c.status, ...paymentCertificateCalcs(c) }));
+  const maxNet = (status: PaymentCertificate["status"]) =>
+    calcs.filter((e) => e.status === status).reduce((m, e) => Math.max(m, e.total.net), 0);
+  const paid = maxNet("paid");
+  const certifiedToDate = Math.max(maxNet("approved"), paid);
+
+  const contractValue = parseAmount(p.contractAmount);
+  const boqAmount = state.savedBOQs
+    .filter((b) => b.project_id === id)
+    .flatMap((b) => b.sheets)
+    .reduce(
+      (sum, sheet) =>
+        sum + sheet.rows.filter((r) => r.type === "item").reduce((s, r) => s + parseAmount(r.qty) * parseAmount(r.rate), 0),
+      0,
+    );
+  const baseline = contractValue > 0 ? contractValue : boqAmount;
+  const financialProgressPercent = baseline > 0 ? clamp(Math.round((paid / baseline) * 100)) : 0;
+
+  // Actual physical progress from the latest progress report (weighted).
+  const reports = state.progressReports
+    .filter((r) => r.project_id === id)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const latest = reports.at(-1) || null;
+  const actualProgressPercent = latest
+    ? round1(
+        latest.sheets
+          .flatMap((s) => s.items)
+          .reduce(
+            (sum, it: { weightPercent?: string; actualPercent?: string }) =>
+              sum + (parseAmount(it.weightPercent) * parseAmount(it.actualPercent)) / 100,
+            0,
+          ),
+      )
+    : null;
+
+  // Time elapsed % from the contract dates.
+  let timeElapsedPercent: number | null = null;
+  if (p.start_date && p.end_date) {
+    const start = new Date(p.start_date);
+    const end = new Date(p.end_date);
+    const now = new Date();
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
+      const total = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+      const elapsed = clamp(Math.ceil((now.getTime() - start.getTime()) / 86400000), 0, total);
+      timeElapsedPercent = round1((elapsed / total) * 100);
+    }
+  }
+
+  // Behind/ahead is progress vs elapsed time; needs both a report and dates.
+  let scheduleStatus: PortfolioRow["scheduleStatus"] = "no-baseline";
+  if (actualProgressPercent !== null && timeElapsedPercent !== null) {
+    const diff = actualProgressPercent - timeElapsedPercent;
+    scheduleStatus = diff < -5 ? "behind" : diff > 5 ? "ahead" : "on-track";
+  }
+
+  const delayedActivities = state.savedWorkPlans
+    .filter((w) => w.project_id === id)
+    .flatMap((w) => w.sheets.flatMap((s) => s.activities))
+    .filter((a) => (a.rowType || "activity") !== "section" && a.status === "delayed").length;
+
+  return {
+    name: p.name,
+    type: p.type,
+    role: p.role || "",
+    location: p.location || "",
+    currency: p.currency || "USD",
+    contractValue: round2(contractValue),
+    certifiedToDate: round2(certifiedToDate),
+    financialProgressPercent,
+    actualProgressPercent,
+    timeElapsedPercent,
+    scheduleStatus,
+    delayedActivities,
+    endDate: p.end_date || "",
+  };
+}
+
+export function buildPortfolioSnapshot(state: SnapshotState): PortfolioRow[] {
+  // Cap to keep the prompt bounded; portfolios beyond this are rare.
+  return state.projects.slice(0, 60).map((p) => summarizeProject(state, p));
 }

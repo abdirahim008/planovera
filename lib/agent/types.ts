@@ -78,10 +78,19 @@ export type AgentAction =
 
 export type AgentActionType = AgentAction["type"];
 
+/** Optional tabular payload for list/compare answers (rendered as a table). */
+export interface AgentTable {
+  title?: string;
+  columns: string[];
+  rows: string[][];
+}
+
 /** What the agent route returns for one user turn. */
 export interface AgentResponse {
   reply: string;
   action: AgentAction;
+  /** Present when the answer is best shown as a table (e.g. "list my projects"). */
+  table?: AgentTable | null;
 }
 
 /** Snapshot of workspace state the client sends so the model can ground itself. */
@@ -96,6 +105,8 @@ export interface AgentContext {
   boqItemCount?: number;
   /** Read-only snapshot of the active project, used to answer questions. */
   snapshot?: Record<string, unknown> | null;
+  /** Slim per-project summaries across the whole portfolio, for portfolio Q&A. */
+  portfolio?: Record<string, unknown>[] | null;
 }
 
 export interface AgentChatMessage {

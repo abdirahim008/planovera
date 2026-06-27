@@ -23,10 +23,11 @@ import type {
   AgentContext,
   AgentProjectDraft,
   AgentResponse,
+  AgentTable,
   WorkPlanDraftResponse,
   DocumentDraftResponse,
 } from "@/lib/agent/types";
-import { buildProjectSnapshot } from "@/lib/agent/snapshot";
+import { buildProjectSnapshot, buildPortfolioSnapshot } from "@/lib/agent/snapshot";
 
 // A message in the visible thread. Only `variant: "chat"` lines are sent back to
 // the model as conversation; status/error lines are local UI feedback.
@@ -36,6 +37,7 @@ interface PanelMessage {
   role: "user" | "assistant";
   content: string;
   variant: Variant;
+  table?: AgentTable | null;
 }
 
 const GREETING =
@@ -46,8 +48,8 @@ const SUGGESTIONS = [
   "Draft a BOQ for an elevated water tank and septic tank",
   "Generate a work plan from this BOQ",
   "Write a commencement letter to the contractor",
-  "Start a progress report",
-  "What's certified to date and which activities are delayed?",
+  "List all my projects with status and progress",
+  "Which projects are behind schedule?",
 ];
 
 // ─── date helpers (sequential scheduling of generated activities) ────────────
@@ -63,6 +65,38 @@ function addDaysISO(iso: string, days: number) {
   const dt = new Date(y, (m || 1) - 1, d || 1);
   dt.setDate(dt.getDate() + days);
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+
+function AgentTableView({ table }: { table: AgentTable }) {
+  return (
+    <div className="w-full max-w-full overflow-x-auto rounded-xl border border-border bg-bg-surface">
+      {table.title ? (
+        <div className="border-b border-border px-3 py-1.5 text-[12px] font-semibold text-txt">{table.title}</div>
+      ) : null}
+      <table className="w-full border-collapse text-[12px]">
+        <thead>
+          <tr className="bg-bg-raised text-left">
+            {table.columns.map((col, i) => (
+              <th key={i} className="whitespace-nowrap px-2.5 py-1.5 font-semibold text-txt-muted">
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, r) => (
+            <tr key={r} className="border-t border-border">
+              {row.map((cell, c) => (
+                <td key={c} className="px-2.5 py-1.5 align-top text-txt">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function AgentChatPanel() {
@@ -82,8 +116,8 @@ export default function AgentChatPanel() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open, busy]);
 
-  function push(role: PanelMessage["role"], content: string, variant: Variant = "chat") {
-    setMessages((prev) => [...prev, { id: uuid(), role, content, variant }]);
+  function push(role: PanelMessage["role"], content: string, variant: Variant = "chat", table?: AgentTable | null) {
+    setMessages((prev) => [...prev, { id: uuid(), role, content, variant, table }]);
   }
 
   // ── context snapshot for the model ─────────────────────────────────────────
@@ -110,6 +144,8 @@ export default function AgentChatPanel() {
       // ("certified to date?", "which activities are delayed?") consistently
       // with the dashboard.
       snapshot: buildProjectSnapshot(st) as unknown as Record<string, unknown> | null,
+      // Slim per-project rows so portfolio questions work even with no active project.
+      portfolio: buildPortfolioSnapshot(st) as unknown as Record<string, unknown>[],
     };
   }
 
@@ -474,7 +510,7 @@ export default function AgentChatPanel() {
       const data = (await res.json()) as AgentResponse & { error?: string };
       if (!res.ok) throw new Error(data.error || "The assistant could not respond.");
 
-      push("assistant", data.reply || "Okay.", "chat");
+      push("assistant", data.reply || "Okay.", "chat", data.table);
       await runAction(data.action);
     } catch (err) {
       push("assistant", err instanceof Error ? err.message : "Something went wrong.", "error");
@@ -540,7 +576,7 @@ export default function AgentChatPanel() {
           }
           const isUser = m.role === "user";
           return (
-            <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+            <div key={m.id} className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
               <div
                 className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
                   isUser
@@ -550,6 +586,7 @@ export default function AgentChatPanel() {
               >
                 {m.content}
               </div>
+              {m.table ? <AgentTableView table={m.table} /> : null}
             </div>
           );
         })}
