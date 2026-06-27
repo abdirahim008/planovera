@@ -415,6 +415,18 @@ create table if not exists public.project_correspondence_records (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.project_quality_control_records (
+  id uuid primary key,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  organization_id uuid references public.organizations(id) on delete set null,
+  name text not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.workspace_attendee_groups (
   id uuid primary key,
   owner_id uuid not null references public.profiles(id) on delete cascade,
@@ -702,6 +714,9 @@ on public.project_generated_documents (project_id, updated_at desc);
 create index if not exists project_correspondence_records_project_idx
 on public.project_correspondence_records (project_id, updated_at desc);
 
+create index if not exists project_quality_control_records_project_idx
+on public.project_quality_control_records (project_id, updated_at desc);
+
 create index if not exists workspace_attendee_groups_owner_idx
 on public.workspace_attendee_groups (owner_id, updated_at desc);
 
@@ -849,6 +864,12 @@ execute function public.set_updated_at();
 drop trigger if exists project_correspondence_records_set_updated_at on public.project_correspondence_records;
 create trigger project_correspondence_records_set_updated_at
 before update on public.project_correspondence_records
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists project_quality_control_records_set_updated_at on public.project_quality_control_records;
+create trigger project_quality_control_records_set_updated_at
+before update on public.project_quality_control_records
 for each row
 execute function public.set_updated_at();
 
@@ -2474,6 +2495,7 @@ alter table public.project_payment_certificates enable row level security;
 alter table public.project_progress_reports enable row level security;
 alter table public.project_generated_documents enable row level security;
 alter table public.project_correspondence_records enable row level security;
+alter table public.project_quality_control_records enable row level security;
 alter table public.workspace_attendee_groups enable row level security;
 alter table public.workspace_meeting_minutes enable row level security;
 alter table public.workspace_action_points enable row level security;
@@ -2731,6 +2753,7 @@ using (
 drop policy if exists "Users manage own projects" on public.projects;
 drop policy if exists "projects_owner_select" on public.projects;
 drop policy if exists "construction_projects_owner_select" on public.projects;
+drop policy if exists "construction_projects_member_select" on public.projects;
 create policy "construction_projects_member_select"
 on public.projects
 for select
@@ -2739,6 +2762,7 @@ using (public.can_access_project(id));
 
 drop policy if exists "projects_owner_insert" on public.projects;
 drop policy if exists "construction_projects_owner_insert" on public.projects;
+drop policy if exists "construction_projects_member_insert" on public.projects;
 create policy "construction_projects_member_insert"
 on public.projects
 for insert
@@ -2754,6 +2778,7 @@ with check (
 
 drop policy if exists "projects_owner_update" on public.projects;
 drop policy if exists "construction_projects_owner_update" on public.projects;
+drop policy if exists "construction_projects_member_update" on public.projects;
 create policy "construction_projects_member_update"
 on public.projects
 for update
@@ -2770,6 +2795,7 @@ with check (
 
 drop policy if exists "projects_owner_delete" on public.projects;
 drop policy if exists "construction_projects_owner_delete" on public.projects;
+drop policy if exists "construction_projects_member_delete" on public.projects;
 create policy "construction_projects_member_delete"
 on public.projects
 for delete
@@ -3165,6 +3191,35 @@ for delete
 to authenticated
 using (public.can_edit_project(project_id));
 
+drop policy if exists "project_quality_control_records_member_select" on public.project_quality_control_records;
+create policy "project_quality_control_records_member_select"
+on public.project_quality_control_records
+for select
+to authenticated
+using (public.can_access_project(project_id));
+
+drop policy if exists "project_quality_control_records_member_insert" on public.project_quality_control_records;
+create policy "project_quality_control_records_member_insert"
+on public.project_quality_control_records
+for insert
+to authenticated
+with check (public.can_edit_project(project_id));
+
+drop policy if exists "project_quality_control_records_member_update" on public.project_quality_control_records;
+create policy "project_quality_control_records_member_update"
+on public.project_quality_control_records
+for update
+to authenticated
+using (public.can_edit_project(project_id))
+with check (public.can_edit_project(project_id));
+
+drop policy if exists "project_quality_control_records_member_delete" on public.project_quality_control_records;
+create policy "project_quality_control_records_member_delete"
+on public.project_quality_control_records
+for delete
+to authenticated
+using (public.can_edit_project(project_id));
+
 drop policy if exists "workspace_attendee_groups_owner_select" on public.workspace_attendee_groups;
 create policy "workspace_attendee_groups_owner_select"
 on public.workspace_attendee_groups
@@ -3317,6 +3372,7 @@ comment on table public.project_payment_certificates is 'Normalized payment cert
 comment on table public.project_progress_reports is 'Normalized progress report records linked to projects for shared monitoring and approvals.';
 comment on table public.project_generated_documents is 'Normalized generated document records linked to projects for shared correspondence and reporting.';
 comment on table public.project_correspondence_records is 'Normalized correspondence and instruction records linked to projects.';
+comment on table public.project_quality_control_records is 'Quality-control records (material testing, survey) linked to projects.';
 comment on table public.workspace_attendee_groups is 'Reusable meeting attendee groups owned by a user across the wider workspace.';
 comment on table public.workspace_meeting_minutes is 'Meeting minute records owned by a user across the wider workspace.';
 comment on table public.workspace_action_points is 'Action points register (source of truth for open items) owned by a user across the wider workspace.';

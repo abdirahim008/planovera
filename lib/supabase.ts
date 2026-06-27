@@ -514,6 +514,7 @@ export type ReportSectionId =
   | "riskRegister"
   | "siteNotes"
   | "correspondenceLog"
+  | "qualityControl"
   | "photos"
   | "forecast"
   | "signoff";
@@ -537,6 +538,7 @@ export const DEFAULT_PROGRESS_REPORT_SECTIONS: ReportSectionToggles = {
   riskRegister: true,
   siteNotes: false,
   correspondenceLog: false,
+  qualityControl: false,
   photos: false,
   forecast: true,
   signoff: true,
@@ -579,6 +581,29 @@ export interface CorrespondenceRecord {
   approvedValue?: string;
   timeImpactDays?: string;
   approvalSteps: ApprovalStep[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type QualityControlCategory = "material-testing" | "survey" | "ndt" | "other";
+export type QualityControlStatus = "pass" | "fail" | "pending" | "conditional";
+
+export interface QualityControlRecord {
+  id: string;
+  project_id: string;
+  number: number;
+  category: QualityControlCategory;
+  testName: string;
+  elementLocation: string;
+  sampleRef: string;
+  date: string;
+  performedBy: string;
+  witnessedBy: string;
+  specification: string;
+  result: string;
+  status: QualityControlStatus;
+  reportLink: string;
+  remarks: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -701,6 +726,7 @@ export interface ConstructionWorkspacePayload {
   progressReports: ProgressReport[];
   generatedDocuments: GeneratedDocument[];
   correspondenceRecords: CorrespondenceRecord[];
+  qualityControlRecords: QualityControlRecord[];
   checklistItems: ChecklistItem[];
   siteNotes: SiteNote[];
   risks: Risk[];
@@ -1051,6 +1077,7 @@ export const emptyConstructionWorkspacePayload =
     progressReports: [],
     generatedDocuments: [],
     correspondenceRecords: [],
+    qualityControlRecords: [],
     checklistItems: [],
     siteNotes: [],
     risks: [],
@@ -1124,6 +1151,7 @@ export const normalizeConstructionWorkspacePayload = (
   progressReports: payload?.progressReports ?? [],
   generatedDocuments: payload?.generatedDocuments ?? [],
   correspondenceRecords: payload?.correspondenceRecords ?? [],
+  qualityControlRecords: payload?.qualityControlRecords ?? [],
   checklistItems: payload?.checklistItems ?? [],
   siteNotes: payload?.siteNotes ?? [],
   risks: payload?.risks ?? [],
