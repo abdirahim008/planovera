@@ -68,6 +68,9 @@ const CorrespondenceModule = dynamic(() => import("@/components/correspondence/C
 const ChecklistModule = dynamic(() => import("@/components/checklist/ChecklistModule"), {
   loading: () => <ModuleLoading label="Loading checklist..." />,
 });
+const QualityControlModule = dynamic(() => import("@/components/quality/QualityControlModule"), {
+  loading: () => <ModuleLoading label="Loading quality control..." />,
+});
 const SiteNotesModule = dynamic(() => import("@/components/site-notes/SiteNotesModule"), {
   loading: () => <ModuleLoading label="Loading site notes..." />,
 });
@@ -99,6 +102,7 @@ const moduleLabels: Record<string, string> = {
   documents: "Documents",
   correspondence: "Correspondence",
   checklist: "Checklist",
+  quality: "Quality Control",
   "site-notes": "Site Notes",
   risks: "Risk Register",
   stakeholders: "Stakeholder Log",
@@ -318,6 +322,7 @@ function Workspace({
           {module === "documents" && hasProject && <DocumentsModule />}
           {module === "correspondence" && hasProject && <CorrespondenceModule />}
           {module === "checklist" && hasProject && <ChecklistModule />}
+          {module === "quality" && hasProject && <QualityControlModule />}
           {module === "site-notes" && hasProject && isConstruction && <SiteNotesModule />}
           {module === "risks" && hasProject && <RiskRegisterModule />}
           {module === "stakeholders" && hasProject && <StakeholderLogModule />}
@@ -370,6 +375,7 @@ export default function WorkspaceShell() {
     generatedDocuments: state.generatedDocuments,
     userSignatureProfile: state.userSignatureProfile,
     correspondenceRecords: state.correspondenceRecords,
+    qualityControlRecords: state.qualityControlRecords,
     checklistItems: state.checklistItems,
     siteNotes: state.siteNotes,
     attendeeGroups: state.attendeeGroups,
@@ -603,6 +609,7 @@ export default function WorkspaceShell() {
         { data: progressRows, error: progressError },
         { data: generatedDocumentRows, error: generatedDocumentError },
         { data: correspondenceRows, error: correspondenceError },
+        { data: qualityControlRows, error: qualityControlError },
         { data: attendeeGroupRows, error: attendeeGroupError },
         { data: meetingMinuteRows, error: meetingMinuteError },
         { data: actionPointRows, error: actionPointError },
@@ -654,6 +661,10 @@ export default function WorkspaceShell() {
           .order("updated_at", { ascending: false }),
         supabase
           .from("project_correspondence_records")
+          .select("*")
+          .order("updated_at", { ascending: false }),
+        supabase
+          .from("project_quality_control_records")
           .select("*")
           .order("updated_at", { ascending: false }),
         supabase
@@ -715,6 +726,7 @@ export default function WorkspaceShell() {
           progressReports: (progressRows ?? []) as any,
           generatedDocuments: (generatedDocumentRows ?? []) as any,
           correspondenceRecords: (correspondenceRows ?? []) as any,
+          qualityControlRecords: (qualityControlRows ?? []) as any,
           attendeeGroups: (attendeeGroupRows ?? []) as any,
           meetingMinutes: (meetingMinuteRows ?? []) as any,
           actionPoints: (actionPointRows ?? []) as any,
@@ -750,6 +762,7 @@ export default function WorkspaceShell() {
           !progressError &&
           !generatedDocumentError &&
           !correspondenceError &&
+          !qualityControlError &&
           !attendeeGroupError &&
           !meetingMinuteError &&
           !actionPointError
@@ -766,6 +779,7 @@ export default function WorkspaceShell() {
         progressError,
         generatedDocumentError,
         correspondenceError,
+        qualityControlError,
         attendeeGroupError,
         meetingMinuteError,
         actionPointError,

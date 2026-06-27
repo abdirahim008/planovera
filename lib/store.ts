@@ -24,6 +24,7 @@ import type {
   ProgressItem,
   GeneratedDocument,
   CorrespondenceRecord,
+  QualityControlRecord,
   ChecklistItem,
   ChecklistStatus,
   SiteNote,
@@ -1330,6 +1331,66 @@ const buildDemoWorkspace = () => {
     },
   ];
 
+  const qualityControlRecords: QualityControlRecord[] = [
+    {
+      id: uuid(),
+      project_id: projectId,
+      number: 1,
+      category: "material-testing",
+      testName: "Concrete cube test (28-day)",
+      elementLocation: "Ground beam GB-3, Grid C",
+      sampleRef: "CUBE-0142",
+      date: "2026-04-15",
+      performedBy: "SGS Materials Lab",
+      witnessedBy: project.consultantName || "Consultant",
+      specification: "≥ 25 MPa",
+      result: "28.4 MPa",
+      status: "pass",
+      reportLink: "",
+      remarks: "Average of 3 cubes.",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: uuid(),
+      project_id: projectId,
+      number: 2,
+      category: "material-testing",
+      testName: "Field density / compaction (Proctor)",
+      elementLocation: "Subgrade, Chainage 0+200",
+      sampleRef: "COMP-0031",
+      date: "2026-04-17",
+      performedBy: "Site laboratory",
+      witnessedBy: project.consultantName || "Consultant",
+      specification: "≥ 95% MDD",
+      result: "92.1% MDD",
+      status: "fail",
+      reportLink: "",
+      remarks: "Re-compaction and retest required.",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: uuid(),
+      project_id: projectId,
+      number: 3,
+      category: "survey",
+      testName: "Setting-out / level check",
+      elementLocation: "Block A foundation, Grid 1–6",
+      sampleRef: "SURV-0009",
+      date: "2026-04-19",
+      performedBy: "Site surveyor",
+      witnessedBy: project.contractorName || "Contractor",
+      specification: "± 10 mm of design level",
+      result: "Pending verification",
+      status: "pending",
+      reportLink: "",
+      remarks: "Awaiting consultant verification.",
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
   const attendeeGroups: MeetingAttendeeGroup[] = [
     {
       id: uuid(),
@@ -1574,6 +1635,7 @@ const buildDemoWorkspace = () => {
     progressReports,
     generatedDocuments,
     correspondenceRecords,
+    qualityControlRecords,
     checklistItems,
     siteNotes,
     attendeeGroups,
@@ -1966,6 +2028,13 @@ interface AppState {
   duplicateCorrespondenceRecord: (id: string) => void;
   updateApprovalStep: (recordId: string, stepId: string, updates: Partial<ApprovalStep>) => void;
 
+  // ─── Quality Control ────────────────────────────────────────────
+  qualityControlRecords: QualityControlRecord[];
+  addQualityControlRecord: (record: QualityControlRecord) => void;
+  updateQualityControlRecord: (id: string, updates: Partial<QualityControlRecord>) => void;
+  deleteQualityControlRecord: (id: string) => void;
+  duplicateQualityControlRecord: (id: string) => void;
+
   checklistItems: ChecklistItem[];
   addChecklistItem: (item?: Partial<ChecklistItem>) => void;
   addChecklistItems: (items: Partial<ChecklistItem>[]) => void;
@@ -2162,6 +2231,7 @@ export const useAppStore = create<AppState>()(
           generatedDocuments: deepClone(next.generatedDocuments),
           userSignatureProfile: next.userSignatureProfile ? deepClone(next.userSignatureProfile) : null,
           correspondenceRecords: deepClone(next.correspondenceRecords),
+          qualityControlRecords: deepClone(next.qualityControlRecords),
           checklistItems: deepClone(next.checklistItems),
           siteNotes: deepClone(next.siteNotes),
           risks: deepClone(next.risks),
@@ -2192,6 +2262,7 @@ export const useAppStore = create<AppState>()(
           generatedDocuments: next.generatedDocuments,
           userSignatureProfile: next.userSignatureProfile ?? null,
           correspondenceRecords: next.correspondenceRecords,
+          qualityControlRecords: next.qualityControlRecords,
           checklistItems: next.checklistItems,
           siteNotes: next.siteNotes,
           risks: next.risks,
@@ -2249,6 +2320,7 @@ export const useAppStore = create<AppState>()(
             progressReports: keep(s.progressReports),
             generatedDocuments: keep(s.generatedDocuments),
             correspondenceRecords: keep(s.correspondenceRecords),
+            qualityControlRecords: keep(s.qualityControlRecords),
             checklistItems: keep(s.checklistItems),
             siteNotes: keep(s.siteNotes),
             risks: keep(s.risks),
@@ -2341,6 +2413,9 @@ export const useAppStore = create<AppState>()(
               (document) => !isImportedId(document.id) && !importedProjectIds.has(document.project_id)
             ),
             correspondenceRecords: s.correspondenceRecords.filter(
+              (record) => !isImportedId(record.id) && !importedProjectIds.has(record.project_id)
+            ),
+            qualityControlRecords: s.qualityControlRecords.filter(
               (record) => !isImportedId(record.id) && !importedProjectIds.has(record.project_id)
             ),
             checklistItems: s.checklistItems.filter(
@@ -3405,6 +3480,41 @@ export const useAppStore = create<AppState>()(
         })),
 
       // ═══════════════════════════════════════════════════════════════
+      // ─── Quality Control ──────────────────────────────────────────
+      // ═══════════════════════════════════════════════════════════════
+      qualityControlRecords: [],
+      addQualityControlRecord: (record) =>
+        set((s) => ({ qualityControlRecords: [...s.qualityControlRecords, record] })),
+      updateQualityControlRecord: (id, updates) =>
+        set((s) => ({
+          qualityControlRecords: s.qualityControlRecords.map((record) =>
+            record.id === id ? { ...record, ...updates, updatedAt: new Date().toISOString() } : record
+          ),
+        })),
+      deleteQualityControlRecord: (id) =>
+        set((s) => ({
+          qualityControlRecords: s.qualityControlRecords.filter((record) => record.id !== id),
+        })),
+      duplicateQualityControlRecord: (id) =>
+        set((s) => {
+          const record = s.qualityControlRecords.find((item) => item.id === id);
+          if (!record) return s;
+          const now = new Date().toISOString();
+          const recordCount = s.qualityControlRecords.filter(
+            (item) => item.project_id === record.project_id
+          ).length;
+          const duplicate: QualityControlRecord = {
+            ...record,
+            id: uuid(),
+            number: recordCount + 1,
+            sampleRef: record.sampleRef ? `${record.sampleRef}-COPY` : "",
+            createdAt: now,
+            updatedAt: now,
+          };
+          return { qualityControlRecords: [...s.qualityControlRecords, duplicate] };
+        }),
+
+      // ═══════════════════════════════════════════════════════════════
       // ─── Compliance Checklist ─────────────────────────────────────
       // ═══════════════════════════════════════════════════════════════
       checklistItems: [],
@@ -4227,7 +4337,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "probuild-storage",
-        version: 15,
+        version: 16,
       storage: createDebouncedStorage<AppState>(),
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, any>;
@@ -4418,6 +4528,10 @@ export const useAppStore = create<AppState>()(
             if (item && !Array.isArray(item.tags)) item.tags = [];
           });
           state.boqLibrary = existing;
+        }
+
+        if (version < 16) {
+          if (!state.qualityControlRecords) state.qualityControlRecords = [];
         }
 
         return state as AppState;

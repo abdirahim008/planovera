@@ -7,6 +7,7 @@ import type {
   MeetingMinute,
   PaymentCertificate,
   ProgressReport,
+  QualityControlRecord,
   SavedBOQ,
   SavedSimpleItems,
   SavedWorkPlan,
@@ -40,6 +41,7 @@ export interface RelationalWorkspaceQueryData {
   progressReports?: ProjectScopedPayloadRecord<ProgressReport>[];
   generatedDocuments?: ProjectScopedPayloadRecord<GeneratedDocument>[];
   correspondenceRecords?: ProjectScopedPayloadRecord<CorrespondenceRecord>[];
+  qualityControlRecords?: ProjectScopedPayloadRecord<QualityControlRecord>[];
   attendeeGroups?: WorkspaceOwnedPayloadRecord<MeetingAttendeeGroup>[];
   meetingMinutes?: WorkspaceOwnedPayloadRecord<MeetingMinute>[];
   actionPoints?: WorkspaceOwnedPayloadRecord<ActionPoint>[];
@@ -53,6 +55,7 @@ export interface ProjectScopedSyncRows {
   progressReports: ProjectScopedPayloadRecord<ProgressReport>[];
   generatedDocuments: ProjectScopedPayloadRecord<GeneratedDocument>[];
   correspondenceRecords: ProjectScopedPayloadRecord<CorrespondenceRecord>[];
+  qualityControlRecords: ProjectScopedPayloadRecord<QualityControlRecord>[];
 }
 
 export interface WorkspaceOwnedSyncRows {
@@ -99,6 +102,9 @@ const documentName = (document: GeneratedDocument) =>
 
 const correspondenceName = (record: CorrespondenceRecord) =>
   record.subject?.trim() || record.referenceNo?.trim() || `Correspondence ${record.number}`;
+
+const qualityControlName = (record: QualityControlRecord) =>
+  record.testName?.trim() || record.sampleRef?.trim() || `QC Test ${record.number}`;
 
 export const buildProjectScopedSyncRows = (
   payload: ConstructionWorkspacePayload,
@@ -183,6 +189,17 @@ export const buildProjectScopedSyncRows = (
       created_by: actorId,
       updated_by: actorId,
     })),
+  qualityControlRecords: payload.qualityControlRecords
+    .filter((item) => item.project_id === projectId)
+    .map((item) => ({
+      id: item.id,
+      project_id: item.project_id,
+      organization_id: organizationId,
+      name: qualityControlName(item),
+      payload: clone(item),
+      created_by: actorId,
+      updated_by: actorId,
+    })),
 });
 
 export const buildWorkspaceOwnedSyncRows = (
@@ -233,6 +250,9 @@ export const buildRelationalWorkspacePayload = (
   correspondenceRecords: sortByNewest<CorrespondenceRecord>(
     (data.correspondenceRecords ?? []).map((item) => clone(item.payload)),
   ),
+  qualityControlRecords: sortByNewest<QualityControlRecord>(
+    (data.qualityControlRecords ?? []).map((item) => clone(item.payload)),
+  ),
   attendeeGroups: sortByNewest<MeetingAttendeeGroup>(
     (data.attendeeGroups ?? []).map((item) => clone(item.payload)),
   ),
@@ -270,6 +290,10 @@ export const mergeWorkspacePayloadSources = (
   correspondenceRecords: useRelational(
       snapshot.correspondenceRecords,
       relational.correspondenceRecords,
+    ),
+    qualityControlRecords: useRelational(
+      snapshot.qualityControlRecords,
+      relational.qualityControlRecords,
     ),
     checklistItems: snapshot.checklistItems,
     siteNotes: snapshot.siteNotes,
@@ -334,6 +358,9 @@ export const buildProjectSyncSignature = (
       : [],
     correspondenceRecords: activeProjectId
       ? payload.correspondenceRecords.filter((item) => item.project_id === activeProjectId)
+      : [],
+    qualityControlRecords: activeProjectId
+      ? payload.qualityControlRecords.filter((item) => item.project_id === activeProjectId)
       : [],
     checklistItems: activeProjectId
       ? payload.checklistItems.filter((item) => item.project_id === activeProjectId)

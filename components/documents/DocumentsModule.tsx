@@ -17,6 +17,7 @@ import { useAppStore, currency, getLiveMeetingActionItems } from "@/lib/store";
 import { sanitizeRichTextHtml } from "@/lib/richText";
 import type {
   CorrespondenceRecord,
+  QualityControlRecord,
   CorrespondenceType,
   DocumentTemplateType,
   GeneratedDocument,
@@ -139,6 +140,7 @@ const PROGRESS_REPORT_SECTION_META: Array<{
   { id: "riskRegister", label: "Risk register", description: "Open and mitigated risks with owners and mitigation measures" },
   { id: "siteNotes", label: "Site notes & inspections", description: "Site notes recorded within the reporting period" },
   { id: "correspondenceLog", label: "Correspondence log", description: "Instructions, RFIs, submittals and claims within the period" },
+  { id: "qualityControl", label: "Quality control", description: "Material tests and survey records, results and pass rate" },
   { id: "forecast", label: "Forecast & recovery", description: "Next period plan and recovery actions" },
   { id: "signoff", label: "Sign-off", description: "Signature blocks at the end" },
 ];
@@ -2407,6 +2409,85 @@ function progressCorrespondenceLogHtml(
   `;
 }
 
+function progressQualityControlHtml(
+  records: QualityControlRecord[],
+  projectId: string,
+  periodStart?: string,
+  periodEnd?: string,
+) {
+  const projectRecords = records
+    .filter((record) => record.project_id === projectId)
+    .filter((record) => inPeriod(record.date, periodStart, periodEnd))
+    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.number - b.number);
+
+  if (projectRecords.length === 0) return "";
+
+  const categoryLabel: Record<string, string> = {
+    "material-testing": "Material testing",
+    survey: "Survey",
+    ndt: "NDT",
+    other: "Other",
+  };
+  const statusLabel: Record<string, string> = {
+    pass: "Pass",
+    fail: "Fail",
+    pending: "Pending",
+    conditional: "Conditional",
+  };
+  const linkHref = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return "";
+    return /^(https?:|mailto:|file:)/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  };
+
+  const pass = projectRecords.filter((r) => r.status === "pass").length;
+  const fail = projectRecords.filter((r) => r.status === "fail").length;
+  const pending = projectRecords.filter((r) => r.status === "pending").length;
+  const decided = pass + fail;
+  const passRate = decided > 0 ? Math.round((pass / decided) * 100) : 0;
+
+  const rows = projectRecords
+    .map((record, index) => {
+      const href = linkHref(record.reportLink);
+      return `
+        <tr>
+          <td class="num">${index + 1}</td>
+          <td>${escapeHtml(record.date || "—")}</td>
+          <td>${escapeHtml(categoryLabel[record.category] || record.category)}</td>
+          <td>${escapeHtml(record.testName || "—")}</td>
+          <td>${escapeHtml(record.elementLocation || "—")}</td>
+          <td>${escapeHtml(record.specification || "—")}</td>
+          <td>${escapeHtml(record.result || "—")}</td>
+          <td>${escapeHtml(statusLabel[record.status] || record.status)}</td>
+          <td>${href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">Report</a>` : "—"}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="report-section-prose" style="margin-bottom:8px">
+      ${projectRecords.length} test${projectRecords.length === 1 ? "" : "s"} recorded — ${pass} passed, ${fail} failed, ${pending} pending (${passRate}% pass rate on decided tests).
+    </div>
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th style="width:4%">#</th>
+          <th style="width:10%">Date</th>
+          <th style="width:13%">Category</th>
+          <th>Test / activity</th>
+          <th style="width:16%">Element / location</th>
+          <th style="width:11%">Spec</th>
+          <th style="width:11%">Result</th>
+          <th style="width:9%">Status</th>
+          <th style="width:8%">Report</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function renderProgressReportBody(
   doc: GeneratedDocument,
   project: Project | null,
@@ -2417,6 +2498,7 @@ function renderProgressReportBody(
   risks: Risk[] = [],
   siteNotes: SiteNote[] = [],
   correspondenceRecords: CorrespondenceRecord[] = [],
+  qualityControlRecords: QualityControlRecord[] = [],
 ) {
   const toggles = resolveReportSections(doc);
   const metrics = progressReport ? progressMetrics(progressReport) : null;
@@ -2596,6 +2678,23 @@ function renderProgressReportBody(
     }
   }
 
+  if (toggles.qualityControl && project?.id) {
+    const qcHtml = progressQualityControlHtml(
+      qualityControlRecords,
+      project.id,
+      doc.reportPeriodStart,
+      doc.reportPeriodEnd,
+    );
+    if (qcHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid">
+          <div class="report-section-title">Quality control</div>
+          ${qcHtml}
+        </section>
+      `);
+    }
+  }
+
   if (toggles.forecast) {
     const forecast = doc.forecastNarrative?.trim();
     if (forecast) {
@@ -2622,6 +2721,7 @@ function renderBodyHtml(
   risks: Risk[] = [],
   siteNotes: SiteNote[] = [],
   correspondenceRecords: CorrespondenceRecord[] = [],
+  qualityControlRecords: QualityControlRecord[] = [],
 ) {
   const linkedMetrics = progressReport ? progressMetrics(progressReport) : null;
   const certValue = certificate ? certificateNet(certificate) : null;
@@ -2639,6 +2739,7 @@ function renderBodyHtml(
         risks,
         siteNotes,
         correspondenceRecords,
+        qualityControlRecords,
       );
     }
     return `
@@ -3632,6 +3733,7 @@ function buildDocumentPrintHtml(
   risks: Risk[] = [],
   siteNotes: SiteNote[] = [],
   correspondenceRecords: CorrespondenceRecord[] = [],
+  qualityControlRecords: QualityControlRecord[] = [],
 ) {
   const mergedDoc = hydrateGeneratedDocument(doc, project, progressReport, certificate);
   if (mergedDoc.templateType === "commencement-letter") {
@@ -3808,7 +3910,7 @@ function buildDocumentPrintHtml(
                   `
                   : isProgressReport
                   ? `
-                    ${renderBodyHtml(mergedDoc, project, progressReport, certificate, workPlans, allCertificates, meetingMinutes, risks, siteNotes, correspondenceRecords)}
+                    ${renderBodyHtml(mergedDoc, project, progressReport, certificate, workPlans, allCertificates, meetingMinutes, risks, siteNotes, correspondenceRecords, qualityControlRecords)}
                   `
                   : `
                     <div class="brand-shell">
@@ -3887,6 +3989,7 @@ function openDocumentPdf(
   risks: Risk[] = [],
   siteNotes: SiteNote[] = [],
   correspondenceRecords: CorrespondenceRecord[] = [],
+  qualityControlRecords: QualityControlRecord[] = [],
 ) {
   const printWindow = window.open("", "_blank");
   if (!printWindow) return;
@@ -3903,6 +4006,7 @@ function openDocumentPdf(
       risks,
       siteNotes,
       correspondenceRecords,
+      qualityControlRecords,
     ),
   );
   printWindow.document.close();
@@ -4254,6 +4358,7 @@ export default function DocumentsModule() {
     risks,
     siteNotes,
     correspondenceRecords,
+    qualityControlRecords,
     userSignatureProfile,
     setUserSignatureProfile,
     clearUserSignatureProfile,
@@ -4498,7 +4603,7 @@ export default function DocumentsModule() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              openDocumentPdf(hydratedDoc, project, linkedListProgress, linkedListCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes, risks, siteNotes, correspondenceRecords);
+                              openDocumentPdf(hydratedDoc, project, linkedListProgress, linkedListCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes, risks, siteNotes, correspondenceRecords, qualityControlRecords);
                             }}
                             className="data-row-action"
                             aria-label="Print or save as PDF"
@@ -4668,7 +4773,7 @@ export default function DocumentsModule() {
           <Button
             size="sm"
             variant="default"
-              onClick={() => openDocumentPdf(activeDocument, project, linkedProgress, linkedCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes, risks, siteNotes, correspondenceRecords)}
+              onClick={() => openDocumentPdf(activeDocument, project, linkedProgress, linkedCertificate, userSignatureProfile, savedWorkPlans, certificates, meetingMinutes, risks, siteNotes, correspondenceRecords, qualityControlRecords)}
           >
             <Printer size={14} /> Print / Save PDF
           </Button>

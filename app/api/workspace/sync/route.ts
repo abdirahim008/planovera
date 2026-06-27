@@ -217,6 +217,7 @@ export async function POST(request: Request) {
         progressReports: [],
         generatedDocuments: [],
         correspondenceRecords: [],
+        qualityControlRecords: [],
       };
   const workspaceRows = buildWorkspaceOwnedSyncRows(payload, user.id);
 
@@ -229,6 +230,7 @@ export async function POST(request: Request) {
       progressSync,
       documentsSync,
       correspondenceSync,
+      qualityControlSync,
       attendeeSync,
       minutesSync,
       actionPointsSync,
@@ -266,6 +268,13 @@ export async function POST(request: Request) {
             projectRows.correspondenceRecords,
           )
         : Promise.resolve({ upserted: 0, deleted: 0 }),
+      syncProjectId
+        ? syncProjectTable(
+            "project_quality_control_records",
+            syncProjectId,
+            projectRows.qualityControlRecords,
+          )
+        : Promise.resolve({ upserted: 0, deleted: 0 }),
       syncWorkspaceTable("workspace_attendee_groups", user.id, workspaceRows.attendeeGroups),
       syncWorkspaceTable("workspace_meeting_minutes", user.id, workspaceRows.meetingMinutes),
       syncWorkspaceTable("workspace_action_points", user.id, workspaceRows.actionPoints),
@@ -296,6 +305,7 @@ export async function POST(request: Request) {
         progressReports: progressSync,
         generatedDocuments: documentsSync,
         correspondenceRecords: correspondenceSync,
+        qualityControlRecords: qualityControlSync,
         attendeeGroups: attendeeSync,
         meetingMinutes: minutesSync,
         actionPoints: actionPointsSync,
