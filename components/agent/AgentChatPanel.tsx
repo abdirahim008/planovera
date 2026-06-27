@@ -26,6 +26,7 @@ import type {
   WorkPlanDraftResponse,
   DocumentDraftResponse,
 } from "@/lib/agent/types";
+import { buildProjectSnapshot } from "@/lib/agent/snapshot";
 
 // A message in the visible thread. Only `variant: "chat"` lines are sent back to
 // the model as conversation; status/error lines are local UI feedback.
@@ -38,7 +39,7 @@ interface PanelMessage {
 }
 
 const GREETING =
-  "Hi! I can set things up for you across the app — just tell me what you need. I can create projects, draft BOQs, build work plans, start progress reports, write documents (letters, reports), and scaffold payment certificates. For example: \"Create a project called Hargeisa Water Supply\", then \"draft a BOQ for an elevated water tank and septic tank\", then \"make a work plan from it\".";
+  "Hi! I can set things up for you and answer questions about your project. I can create projects, draft BOQs, build work plans, start progress reports, write documents, and scaffold payment certificates — and tell you things like what's certified to date or which activities are delayed. Just say what you need.";
 
 const SUGGESTIONS = [
   "Create a project called Hargeisa Water Supply",
@@ -46,7 +47,7 @@ const SUGGESTIONS = [
   "Generate a work plan from this BOQ",
   "Write a commencement letter to the contractor",
   "Start a progress report",
-  "Raise an interim payment certificate",
+  "What's certified to date and which activities are delayed?",
 ];
 
 // ─── date helpers (sequential scheduling of generated activities) ────────────
@@ -105,6 +106,10 @@ export default function AgentChatPanel() {
       existingProjects: st.projects.map((p) => p.name),
       hasBOQ: items > 0 || savedForProject,
       boqItemCount: items,
+      // Authoritative read-only figures so the assistant can answer questions
+      // ("certified to date?", "which activities are delayed?") consistently
+      // with the dashboard.
+      snapshot: buildProjectSnapshot(st) as unknown as Record<string, unknown> | null,
     };
   }
 

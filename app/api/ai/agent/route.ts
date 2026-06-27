@@ -44,6 +44,10 @@ function buildSystemPrompt(ctx: AgentContext): string {
     '{"type":"create_payment_certificate","certType":"interim"|"final"} — scaffold a payment certificate (IPC) from the project BOQ for the user to enter quantities. Requires an active project that has a BOQ. Default certType to "interim". Never quote money amounts — the app computes them.',
     `{"type":"open_module","module":"<one of: ${AGENT_MODULES.join(", ")}>"} — navigate the workspace.`,
     "",
+    "Answering questions:",
+    "- If the user ASKS something about the current project (money certified, progress %, delayed activities, contract value, counts, dates, etc.), answer it directly from the project snapshot below and set action to {\"type\":\"none\"}.",
+    "- Use the exact figures from the snapshot; format money with the project currency. If the snapshot doesn't contain the answer, say you don't have that figure rather than guessing. Never invent numbers.",
+    "",
     "Rules:",
     "- Take action when the user's intent is clear; do not ask for confirmation of things they already said.",
     "- If the user asks for a BOQ or work plan but no project is active, first guide them to create or select a project (ask or create_project if they gave a name).",
@@ -58,6 +62,13 @@ function buildSystemPrompt(ctx: AgentContext): string {
     `- Active project has a BOQ: ${ctx.hasBOQ ? `yes (${ctx.boqItemCount ?? 0} items)` : "no"}`,
     `- Existing projects: ${ctx.existingProjects?.length ? ctx.existingProjects.slice(0, 30).join("; ") : "none"}`,
   ];
+  if (ctx.snapshot) {
+    lines.push(
+      "",
+      "Active project snapshot (authoritative figures — answer questions from this):",
+      JSON.stringify(ctx.snapshot),
+    );
+  }
   return lines.join("\n");
 }
 

@@ -94,6 +94,8 @@ export interface AgentContext {
   existingProjects?: string[];
   hasBOQ?: boolean;
   boqItemCount?: number;
+  /** Read-only snapshot of the active project, used to answer questions. */
+  snapshot?: Record<string, unknown> | null;
 }
 
 export interface AgentChatMessage {
