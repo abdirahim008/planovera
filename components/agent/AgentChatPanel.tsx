@@ -526,7 +526,7 @@ export default function AgentChatPanel() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed right-3 top-3 z-[900] inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition hover:brightness-110"
+        className="fixed bottom-4 right-4 z-[900] inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition hover:brightness-110"
         aria-label="Open assistant"
       >
         <Sparkles size={18} />
@@ -536,7 +536,7 @@ export default function AgentChatPanel() {
   }
 
   return (
-    <div className="fixed right-3 top-3 z-[900] flex h-[min(80vh,640px)] w-[min(380px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-border bg-bg-surface shadow-2xl">
+    <div className="fixed bottom-4 right-4 z-[900] flex h-[min(80vh,640px)] w-[min(380px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-border bg-bg-surface shadow-2xl">
       <div className="flex items-center gap-2 border-b border-border bg-bg-raised px-4 py-3">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/15 text-accent">
           <Bot size={18} />
