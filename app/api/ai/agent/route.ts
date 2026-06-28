@@ -12,6 +12,7 @@ import {
   type AgentTable,
 } from "@/lib/agent/types";
 import type { DocumentTemplateType } from "@/lib/supabase";
+import { isModuleEnabled } from "@/lib/modules";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,9 @@ export const runtime = "nodejs";
 // calls the dedicated content routes for BOQ/work-plan generation. Keeping the
 // heavy content generation out of this route keeps each call cheap and reliable.
 
-const MODULE_SET = new Set<string>(AGENT_MODULES);
+// Only modules enabled in the current product are offered to / accepted from the model.
+const ENABLED_MODULES = AGENT_MODULES.filter(isModuleEnabled);
+const MODULE_SET = new Set<string>(ENABLED_MODULES);
 const DOC_TEMPLATE_SET = new Set<string>(AGENT_DOC_TEMPLATES);
 
 const TAXONOMY_TEXT = Object.keys(BOQ_LIBRARY_TAXONOMY).join(", ");
@@ -43,7 +46,7 @@ function buildSystemPrompt(ctx: AgentContext): string {
     '{"type":"create_progress_report","name":"<short title>","inputMode":"percent"|"quantity"} — create a progress report the user can fill in. Requires an active project that has a BOQ. Default inputMode to "percent".',
     `{"type":"draft_document","templateType":"<one of: ${AGENT_DOC_TEMPLATES.join(", ")}>","title":"<short title>","brief":"<what the document should say>"} — write a project document/letter. Pick the templateType that best matches the user's request (e.g. a start/commencement order → commencement-letter, an instruction to the contractor → instruction-letter, a one-page RAG update → status-report). Put the specifics in "brief".`,
     '{"type":"create_payment_certificate","certType":"interim"|"final"} — scaffold a payment certificate (IPC) from the project BOQ for the user to enter quantities. Requires an active project that has a BOQ. Default certType to "interim". Never quote money amounts — the app computes them.',
-    `{"type":"open_module","module":"<one of: ${AGENT_MODULES.join(", ")}>"} — navigate the workspace.`,
+    `{"type":"open_module","module":"<one of: ${ENABLED_MODULES.join(", ")}>"} — navigate the workspace.`,
     "",
     "Answering questions:",
     "- If the user ASKS something about the current project (money certified, progress %, delayed activities, contract value, counts, dates, etc.), answer it directly from the project snapshot below and set action to {\"type\":\"none\"}.",

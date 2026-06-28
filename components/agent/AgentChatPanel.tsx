@@ -44,11 +44,11 @@ const GREETING =
   "Hi! I can set things up for you and answer questions about your project. I can create projects, draft BOQs, build work plans, start progress reports, write documents, and scaffold payment certificates — and tell you things like what's certified to date or which activities are delayed. Just say what you need.";
 
 const SUGGESTIONS = [
-  "Create a project called Hargeisa Water Supply",
-  "Draft a BOQ for an elevated water tank and septic tank",
-  "Generate a work plan from this BOQ",
-  "Write a commencement letter to the contractor",
-  "List all my projects with status and progress",
+  "Create a new project",
+  "Draft a BOQ",
+  "Generate a work plan",
+  "Write a document",
+  "List my projects with status",
   "Which projects are behind schedule?",
 ];
 
@@ -543,7 +543,7 @@ export default function AgentChatPanel() {
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-txt">Planovera Assistant</div>
-          <div className="truncate text-[11px] text-txt-dim">Creates projects, BOQs &amp; work plans for you</div>
+          <div className="truncate text-[11px] text-txt-dim">Sets things up &amp; answers questions for you</div>
         </div>
         <button
           type="button"

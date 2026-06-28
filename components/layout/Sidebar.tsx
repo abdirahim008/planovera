@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { useAppStore } from "@/lib/store";
 import { isSupabaseConfigured } from "@/lib/supabase-browser";
 import { labelsForType, isConstructionProject } from "@/lib/project-labels";
+import { isModuleEnabled } from "@/lib/modules";
 import {
   ArrowLeft,
   Calendar,
@@ -73,7 +74,7 @@ export default function Sidebar({
 
   // Risks + Stakeholders are universal — surfaced on every project type. They live
   // toward the end of the nav so the construction-first chrome at the top stays familiar.
-  const navItems = hasProject
+  const navItems = (hasProject
     ? [
         { id: "dashboard", label: "Overview", icon: Home },
         ...(isConstruction
@@ -96,7 +97,8 @@ export default function Sidebar({
         { id: "dashboard", label: "Portfolio", icon: Home },
         { id: "meetings", label: "Meetings", icon: MessagesSquare },
         { id: "action-points", label: "Action Points", icon: ListChecks },
-      ];
+      ]
+  ).filter((item) => isModuleEnabled(item.id));
 
   const collapsed = isMobile ? false : forceCollapsed || sidebarCollapsed;
   const handleBrandClick = () => {

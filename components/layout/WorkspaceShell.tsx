@@ -27,6 +27,7 @@ import {
   type ProjectRecord,
 } from "@/lib/supabase";
 import { formatSubscriptionExpiry, isSubscriptionUsable } from "@/lib/subscriptions";
+import { HIDDEN_MODULES } from "@/lib/modules";
 import {
   buildProjectSyncSignature,
   buildRelationalWorkspacePayload,
@@ -220,10 +221,13 @@ function Workspace({
   const hasProject = Boolean(project);
   const isConstruction = project?.type === "construction";
   const routeSafeModule = pathname === "/workspace" && activeModule === "drawings" ? "dashboard" : activeModule;
+  // Modules disabled for the MVP fall back to the dashboard even if a persisted
+  // activeModule still points at them.
+  const enabledModule = HIDDEN_MODULES.has(routeSafeModule) ? "dashboard" : routeSafeModule;
   const module = hasProject
-    ? routeSafeModule
-    : routeSafeModule === "meetings" || routeSafeModule === "action-points"
-    ? routeSafeModule
+    ? enabledModule
+    : enabledModule === "meetings" || enabledModule === "action-points"
+    ? enabledModule
     : "dashboard";
   const activeLabel =
     module === "dashboard"
