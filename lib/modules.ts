@@ -9,6 +9,7 @@ export const HIDDEN_MODULES = new Set<string>([
   "correspondence",
   "risks",
   "stakeholders",
+  "site-notes",
 ]);
 
 export const isModuleEnabled = (id: string) => !HIDDEN_MODULES.has(id);
