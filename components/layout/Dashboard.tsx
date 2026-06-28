@@ -2411,26 +2411,9 @@ function ProjectOverviewDashboard({
       <div className="mb-5 border-b border-border pb-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            {project.contractNumber || project.code ? (
-              <div className="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-txt-dim sm:block">
-                {[project.contractNumber, project.code].filter(Boolean).join(" · ")}
-              </div>
-            ) : null}
-            <h2 className="text-2xl font-semibold tracking-tight text-txt sm:mt-1.5">{project.name}</h2>
-            {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).length > 0 ? (
-              <p className="mt-1 hidden text-[13px] text-txt-muted sm:block">
-                {[project.contractTitle, projectLocationLabel(project), project.clientName].filter(Boolean).join(" · ")}
-              </p>
-            ) : null}
+            <h2 className="text-2xl font-semibold tracking-tight text-txt">{project.name}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-surface px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-txt-muted">
-              <span className="text-[12px] leading-none">{getProjectPreset(project.preset || (project.type === "construction" ? "construction" : "other")).marker}</span>
-              {getProjectPreset(project.preset || (project.type === "construction" ? "construction" : "other")).badgeLabel}
-            </span>
-            <span className="rounded-full border border-ok/20 bg-ok/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-ok">
-              Active
-            </span>
             <Button variant="ghost" size="sm" onClick={() => onEditProject(project)}>
               <PenTool size={14} /> Edit Project
             </Button>
