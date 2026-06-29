@@ -272,6 +272,12 @@ export interface ProgressItem {
   totalQty: string;
   earnedAmount: string;
   weightPercent: string;
+  /**
+   * True once the user has manually set this activity's weight ratio. Locked
+   * weights stay fixed while unlocked ones rebalance so the whole-report pool
+   * keeps summing to 1. Only meaningful when the report's weightMode is "custom".
+   */
+  weightLocked?: boolean;
   plannedPercent: string;
   actualPercent: string;
   variancePercent: string;
@@ -1136,6 +1142,20 @@ export const seedActionPointsFromMeetings = (
   return Array.from(latestByKey.values());
 };
 
+/**
+ * Migration seam: the Progress module is now percent-only — the site team enters
+ * Actual % per activity, while detailed quantity-vs-quantity-done measurement
+ * lives in the payment certificate. Coerce any persisted quantity-mode report to
+ * percent, preserving the already-computed actualPercent so the visible progress
+ * is unchanged on reload.
+ */
+const migrateProgressReportsToPercent = (
+  reports: ProgressReport[],
+): ProgressReport[] =>
+  reports.map((report) =>
+    report.inputMode === "percent" ? report : { ...report, inputMode: "percent" as const },
+  );
+
 export const normalizeConstructionWorkspacePayload = (
   payload?: Partial<ConstructionWorkspacePayload> | null,
 ): ConstructionWorkspacePayload => ({
@@ -1148,7 +1168,7 @@ export const normalizeConstructionWorkspacePayload = (
   savedSimpleItemSets: payload?.savedSimpleItemSets ?? [],
   simpleItems: payload?.simpleItems ?? [],
   certificates: payload?.certificates ?? [],
-  progressReports: payload?.progressReports ?? [],
+  progressReports: migrateProgressReportsToPercent(payload?.progressReports ?? []),
   generatedDocuments: payload?.generatedDocuments ?? [],
   correspondenceRecords: payload?.correspondenceRecords ?? [],
   qualityControlRecords: payload?.qualityControlRecords ?? [],
