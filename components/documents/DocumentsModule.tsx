@@ -4,12 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { v4 as uuid } from "uuid";
 import {
   ArrowLeft,
+  Check,
   ChevronRight,
+  ChevronUp,
   FileText,
   ImagePlus,
   Pencil,
   Plus,
   Printer,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -25,7 +28,10 @@ import type {
   PaymentCertificate,
   ProgressReport,
   Project,
+  ReportItemFormat,
+  ReportSectionId,
   ReportSectionToggles,
+  ReportWorkPlanFormat,
   Risk,
   SavedWorkPlan,
   SiteNote,
@@ -144,6 +150,114 @@ const PROGRESS_REPORT_SECTION_META: Array<{
   { id: "forecast", label: "Forecast & recovery", description: "Next period plan and recovery actions" },
   { id: "signoff", label: "Sign-off", description: "Signature blocks at the end" },
 ];
+
+// ── Progress-report presets ──────────────────────────────────────────────────
+// One-click section bundles so the generator opens minimal instead of showing a
+// wall of 14 toggles. Each preset is a full section map plus its preferred item /
+// work-plan formats; "Custom" is shown when the live selection matches none.
+type ReportPresetId = "minimal" | "standard" | "full";
+
+const PROGRESS_REPORT_PRESETS: Record<
+  ReportPresetId,
+  {
+    label: string;
+    hint: string;
+    sections: Record<ReportSectionId, boolean>;
+    itemFormat: ReportItemFormat;
+    workPlanFormat: ReportWorkPlanFormat;
+  }
+> = {
+  minimal: {
+    label: "Minimal",
+    hint: "Cover, key metrics, progress bars, work plan",
+    itemFormat: "bars",
+    workPlanFormat: "gantt",
+    sections: {
+      cover: true,
+      executiveSummary: false,
+      keyMetrics: true,
+      itemTable: true,
+      sheetBreakdown: false,
+      workPlan: true,
+      paymentCertificates: false,
+      actionPoints: false,
+      riskRegister: false,
+      siteNotes: false,
+      correspondenceLog: false,
+      qualityControl: false,
+      photos: false,
+      forecast: false,
+      signoff: false,
+    },
+  },
+  standard: {
+    label: "Standard",
+    hint: "Adds summary, breakdown, financials, forecast, sign-off",
+    itemFormat: "table",
+    workPlanFormat: "gantt",
+    sections: {
+      cover: true,
+      executiveSummary: true,
+      keyMetrics: true,
+      itemTable: true,
+      sheetBreakdown: true,
+      workPlan: true,
+      paymentCertificates: true,
+      actionPoints: false,
+      riskRegister: false,
+      siteNotes: false,
+      correspondenceLog: false,
+      qualityControl: false,
+      photos: false,
+      forecast: true,
+      signoff: true,
+    },
+  },
+  full: {
+    label: "Full",
+    hint: "Every section turned on",
+    itemFormat: "table",
+    workPlanFormat: "gantt",
+    sections: {
+      cover: true,
+      executiveSummary: true,
+      keyMetrics: true,
+      itemTable: true,
+      sheetBreakdown: true,
+      workPlan: true,
+      paymentCertificates: true,
+      actionPoints: true,
+      riskRegister: true,
+      siteNotes: true,
+      correspondenceLog: true,
+      qualityControl: true,
+      photos: false,
+      forecast: true,
+      signoff: true,
+    },
+  },
+};
+
+const REPORT_PRESET_ORDER: ReportPresetId[] = ["minimal", "standard", "full"];
+
+// Which preset (if any) the document currently matches — compared over the
+// user-facing section toggles plus the two format choices.
+function activeReportPreset(
+  doc: Pick<GeneratedDocument, "reportSections" | "reportItemFormat" | "reportWorkPlanFormat">,
+): ReportPresetId | null {
+  const resolved = resolveReportSections(doc);
+  const itemFormat = doc.reportItemFormat || "table";
+  const workPlanFormat = doc.reportWorkPlanFormat || "table";
+  return (
+    REPORT_PRESET_ORDER.find((id) => {
+      const preset = PROGRESS_REPORT_PRESETS[id];
+      const sectionsMatch = PROGRESS_REPORT_SECTION_META.every(
+        (section) => (resolved[section.id] ?? false) === (preset.sections[section.id] ?? false),
+      );
+      return sectionsMatch && itemFormat === preset.itemFormat && workPlanFormat === preset.workPlanFormat;
+    }) || null
+  );
+}
 
 function layoutForTemplate(templateType: DocumentTemplateType): GeneratedDocument["layoutStyle"] {
   if (
@@ -382,10 +496,16 @@ function createDocumentDefaults({
         ? "Prepared from field site notes and photo records stored in Planovera."
         : "Issued as controlled project correspondence.",
     content: buildDocumentContent({ templateType, project, progressReport, certificate }),
+    // New progress reports open on the Minimal preset so the generator starts
+    // clean; users widen scope with the preset chips or the Advanced panel.
     reportSections:
       templateType === "progress-report"
-        ? { ...DEFAULT_PROGRESS_REPORT_SECTIONS }
+        ? { ...PROGRESS_REPORT_PRESETS.minimal.sections }
         : undefined,
+    reportItemFormat:
+      templateType === "progress-report" ? PROGRESS_REPORT_PRESETS.minimal.itemFormat : undefined,
+    reportWorkPlanFormat:
+      templateType === "progress-report" ? PROGRESS_REPORT_PRESETS.minimal.workPlanFormat : undefined,
     executiveSummary:
       templateType === "progress-report"
         ? "Progress during the reporting period tracked the approved baseline, with key activities advanced as detailed in the section breakdown below."
@@ -4374,6 +4494,10 @@ export default function DocumentsModule() {
   const [title, setTitle] = useState("Progress Report");
   const [linkedProgressReportId, setLinkedProgressReportId] = useState("");
   const [linkedCertificateId, setLinkedCertificateId] = useState("");
+  // Progress-report generator: collapsed by default so the setup opens as a
+  // compact preset picker. "Advanced" reveals branding, header, print assets and
+  // the full per-section toggles.
+  const [showReportAdvanced, setShowReportAdvanced] = useState(false);
 
   const projectDocuments = generatedDocuments.filter((doc) => doc.project_id === project?.id);
   const projectProgressReports = progressReports.filter((report) => report.project_id === project?.id);
@@ -4751,6 +4875,9 @@ export default function DocumentsModule() {
     );
   }
 
+  const isProgressReport = activeDocument?.templateType === "progress-report";
+  const activePreset = activeDocument ? activeReportPreset(activeDocument) : null;
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-4">
@@ -4809,6 +4936,64 @@ export default function DocumentsModule() {
       </div>
 
       <div className="space-y-4">
+        {isProgressReport && (
+          <div className="rounded-2xl border border-border bg-bg-surface p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Report preset</div>
+                <div className="mt-1 truncate text-[12px] text-txt-muted">
+                  {PROGRESS_REPORT_SECTION_META.filter((section) => resolveReportSections(activeDocument)[section.id])
+                    .map((section) => section.label)
+                    .join(" · ") || "No sections selected"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReportAdvanced((value) => !value)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-3 py-1.5 text-[12px] font-medium text-txt-muted transition hover:border-accent/40 hover:text-txt"
+              >
+                {showReportAdvanced ? <ChevronUp size={14} /> : <SlidersHorizontal size={14} />}
+                {showReportAdvanced ? "Hide advanced" : "Advanced"}
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {REPORT_PRESET_ORDER.map((id) => {
+                const preset = PROGRESS_REPORT_PRESETS[id];
+                const active = activePreset === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={!isEditMode}
+                    onClick={() =>
+                      updateGeneratedDocument(activeDocument.id, {
+                        reportSections: { ...preset.sections },
+                        reportItemFormat: preset.itemFormat,
+                        reportWorkPlanFormat: preset.workPlanFormat,
+                      })
+                    }
+                    className={`min-w-[140px] flex-1 rounded-xl border px-3 py-2 text-left transition ${
+                      active ? "border-accent bg-accent/10" : "border-border bg-bg-input hover:border-accent/40"
+                    } ${!isEditMode ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                  >
+                    <div className="flex items-center gap-1.5 text-[13px] font-semibold text-txt">
+                      {active ? <Check size={13} className="text-accent" /> : null}
+                      {preset.label}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-snug text-txt-muted">{preset.hint}</div>
+                  </button>
+                );
+              })}
+              {activePreset === null ? (
+                <span className="inline-flex items-center rounded-xl border border-dashed border-border px-3 py-2 text-[12px] font-medium text-txt-dim">
+                  Custom selection
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {(!isProgressReport || showReportAdvanced) && (
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -4860,7 +5045,9 @@ export default function DocumentsModule() {
             </div>
           </div>
         </div>
+        )}
 
+        {(!isProgressReport || showReportAdvanced) && (
         <div className="rounded-2xl border border-border bg-bg-surface p-4">
           <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
             Header and Recipient
@@ -4969,8 +5156,10 @@ export default function DocumentsModule() {
             </div>
           </div>
         </div>
+        )}
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <div className={`grid gap-4 ${!isProgressReport || showReportAdvanced ? "xl:grid-cols-[1fr_1fr]" : ""}`}>
+          {(!isProgressReport || showReportAdvanced) && (
           <div className="rounded-2xl border border-border bg-bg-surface p-4">
             <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Print Assets</div>
             <div className={`grid gap-3 ${activeDocument.layoutStyle === "report" ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
@@ -5192,8 +5381,9 @@ export default function DocumentsModule() {
               </div>
             ) : null}
           </div>
+          )}
 
-          {activeDocument.templateType === "progress-report" ? (
+          {isProgressReport && showReportAdvanced ? (
             <div className="rounded-2xl border border-border bg-bg-surface p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
