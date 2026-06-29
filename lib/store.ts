@@ -966,6 +966,9 @@ const buildDemoWorkspace = () => {
       date: "2026-03-31",
       status: "approved",
       sourceType: "boq",
+      // Percent-only Progress module: actualPercent was derived from the seed
+      // quantities above and is preserved as the percent input going forward.
+      inputMode: "percent",
       sourceId: boqId,
       sourceName: "Contract BOQ Rev A",
       createdAt: now,
@@ -980,6 +983,7 @@ const buildDemoWorkspace = () => {
       date: "2026-04-22",
       status: "submitted",
       sourceType: "boq",
+      inputMode: "percent",
       sourceId: boqId,
       sourceName: "Contract BOQ Rev A",
       createdAt: now,
@@ -2008,6 +2012,11 @@ interface AppState {
   ) => void;
   updateProgressReport: (reportId: string, updates: Partial<ProgressReport>) => void;
   updateProgressItem: (reportId: string, sheetId: string, itemId: string, key: keyof ProgressItem, value: string) => void;
+  /** Set one activity's weight ratio (0–1); locks it and rebalances the other
+   *  unlocked activities so the whole-report pool keeps totalling 1. */
+  setProgressWeight: (reportId: string, itemId: string, ratio: number) => void;
+  /** Clear all weight locks and return every activity to an equal 1/N ratio. */
+  resetProgressWeights: (reportId: string) => void;
   duplicateProgressReport: (reportId: string) => void;
   deleteProgressReport: (reportId: string) => void;
 
@@ -3194,13 +3203,16 @@ export const useAppStore = create<AppState>()(
       // ─── Progress ──────────────────────────────────────────────────
       // ═══════════════════════════════════════════════════════════════
       progressReports: [],
-      createProgressReport: (name, sourceType, sourceId, prevReportId, inputMode = "quantity") =>
+      createProgressReport: (name, sourceType, sourceId, prevReportId) =>
         set((s) => {
           const now = new Date().toISOString();
           const today = now.split("T")[0];
           const prevReport = prevReportId ? s.progressReports.find((r) => r.id === prevReportId) : null;
           const reportCount = s.progressReports.filter((r) => r.project_id === s.project?.id).length;
-          const resolvedInputMode = inputMode || "quantity";
+          // The Progress module is percent-only: the site team enters Actual %
+          // per activity. Detailed quantity-vs-quantity-done measurement lives in
+          // the payment certificate, so new reports always use percent input.
+          const resolvedInputMode: ProgressReport["inputMode"] = "percent";
 
           const createProgressItem = (
             billNo: string,
@@ -3307,12 +3319,15 @@ export const useAppStore = create<AppState>()(
             status: "draft",
             sourceType,
             inputMode: resolvedInputMode,
-            weightMode: sourceType === "boq" ? "boq-amount" : "equal",
+            // Activities start on equal weight ratios (1/N, totalling 1). Users
+            // can switch to custom weights from the Progress module; editing one
+            // ratio locks it and rebalances the rest.
+            weightMode: "equal",
             sourceId,
             sourceName,
             createdAt: now,
             updatedAt: now,
-            sheets: recalcProgressSheets(sheets, resolvedInputMode, sourceType === "boq" ? "boq-amount" : "equal"),
+            sheets: recalcProgressSheets(sheets, resolvedInputMode, "equal"),
           };
 
           return { progressReports: [...s.progressReports, report] };
@@ -3326,7 +3341,7 @@ export const useAppStore = create<AppState>()(
               ...nextReport,
               sheets: recalcProgressSheets(
                 nextReport.sheets,
-                nextReport.inputMode || "quantity",
+                nextReport.inputMode || "percent",
                 nextReport.weightMode
               ),
               updatedAt: new Date().toISOString(),
@@ -3358,7 +3373,88 @@ export const useAppStore = create<AppState>()(
             });
             return {
               ...report,
-              sheets: recalcProgressSheets(nextSheets, report.inputMode || "quantity", report.weightMode),
+              sheets: recalcProgressSheets(nextSheets, report.inputMode || "percent", report.weightMode),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+      setProgressWeight: (reportId, itemId, ratio) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const items = report.sheets.flatMap((sheet) => sheet.items);
+            const count = items.length;
+            if (count === 0) return report;
+
+            // Current ratios (summing to 1): use stored custom weights when the
+            // report is already custom, otherwise everyone is on equal footing.
+            const isCustom = report.weightMode === "custom";
+            const rawTotal = items.reduce((sum, item) => sum + Math.max(0, parseNumber(item.weightPercent)), 0);
+            const currentRatio = (item: ProgressItem) =>
+              isCustom && rawTotal > 0 ? Math.max(0, parseNumber(item.weightPercent)) / rawTotal : 1 / count;
+            const isLocked = (item: ProgressItem) => (isCustom ? Boolean(item.weightLocked) : false);
+
+            const target = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
+            const lockedOthers = items.filter((item) => item.id !== itemId && isLocked(item));
+            const lockedOthersSum = lockedOthers.reduce((sum, item) => sum + currentRatio(item), 0);
+            const maxForEdited = Math.max(0, 1 - lockedOthersSum);
+            const unlocked = items.filter((item) => item.id !== itemId && !isLocked(item));
+            // With no unlocked partners to absorb the change, the edited weight
+            // must take whatever keeps the total at 1.
+            const editedRatio = unlocked.length === 0 ? maxForEdited : Math.min(target, maxForEdited);
+            const remaining = Math.max(0, 1 - lockedOthersSum - editedRatio);
+            const unlockedSum = unlocked.reduce((sum, item) => sum + currentRatio(item), 0);
+
+            const nextRatio = new Map<string, number>();
+            items.forEach((item) => {
+              if (item.id === itemId) {
+                nextRatio.set(item.id, editedRatio);
+              } else if (isLocked(item)) {
+                nextRatio.set(item.id, currentRatio(item));
+              } else {
+                const share =
+                  unlockedSum > 0
+                    ? (remaining * currentRatio(item)) / unlockedSum
+                    : remaining / unlocked.length;
+                nextRatio.set(item.id, share);
+              }
+            });
+
+            const nextSheets = report.sheets.map((sheet) => ({
+              ...sheet,
+              items: sheet.items.map((item) => ({
+                ...item,
+                weightPercent: ((nextRatio.get(item.id) || 0) * 100).toFixed(4),
+                weightLocked: item.id === itemId ? true : isCustom ? Boolean(item.weightLocked) : false,
+              })),
+            }));
+
+            return {
+              ...report,
+              weightMode: "custom",
+              sheets: recalcProgressSheets(nextSheets, report.inputMode || "percent", "custom"),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+      resetProgressWeights: (reportId) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const count = report.sheets.flatMap((sheet) => sheet.items).length;
+            const equal = count > 0 ? 100 / count : 0;
+            const nextSheets = report.sheets.map((sheet) => ({
+              ...sheet,
+              items: sheet.items.map((item) => ({
+                ...item,
+                weightPercent: equal.toFixed(4),
+                weightLocked: false,
+              })),
+            }));
+            return {
+              ...report,
+              weightMode: "equal",
+              sheets: recalcProgressSheets(nextSheets, report.inputMode || "percent", "equal"),
               updatedAt: new Date().toISOString(),
             };
           }),

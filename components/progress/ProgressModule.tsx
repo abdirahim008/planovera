@@ -1,31 +1,29 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  BarChart3,
+  ChevronDown,
   ChevronRight,
-  Columns3,
   Copy,
   Download,
   FileSpreadsheet,
   FileText,
-  Grid3X3,
+  ListChecks,
+  Lock,
   Pencil,
   Plus,
+  RotateCcw,
   Settings,
   Trash2,
 } from "lucide-react";
-import { useAppStore, currency } from "@/lib/store";
-import type { ProgressItem, ProgressReport } from "@/lib/supabase";
+import { useAppStore } from "@/lib/store";
+import type { ProgressItem, ProgressReport, ProgressSheet } from "@/lib/supabase";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
 import CompactKpiList from "@/components/ui/CompactKpiList";
 import { exportProgressAsExcel, exportProgressAsPdf } from "@/lib/progress-export";
-
-type ProgressViewMode = "table" | "visual";
-type ProgressVisualRowMode = "all" | "sections";
 
 function toNumber(value: string | number | undefined | null) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -44,178 +42,49 @@ function progressBarTone(actualPercent: number, plannedPercent?: number) {
   return "bg-accent";
 }
 
-function reportMetrics(report: ProgressReport) {
+// Per-activity weight ratio (summing to 1 across the whole report). Custom
+// weights come from the stored weightPercent; otherwise every activity gets an
+// equal 1/N share. Keyed by item id.
+function computeRatios(report: ProgressReport): Map<string, number> {
   const items = report.sheets.flatMap((sheet) => sheet.items);
-  const planned = items.reduce(
-    (sum, item) => sum + (toNumber(item.weightPercent) * toNumber(item.plannedPercent)) / 100,
-    0
-  );
-  const actual = items.reduce(
-    (sum, item) => sum + (toNumber(item.weightPercent) * toNumber(item.actualPercent)) / 100,
-    0
-  );
-  const earned = items.reduce((sum, item) => sum + toNumber(item.earnedAmount), 0);
-  const completed = items.filter((item) => toNumber(item.actualPercent) >= 95).length;
+  const count = items.length;
+  const ratios = new Map<string, number>();
+  if (count === 0) return ratios;
+  if (report.weightMode === "custom") {
+    const total = items.reduce((sum, item) => sum + Math.max(0, toNumber(item.weightPercent)), 0);
+    if (total > 0) {
+      items.forEach((item) => ratios.set(item.id, Math.max(0, toNumber(item.weightPercent)) / total));
+      return ratios;
+    }
+  }
+  items.forEach((item) => ratios.set(item.id, 1 / count));
+  return ratios;
+}
+
+// Weighted completion for a set of activities, normalised by the ratios in play
+// so a section reads as its own 0–100 % (and the whole report rolls up to the
+// overall figure). Equal ratios collapse to a simple average.
+function statsFor(items: ProgressItem[], ratios: Map<string, number>) {
+  const weightSum = items.reduce((sum, item) => sum + (ratios.get(item.id) || 0), 0);
+  const weightedAvg = (key: "actualPercent" | "plannedPercent") =>
+    weightSum > 0
+      ? items.reduce((sum, item) => sum + (ratios.get(item.id) || 0) * clampPercent(toNumber(item[key])), 0) /
+        weightSum
+      : 0;
+  const actual = weightedAvg("actualPercent");
+  const planned = weightedAvg("plannedPercent");
   return {
-    planned,
     actual,
+    planned,
     variance: actual - planned,
-    earned,
-    completed,
+    completed: items.filter((item) => toNumber(item.actualPercent) >= 95).length,
     totalItems: items.length,
   };
 }
 
-type ProgressInputMode = NonNullable<ProgressReport["inputMode"]>;
-type ProgressColumnKey =
-  | "billNo"
-  | "description"
-  | "unit"
-  | "boqQty"
-  | "boqRate"
-  | "boqAmount"
-  | "previousQty"
-  | "currentQty"
-  | "totalQty"
-  | "weightSource"
-  | "weightPercent"
-  | "plannedPercent"
-  | "actualPercent"
-  | "weightedContribution"
-  | "earnedAmount"
-  | "variancePercent";
-
-const columnLabels: Record<ProgressColumnKey, string> = {
-  billNo: "Bill No.",
-  description: "Activity",
-  unit: "Unit",
-  boqQty: "BOQ Qty",
-  boqRate: "Rate",
-  boqAmount: "BOQ Amount",
-  previousQty: "Previous Qty",
-  currentQty: "Current Qty Done",
-  totalQty: "Total Qty",
-  weightSource: "Weight Source",
-  weightPercent: "Weight %",
-  plannedPercent: "Planned %",
-  actualPercent: "Actual % Done",
-  weightedContribution: "Weighted Contribution",
-  earnedAmount: "Earned Amount",
-  variancePercent: "Variance %",
-};
-
-const quantityCoreColumns: ProgressColumnKey[] = [
-  "description",
-  "currentQty",
-  "actualPercent",
-];
-
-const percentCoreColumns: ProgressColumnKey[] = [
-  "description",
-  "actualPercent",
-];
-
-const quantityColumnOrder: ProgressColumnKey[] = [
-  "billNo",
-  "description",
-  "unit",
-  "boqQty",
-  "boqRate",
-  "boqAmount",
-  "previousQty",
-  "currentQty",
-  "totalQty",
-  "weightPercent",
-  "plannedPercent",
-  "actualPercent",
-  "earnedAmount",
-  "variancePercent",
-];
-
-const percentColumnOrder: ProgressColumnKey[] = [
-  "billNo",
-  "description",
-  "weightSource",
-  "weightPercent",
-  "boqAmount",
-  "plannedPercent",
-  "actualPercent",
-  "weightedContribution",
-  "variancePercent",
-];
-
-const progressColumnPresets: Record<
-  ProgressInputMode,
-  Record<"simple" | "detailed" | "quantity" | "commercial", ProgressColumnKey[]>
-> = {
-  quantity: {
-    simple: [
-      "description",
-      "unit",
-      "boqQty",
-      "previousQty",
-      "currentQty",
-      "totalQty",
-      "plannedPercent",
-      "actualPercent",
-    ],
-    detailed: quantityColumnOrder,
-    quantity: [
-      "billNo",
-      "description",
-      "unit",
-      "boqQty",
-      "previousQty",
-      "currentQty",
-      "totalQty",
-      "plannedPercent",
-      "actualPercent",
-    ],
-    commercial: [
-      "description",
-      "boqRate",
-      "boqAmount",
-      "weightPercent",
-      "earnedAmount",
-      "variancePercent",
-    ],
-  },
-  percent: {
-    simple: ["description", "plannedPercent", "actualPercent"],
-    detailed: percentColumnOrder,
-    quantity: ["description", "plannedPercent", "actualPercent", "variancePercent"],
-    commercial: [
-      "description",
-      "weightSource",
-      "weightPercent",
-      "boqAmount",
-      "weightedContribution",
-      "variancePercent",
-    ],
-  },
-};
-
-const getProgressMode = (report: ProgressReport): ProgressInputMode => report.inputMode || "quantity";
-
-const getWeightMode = (report: ProgressReport): NonNullable<ProgressReport["weightMode"]> =>
-  report.weightMode || (report.sourceType === "boq" ? "boq-amount" : "equal");
-
-const getWeightBadge = (report: ProgressReport) => {
-  const weightMode = getWeightMode(report);
-  if (weightMode === "boq-amount") return "Weights from BOQ amounts";
-  if (weightMode === "custom") return "Custom weights";
-  return "Equal weights";
-};
-
-const orderedColumns = (mode: ProgressInputMode, selected: ProgressColumnKey[]) => {
-  const order = mode === "percent" ? percentColumnOrder : quantityColumnOrder;
-  return order.filter((column) => selected.includes(column));
-};
-
-const ensureCoreColumns = (mode: ProgressInputMode, selected: ProgressColumnKey[]) => {
-  const core = mode === "percent" ? percentCoreColumns : quantityCoreColumns;
-  return Array.from(new Set([...selected, ...core]));
-};
+function reportStats(report: ProgressReport) {
+  return statsFor(report.sheets.flatMap((sheet) => sheet.items), computeRatios(report));
+}
 
 function ProgressSettingsModal({
   open,
@@ -302,66 +171,170 @@ function ProgressSettingsModal({
   );
 }
 
-function ProgressVisualRows({
-  rows,
-}: {
-  rows: Array<{
-    id: string;
-    itemNo: string;
-    description: string;
-    progress: number;
-    planned?: number;
-  }>;
-}) {
-  if (rows.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-bg-surface p-6 text-center text-[13px] text-txt-muted">
-        No progress rows to display.
-      </div>
-    );
-  }
+// ─── Weight ratio input: local text state, commits a 0–1 number on blur/Enter ──
+// Keeps cascade-rebalancing off the keystroke path so other rows don't jump
+// around mid-type.
+function WeightInput({ value, onCommit }: { value: number; onCommit: (ratio: number) => void }) {
+  const [text, setText] = useState(value.toFixed(3));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(value.toFixed(3));
+  }, [value, focused]);
+
+  const commit = () => {
+    setFocused(false);
+    const parsed = parseFloat(text);
+    onCommit(Number.isFinite(parsed) ? parsed : value);
+  };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-bg-surface">
-      <div className="hidden grid-cols-[64px_minmax(220px,1fr)_minmax(220px,38%)] border-b border-border bg-bg-raised/60 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim md:grid">
-        <div>#</div>
-        <div>Activity</div>
-        <div>Progress</div>
+    <input
+      value={text}
+      inputMode="decimal"
+      onFocus={() => setFocused(true)}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      title="Weight ratio (0–1). Editing locks this activity and rebalances the rest."
+      className="w-16 rounded-md border border-border bg-bg-input px-1.5 py-1 text-right font-mono text-[11px] text-txt outline-none focus:border-accent"
+    />
+  );
+}
+
+// ─── Single activity row: name + progress bar + % (editable in edit mode) ──────
+function ProgressActivityRow({
+  item,
+  editMode,
+  onChange,
+  showWeights,
+  ratio,
+  onWeightCommit,
+}: {
+  item: ProgressItem;
+  editMode: boolean;
+  onChange: (value: string) => void;
+  showWeights: boolean;
+  ratio: number;
+  onWeightCommit: (ratio: number) => void;
+}) {
+  const actual = clampPercent(toNumber(item.actualPercent));
+  const planned = toNumber(item.plannedPercent);
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-bg-hover">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] text-txt">{item.description || "Untitled activity"}</div>
+        {item.billNo && <div className="font-mono text-[10px] text-txt-dim">{item.billNo}</div>}
       </div>
-      <div className="divide-y divide-border/60">
-        {rows.map((row, index) => {
-          const progress = clampPercent(row.progress);
-          return (
-            <div
-              key={row.id}
-              className="grid gap-2 px-3 py-1.5 transition-colors hover:bg-bg-hover md:grid-cols-[64px_minmax(220px,1fr)_minmax(220px,38%)] md:items-center"
-            >
-              <div className="flex items-center justify-between gap-3 md:block">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim md:hidden">
-                  #
-                </span>
-                <span className="font-mono text-[12px] text-txt-muted">
-                  {row.itemNo || String(index + 1)}
-                </span>
-              </div>
-              <div className="min-w-0 truncate text-[13px] text-txt">
-                {row.description || "Untitled activity"}
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
-                  <div
-                    className={`h-full rounded-full ${progressBarTone(progress, row.planned)}`}
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <div className="w-11 text-right font-mono text-[12px] font-semibold text-txt tabular-nums">
-                  {progress.toFixed(0)}%
-                </div>
-              </div>
+      {showWeights && (
+        <div className="flex w-[88px] shrink-0 items-center justify-end gap-1">
+          <WeightInput value={ratio} onCommit={onWeightCommit} />
+          <Lock
+            size={11}
+            className={item.weightLocked ? "text-accent" : "text-transparent"}
+            aria-label={item.weightLocked ? "Weight locked" : undefined}
+          />
+        </div>
+      )}
+      <div className="flex w-[150px] items-center gap-2 sm:w-[230px]">
+        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
+          <div
+            className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
+            style={{ width: `${actual}%` }}
+          />
+        </div>
+        {editMode ? (
+          <div className="flex items-center gap-1">
+            <input
+              value={item.actualPercent}
+              onChange={(e) => onChange(e.target.value)}
+              inputMode="decimal"
+              placeholder="0"
+              className="w-14 rounded-md border border-border bg-bg-input px-2 py-1 text-right font-mono text-xs text-txt outline-none focus:border-accent"
+            />
+            <span className="text-xs text-txt-dim">%</span>
+          </div>
+        ) : (
+          <span className="w-11 text-right font-mono text-xs font-semibold tabular-nums text-txt">
+            {actual.toFixed(0)}%
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Collapsible section with a rolled-up bar in its header ────────────────────
+function ProgressSection({
+  sheet,
+  ratios,
+  expanded,
+  onToggle,
+  editMode,
+  showWeights,
+  onItemChange,
+  onWeightCommit,
+}: {
+  sheet: ProgressSheet;
+  ratios: Map<string, number>;
+  expanded: boolean;
+  onToggle: () => void;
+  editMode: boolean;
+  showWeights: boolean;
+  onItemChange: (sheetId: string, itemId: string, value: string) => void;
+  onWeightCommit: (itemId: string, ratio: number) => void;
+}) {
+  const stats = statsFor(sheet.items, ratios);
+  const actual = clampPercent(stats.actual);
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-bg-surface">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-hover"
+      >
+        {expanded ? (
+          <ChevronDown size={16} className="shrink-0 text-txt-dim" />
+        ) : (
+          <ChevronRight size={16} className="shrink-0 text-txt-dim" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">{sheet.name}</span>
+        <span className="hidden text-[11px] text-txt-dim sm:inline">
+          {stats.completed}/{sheet.items.length}
+        </span>
+        <div className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-bg sm:block">
+          <div
+            className={`h-full rounded-full ${progressBarTone(actual, stats.planned)}`}
+            style={{ width: `${actual}%` }}
+          />
+        </div>
+        <span className="w-11 text-right font-mono text-xs font-semibold tabular-nums text-txt">
+          {actual.toFixed(0)}%
+        </span>
+      </button>
+      {expanded && (
+        <div className="divide-y divide-border/60 border-t border-border">
+          {sheet.items.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[13px] text-txt-muted">
+              No activities in this section.
             </div>
-          );
-        })}
-      </div>
+          ) : (
+            sheet.items.map((item) => (
+              <ProgressActivityRow
+                key={item.id}
+                item={item}
+                editMode={editMode}
+                onChange={(value) => onItemChange(sheet.id, item.id, value)}
+                showWeights={showWeights}
+                ratio={ratios.get(item.id) || 0}
+                onWeightCommit={(ratio) => onWeightCommit(item.id, ratio)}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -405,7 +378,7 @@ function ProgressExportMenu({
           >
             <FileText size={16} className="mt-0.5 shrink-0 text-accent" />
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold text-txt">PDF (current view)</span>
+              <span className="block text-xs font-semibold text-txt">PDF report</span>
               <span className="mt-0.5 block text-[10px] leading-snug text-txt-dim">
                 Landscape A4 — summary, sections, progress bars
               </span>
@@ -437,50 +410,22 @@ export default function ProgressModule() {
     savedSimpleItemSets,
     progressReports,
     createProgressReport,
-    updateProgressReport,
     updateProgressItem,
+    setProgressWeight,
+    resetProgressWeights,
     deleteProgressReport,
     duplicateProgressReport,
   } = useAppStore();
 
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
-  const [activeSheetIdx, setActiveSheetIdx] = useState(-1);
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [selectedPrevId, setSelectedPrevId] = useState("");
   const [newReportName, setNewReportName] = useState("");
-  const [newReportInputMode, setNewReportInputMode] = useState<ProgressInputMode>("quantity");
-  const [showColumns, setShowColumns] = useState(false);
-  const columnsMenuRef = useRef<HTMLDivElement>(null);
-  const [showMetricsSummary, setShowMetricsSummary] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState<ProgressColumnKey[]>(
-    progressColumnPresets.quantity.simple
-  );
-  const [columnDraft, setColumnDraft] = useState<ProgressColumnKey[]>(progressColumnPresets.quantity.simple);
-  const [progressViewMode, setProgressViewMode] = useState<ProgressViewMode>("table");
-  const [visualRowMode, setVisualRowMode] = useState<ProgressVisualRowMode>("all");
-
-  // Dismiss the column presets popover on outside-click or Escape (discarding the
-  // draft) so the user isn't forced to hit Apply to get out.
-  useEffect(() => {
-    if (!showColumns) return;
-    const handlePointer = (event: MouseEvent) => {
-      if (columnsMenuRef.current && !columnsMenuRef.current.contains(event.target as Node)) {
-        setShowColumns(false);
-      }
-    };
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setShowColumns(false);
-    };
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [showColumns]);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [showWeights, setShowWeights] = useState(false);
 
   const projectReports = progressReports.filter((report) => report.project_id === project?.id);
   const isConstruction = project?.type === "construction";
@@ -489,10 +434,6 @@ export default function ProgressModule() {
     ? savedBOQs.filter((boq) => boq.project_id === project?.id && boq.sheets.some((sheet) => sheet.rows.some((row) => row.type === "item" && row.description)))
     : savedSimpleItemSets.filter((itemSet) => itemSet.project_id === project?.id && itemSet.items.some((item) => item.description));
   const activeReport = projectReports.find((report) => report.id === activeReportId) || null;
-  const activeInputMode = activeReport ? getProgressMode(activeReport) : "quantity";
-  const activeColumnOrder = activeInputMode === "percent" ? percentColumnOrder : quantityColumnOrder;
-  const lockedColumns = activeInputMode === "percent" ? percentCoreColumns : quantityCoreColumns;
-  const displayColumns = orderedColumns(activeInputMode, ensureCoreColumns(activeInputMode, visibleColumns));
 
   useEffect(() => {
     if (!showCreate) return;
@@ -500,59 +441,39 @@ export default function ProgressModule() {
     if (!newReportName) setNewReportName(`Progress Report ${projectReports.length + 1}`);
   }, [showCreate, selectedSourceId, sourceOptions, newReportName, projectReports.length]);
 
+  // Reset section expand state whenever the open report changes (default: all open).
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("planovera-progress-columns");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<Record<ProgressInputMode, ProgressColumnKey[]>>;
-      const saved = parsed.quantity || progressColumnPresets.quantity.simple;
-      setVisibleColumns(ensureCoreColumns("quantity", saved));
-      setColumnDraft(ensureCoreColumns("quantity", saved));
-    } catch {
-      setVisibleColumns(progressColumnPresets.quantity.simple);
-      setColumnDraft(progressColumnPresets.quantity.simple);
-    }
-  }, []);
+    setCollapsedSections(new Set());
+  }, [activeReportId]);
 
+  // The weights panel is an edit-mode power tool — keep it hidden by default and
+  // tuck it away again whenever editing stops.
   useEffect(() => {
-    if (!activeReport) return;
-    try {
-      const raw = window.localStorage.getItem("planovera-progress-columns");
-      const parsed = raw ? (JSON.parse(raw) as Partial<Record<ProgressInputMode, ProgressColumnKey[]>>) : {};
-      const saved = parsed[activeInputMode] || progressColumnPresets[activeInputMode].simple;
-      const next = ensureCoreColumns(activeInputMode, saved);
-      setVisibleColumns(next);
-      setColumnDraft(next);
-    } catch {
-      const next = progressColumnPresets[activeInputMode].simple;
-      setVisibleColumns(next);
-      setColumnDraft(next);
-    }
-  }, [activeReport?.id, activeInputMode]);
+    if (!isEditMode) setShowWeights(false);
+  }, [isEditMode]);
 
-  const saveColumns = (mode: ProgressInputMode, columns: ProgressColumnKey[]) => {
-    const next = ensureCoreColumns(mode, columns);
-    setVisibleColumns(next);
-    setColumnDraft(next);
-    try {
-      const raw = window.localStorage.getItem("planovera-progress-columns");
-      const parsed = raw ? (JSON.parse(raw) as Partial<Record<ProgressInputMode, ProgressColumnKey[]>>) : {};
-      window.localStorage.setItem("planovera-progress-columns", JSON.stringify({ ...parsed, [mode]: next }));
-    } catch {
-      // Column preferences are convenience-only; failures should never block progress editing.
-    }
-  };
-
-  const summaryMetrics = useMemo(() => {
+  const summaryStats = useMemo(() => {
     const latestApproved = [...projectReports]
       .filter((report) => report.status === "approved")
       .sort((a, b) => b.date.localeCompare(a.date))[0];
     const latestAny = [...projectReports].sort((a, b) => b.date.localeCompare(a.date))[0];
     const report = latestApproved || latestAny;
-    return report ? reportMetrics(report) : null;
+    return report ? reportStats(report) : null;
   }, [projectReports]);
 
   if (!activeReport) {
+    const summaryCards = summaryStats
+      ? [
+          { label: "Planned", value: `${summaryStats.planned.toFixed(1)}%`, tone: "warn" as const },
+          { label: "Actual", value: `${summaryStats.actual.toFixed(1)}%`, tone: "accent" as const },
+          {
+            label: "Variance",
+            value: `${summaryStats.variance >= 0 ? "+" : ""}${summaryStats.variance.toFixed(1)}%`,
+            tone: (summaryStats.variance >= 0 ? "ok" : "err") as "ok" | "err",
+          },
+        ]
+      : [];
+
     return (
       <div className="animate-fade-in">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -562,25 +483,13 @@ export default function ProgressModule() {
           </Button>
         </div>
 
-        {summaryMetrics && (
+        {summaryStats && (
           <>
             <div className="mb-5 sm:hidden">
-              <CompactKpiList
-                rows={[
-                  { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
-                  { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
-                  { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
-                  { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "accent" },
-                ]}
-              />
+              <CompactKpiList rows={summaryCards.map((card) => ({ label: card.label, value: card.value, tone: card.tone }))} />
             </div>
-            <div className="mb-5 hidden grid-cols-1 gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: "Planned", value: `${summaryMetrics.planned.toFixed(1)}%`, tone: "warn" },
-                { label: "Actual", value: `${summaryMetrics.actual.toFixed(1)}%`, tone: "accent" },
-                { label: "Variance", value: `${summaryMetrics.variance.toFixed(1)}%`, tone: summaryMetrics.variance >= 0 ? "ok" : "err" },
-                { label: "Earned Value", value: `${project?.currency || "USD"} ${currency(summaryMetrics.earned)}`, tone: "accent" },
-              ].map((card) => {
+            <div className="mb-5 hidden grid-cols-1 gap-3 sm:grid sm:grid-cols-3">
+              {summaryCards.map((card) => {
                 const toneText =
                   { accent: "text-accent", ok: "text-ok", warn: "text-warn", err: "text-err" }[card.tone] ?? "text-txt";
                 const toneTop =
@@ -600,7 +509,14 @@ export default function ProgressModule() {
           </>
         )}
 
-        {projectReports.length === 0 ? (
+        {!sourceOptions.length && projectReports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <p className="text-txt-muted text-sm font-medium">
+              {isConstruction ? "Save a BOQ first" : "Save an item set first"}
+            </p>
+            <p className="mt-1 text-xs text-txt-dim">Progress activities are drawn from your {isConstruction ? "BOQ" : "item set"}.</p>
+          </div>
+        ) : projectReports.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <p className="text-txt-muted text-sm font-medium">No progress reports yet</p>
             <Button variant="primary" size="md" className="mt-4" onClick={() => setShowCreate(true)} disabled={!sourceOptions.length || showCreate}>
@@ -610,13 +526,13 @@ export default function ProgressModule() {
         ) : (
           <div className="flex flex-col gap-2.5">
             {projectReports.map((report, idx) => {
-              const metrics = reportMetrics(report);
+              const stats = reportStats(report);
+              const actual = clampPercent(stats.actual);
               return (
                 <div
                   key={report.id}
                   onClick={() => {
                     setActiveReportId(report.id);
-                    setActiveSheetIdx(-1);
                     setIsEditMode(false);
                   }}
                   className="group flex flex-col gap-3 rounded-lg border border-border bg-bg-surface p-4 cursor-pointer transition-all duration-200 hover:border-accent/50 sm:flex-row sm:items-center sm:justify-between"
@@ -626,7 +542,7 @@ export default function ProgressModule() {
                     <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
                       <span className="text-accent font-semibold font-mono text-sm">{report.number.toString().padStart(2, "0")}</span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-sm">{report.name}</span>
                         <Badge color={report.status === "approved" ? "ok" : report.status === "submitted" ? "accent" : "warn"}>
@@ -638,17 +554,21 @@ export default function ProgressModule() {
                         <span>•</span>
                         <span>{report.date}</span>
                         <span>•</span>
-                        <span>{metrics.actual.toFixed(1)}% actual</span>
-                        <span>•</span>
-                        <span>{metrics.completed}/{metrics.totalItems} complete</span>
+                        <span>{stats.completed}/{stats.totalItems} complete</span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-4 sm:justify-start">
-                    <div className="text-right">
-                      <div className="text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">Earned</div>
-                      <div className="font-mono text-sm font-semibold mt-0.5 text-ok">
-                        {project?.currency || "USD"} {currency(metrics.earned)}
+                    <div className="flex items-center gap-3">
+                      <div className="hidden h-2 w-28 overflow-hidden rounded-full bg-bg sm:block">
+                        <div
+                          className={`h-full rounded-full ${progressBarTone(actual, stats.planned)}`}
+                          style={{ width: `${actual}%` }}
+                        />
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[11px] font-semibold text-txt-dim uppercase tracking-[0.16em]">Actual</div>
+                        <div className="font-mono text-sm font-semibold mt-0.5 text-accent">{actual.toFixed(0)}%</div>
                       </div>
                     </div>
                     <div className="flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
@@ -710,38 +630,12 @@ export default function ProgressModule() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-1.5">
-                Progress Input
-              </label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {[
-                  {
-                    value: "quantity" as ProgressInputMode,
-                    title: "Quantity done",
-                    body: "Site team enters current quantity. Actual progress is calculated from BOQ quantity.",
-                  },
-                  {
-                    value: "percent" as ProgressInputMode,
-                    title: "Manual % done",
-                    body: "Site team enters actual percentage directly. BOQ amount still controls weighting.",
-                  },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setNewReportInputMode(option.value)}
-                    className={`rounded-xl border p-3 text-left transition-colors ${
-                      newReportInputMode === option.value
-                        ? "border-accent bg-accent/10 text-txt"
-                        : "border-border bg-bg-input text-txt-muted hover:border-accent/50"
-                    }`}
-                  >
-                    <span className="block text-sm font-semibold">{option.title}</span>
-                    <span className="mt-1 block text-xs leading-5">{option.body}</span>
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-bg-input/60 p-3 text-xs leading-5 text-txt-muted">
+              <ListChecks size={16} className="mt-0.5 shrink-0 text-accent" />
+              <span>
+                Activities are pulled from your {isConstruction ? "BOQ" : "item set"}. On site you just set each
+                activity&apos;s <strong className="text-txt">% complete</strong> — the overall and section progress update automatically.
+              </span>
             </div>
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-1.5">
@@ -775,8 +669,7 @@ export default function ProgressModule() {
                   newReportName || `Progress Report ${projectReports.length + 1}`,
                   sourceType,
                   selectedSourceId,
-                  selectedPrevId || null,
-                  newReportInputMode
+                  selectedPrevId || null
                 );
                 setShowCreate(false);
                 setSelectedPrevId("");
@@ -787,7 +680,6 @@ export default function ProgressModule() {
                     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
                   if (latest) {
                     setActiveReportId(latest.id);
-                    setActiveSheetIdx(-1);
                     setIsEditMode(true);
                   }
                 }, 10);
@@ -803,154 +695,22 @@ export default function ProgressModule() {
     );
   }
 
-  const metrics = reportMetrics(activeReport);
-  const weightMode = getWeightMode(activeReport);
-  const canUseCustomWeights = activeReport.sourceType !== "boq";
-  const visualRows =
-    visualRowMode === "sections"
-      ? activeReport.sheets.map((sheet, index) => {
-          const sheetReport: ProgressReport = { ...activeReport, sheets: [sheet] };
-          const sheetMetrics = reportMetrics(sheetReport);
-          return {
-            id: sheet.id,
-            itemNo: String(index + 1),
-            description: sheet.name,
-            progress: sheetMetrics.actual,
-          };
-        })
-      : (activeReport.sheets[activeSheetIdx]?.items || []).map((item, index) => ({
-          id: item.id,
-          itemNo: item.billNo || String(index + 1),
-          description: item.description,
-          progress: toNumber(item.actualPercent),
-          planned: toNumber(item.plannedPercent),
-        }));
+  const ratios = computeRatios(activeReport);
+  const stats = statsFor(activeReport.sheets.flatMap((sheet) => sheet.items), ratios);
+  const overallActual = clampPercent(stats.actual);
+  const weightTotal = Array.from(ratios.values()).reduce((sum, value) => sum + value, 0);
+  const allExpanded = activeReport.sheets.every((sheet) => !collapsedSections.has(sheet.id));
 
-  const renderProgressCell = (item: ProgressItem, column: ProgressColumnKey) => {
-    const sheetId = activeReport.sheets[activeSheetIdx].id;
-    const updateItem = (key: keyof ProgressItem, value: string) =>
-      updateProgressItem(activeReport.id, sheetId, item.id, key, value);
-    const weightedContribution = (toNumber(item.weightPercent) * toNumber(item.actualPercent)) / 100;
+  const toggleSection = (sheetId: string) =>
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sheetId)) next.delete(sheetId);
+      else next.add(sheetId);
+      return next;
+    });
 
-    if (column === "description") {
-      return (
-        <td className="data-cell-wrap data-sticky-col left-0 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto">
-          {item.description}
-        </td>
-      );
-    }
-    if (column === "billNo") {
-      return <td className="font-mono text-txt-muted">{item.billNo || "-"}</td>;
-    }
-    if (column === "unit") {
-      return <td className="text-center uppercase text-txt-dim">{item.unit || "-"}</td>;
-    }
-    if (column === "boqQty") {
-      return <td className="data-cell-num bg-bg/25 text-txt-muted">{item.boqQty}</td>;
-    }
-    if (column === "boqRate") {
-      return (
-        <td className="data-cell-num bg-bg/25 text-txt-muted">
-          {currency(toNumber(item.boqRate))}
-        </td>
-      );
-    }
-    if (column === "boqAmount") {
-      return (
-        <td className="data-cell-num bg-bg/25 text-txt-muted">
-          {project?.currency || "USD"} {currency(toNumber(item.boqAmount))}
-        </td>
-      );
-    }
-    if (column === "previousQty") {
-      return <td className="data-cell-num bg-bg/25 text-txt-muted">{item.previousQty}</td>;
-    }
-    if (column === "currentQty") {
-      return (
-        <td className="data-cell-num">
-          {isEditMode ? (
-            <input
-              value={item.currentQty}
-              onChange={(e) => updateItem("currentQty", e.target.value)}
-              className="data-cell-input text-right font-mono"
-            />
-          ) : (
-            item.currentQty
-          )}
-        </td>
-      );
-    }
-    if (column === "totalQty") {
-      return <td className="data-cell-num bg-bg/25 font-semibold text-txt">{item.totalQty}</td>;
-    }
-    if (column === "weightSource") {
-      return <td className="bg-bg/25 text-txt-muted">{getWeightBadge(activeReport)}</td>;
-    }
-    if (column === "weightPercent") {
-      return (
-        <td className="data-cell-num bg-bg/25 text-txt-muted">
-          {isEditMode && weightMode === "custom" ? (
-            <input
-              value={item.weightPercent}
-              onChange={(e) => updateItem("weightPercent", e.target.value)}
-              className="data-cell-input text-right font-mono"
-            />
-          ) : (
-            `${item.weightPercent}%`
-          )}
-        </td>
-      );
-    }
-    if (column === "plannedPercent") {
-      return (
-        <td className="data-cell-num">
-          {isEditMode ? (
-            <input
-              value={item.plannedPercent}
-              onChange={(e) => updateItem("plannedPercent", e.target.value)}
-              className="data-cell-input text-right font-mono"
-            />
-          ) : (
-            `${item.plannedPercent}%`
-          )}
-        </td>
-      );
-    }
-    if (column === "actualPercent") {
-      return (
-        <td className="data-cell-num bg-bg/25 font-semibold">
-          {isEditMode && activeInputMode === "percent" ? (
-            <input
-              value={item.actualPercent}
-              onChange={(e) => updateItem("actualPercent", e.target.value)}
-              className="data-cell-input text-right font-mono"
-            />
-          ) : (
-            `${item.actualPercent}%`
-          )}
-        </td>
-      );
-    }
-    if (column === "weightedContribution") {
-      return <td className="data-cell-num bg-bg/25 font-semibold">{weightedContribution.toFixed(2)}%</td>;
-    }
-    if (column === "earnedAmount") {
-      return (
-        <td className="data-cell-num bg-bg/25 font-semibold text-ok">
-          {project?.currency || "USD"} {currency(toNumber(item.earnedAmount))}
-        </td>
-      );
-    }
-    if (column === "variancePercent") {
-      return (
-        <td className={`data-cell-num ${toNumber(item.variancePercent) >= 0 ? "text-ok" : "text-err"}`}>
-          {item.variancePercent}%
-        </td>
-      );
-    }
-    // Any unrecognized column renders an empty cell defensively.
-    return <td className="text-txt-dim">—</td>;
-  };
+  const toggleAllSections = () =>
+    setCollapsedSections(allExpanded ? new Set(activeReport.sheets.map((sheet) => sheet.id)) : new Set());
 
   return (
     <div className="animate-fade-in">
@@ -970,48 +730,7 @@ export default function ProgressModule() {
             {activeReport.status}
           </Badge>
         </div>
-        <div className="relative flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            onClick={() => setShowMetricsSummary((prev) => !prev)}
-          >
-            <BarChart3 size={14} /> Summary
-          </Button>
-          {showMetricsSummary && (
-            <div className="absolute right-0 top-11 z-50 w-[min(92vw,440px)] rounded-2xl border border-border bg-bg-surface p-3 shadow-xl shadow-black/30">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                    Progress summary
-                  </div>
-                  <div className="mt-1 text-xs text-txt-muted">
-                    {metrics.completed}/{metrics.totalItems} items complete
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowMetricsSummary(false)}
-                  className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-txt-muted transition hover:text-txt"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "Planned", value: `${metrics.planned.toFixed(1)}%`, tone: "text-warn" },
-                  { label: "Actual", value: `${metrics.actual.toFixed(1)}%`, tone: "text-accent" },
-                  { label: "Variance", value: `${metrics.variance.toFixed(1)}%`, tone: metrics.variance >= 0 ? "text-ok" : "text-err" },
-                  { label: "Earned", value: `${project?.currency || "USD"} ${currency(metrics.earned)}`, tone: "text-ok" },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-border bg-bg-raised/50 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">{item.label}</div>
-                    <div className={`mt-1 text-sm font-semibold ${item.tone}`}>{item.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="default" onClick={() => setShowSettings(true)}>
             <Settings size={14} /> Settings
           </Button>
@@ -1025,293 +744,112 @@ export default function ProgressModule() {
             </Button>
           ) : (
             <Button size="sm" variant="primary" onClick={() => setIsEditMode(true)}>
-              <Pencil size={14} /> Edit
+              <Pencil size={14} /> Update progress
             </Button>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-1 mb-3 border-b border-border overflow-x-auto">
-        <button
-          className={`px-4 py-2 text-xs font-medium border-b-2 transition-all whitespace-nowrap cursor-pointer bg-transparent ${
-            activeSheetIdx === -1 ? "border-b-accent text-accent" : "border-b-transparent text-txt-dim hover:text-txt"
-          }`}
-          onClick={() => setActiveSheetIdx(-1)}
-        >
-          Summary
-        </button>
-        {activeReport.sheets.map((sheet, idx) => (
-          <button
-            key={sheet.id}
-            className={`px-4 py-2 text-xs font-medium border-b-2 transition-all whitespace-nowrap cursor-pointer bg-transparent ${
-              activeSheetIdx === idx ? "border-b-accent text-accent" : "border-b-transparent text-txt-dim hover:text-txt"
-            }`}
-            onClick={() => setActiveSheetIdx(idx)}
-          >
-            {sheet.name}
-          </button>
-        ))}
+      {/* Overall progress header */}
+      <div className="mb-4 rounded-2xl border border-border bg-bg-surface p-4 sm:p-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Overall progress</div>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-3xl font-bold tabular-nums text-txt">{overallActual.toFixed(0)}</span>
+              <span className="text-lg font-semibold text-txt-muted">%</span>
+            </div>
+          </div>
+          <div className="text-right text-[11px] text-txt-dim">
+            {stats.completed}/{stats.totalItems} activities complete
+          </div>
+        </div>
+        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-bg">
+          <div
+            className={`h-full rounded-full transition-all ${progressBarTone(overallActual, stats.planned)}`}
+            style={{ width: `${overallActual}%` }}
+          />
+        </div>
+        {stats.planned > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-txt-muted">
+            <span>
+              Planned <strong className="text-txt">{stats.planned.toFixed(1)}%</strong>
+            </span>
+            <span className={stats.variance >= 0 ? "text-ok" : "text-err"}>
+              Variance {stats.variance >= 0 ? "+" : ""}{stats.variance.toFixed(1)}%
+            </span>
+          </div>
+        )}
       </div>
 
-      {activeSheetIdx === -1 ? (
-        activeReport.sheets.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-bg-surface p-8 text-center text-sm text-txt-muted">
-            No progress sections yet.
-          </div>
-        ) : (
-        <div className="data-table-shell overflow-auto">
-          <table className="data-table data-table-sticky min-w-[640px] sm:min-w-[880px]">
-            <thead>
-              <tr>
-                <th className="data-sticky-col left-0 data-sticky-edge min-w-[150px] sm:min-w-[220px]">Section</th>
-                <th>Items</th>
-                <th className="text-right">Earned Value</th>
-                <th className="text-right">Planned</th>
-                <th className="text-right">Actual</th>
-                <th className="text-right">Variance</th>
-                <th>Completion</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeReport.sheets.map((sheet) => {
-                const sheetReport: ProgressReport = { ...activeReport, sheets: [sheet] };
-                const sheetMetrics = reportMetrics(sheetReport);
-                return (
-                  <tr key={sheet.id}>
-                    <td className="data-cell-wrap data-sticky-col left-0 data-sticky-edge min-w-[150px] sm:min-w-[220px] text-sm font-medium">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setActiveSheetIdx(activeReport.sheets.findIndex((item) => item.id === sheet.id))
-                        }
-                        className="cursor-pointer bg-transparent p-0 text-left text-accent hover:underline"
-                      >
-                        {sheet.name}
-                      </button>
-                    </td>
-                    <td className="text-sm text-txt-muted">{sheet.items.length}</td>
-                    <td className="data-cell-num text-sm">
-                      {project?.currency || "USD"} {currency(sheetMetrics.earned)}
-                    </td>
-                    <td className="data-cell-num text-sm">{sheetMetrics.planned.toFixed(1)}%</td>
-                    <td className="data-cell-num text-sm">{sheetMetrics.actual.toFixed(1)}%</td>
-                    <td className={`data-cell-num text-sm ${sheetMetrics.variance >= 0 ? "text-ok" : "text-err"}`}>
-                      {sheetMetrics.variance.toFixed(1)}%
-                    </td>
-                    <td className="text-sm">
-                      {sheetMetrics.completed}/{sheetMetrics.totalItems}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {activeReport.sheets.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-bg-surface p-8 text-center text-sm text-txt-muted">
+          No progress sections yet.
         </div>
-        )
       ) : (
-        <div>
-          <div className="mb-2 flex flex-col gap-2 rounded-xl border border-border bg-bg-surface p-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2 text-xs leading-5 text-txt">
-              <Badge color="accent">{getWeightBadge(activeReport)}</Badge>
-              <span>
-                {activeInputMode === "percent" ? (
-                  <>
-                    Enter <strong>Actual % Done</strong>. Weighted progress is calculated in the background.
-                  </>
-                ) : (
-                  <>
-                    Enter <strong>Current Qty Done</strong>. Weight, actual progress, and earned value are calculated in the background.
-                  </>
-                )}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex rounded-lg border border-border bg-bg-input p-1">
-                {[
-                  { mode: "table" as ProgressViewMode, label: "Table", icon: Grid3X3 },
-                  { mode: "visual" as ProgressViewMode, label: "Visual", icon: BarChart3 },
-                ].map((option) => {
-                  const Icon = option.icon;
-                  return (
-                    <button
-                      key={option.mode}
-                      type="button"
-                      onClick={() => setProgressViewMode(option.mode)}
-                      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition ${
-                        progressViewMode === option.mode
-                          ? "bg-accent text-white shadow-lg shadow-accent/20"
-                          : "text-txt-muted hover:text-txt"
-                      }`}
-                    >
-                      <Icon size={14} /> {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {progressViewMode === "visual" && (
-                <div className="flex rounded-lg border border-border bg-bg-input p-1">
-                  {[
-                    { mode: "all" as ProgressVisualRowMode, label: "All rows" },
-                    { mode: "sections" as ProgressVisualRowMode, label: "Section headers" },
-                  ].map((option) => (
-                    <button
-                      key={option.mode}
-                      type="button"
-                      onClick={() => setVisualRowMode(option.mode)}
-                      className={`h-8 rounded-md px-3 text-xs font-medium transition ${
-                        visualRowMode === option.mode
-                          ? "bg-bg-raised text-txt"
-                          : "text-txt-muted hover:text-txt"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+        <>
+          {(isEditMode || activeReport.sheets.length > 1) && (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              {isEditMode ? (
+                <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] font-medium text-txt-muted">
+                  <input
+                    type="checkbox"
+                    checked={showWeights}
+                    onChange={(e) => setShowWeights(e.target.checked)}
+                    className="accent-accent"
+                  />
+                  Show activity weights
+                </label>
+              ) : (
+                <span />
               )}
-              {progressViewMode === "table" && canUseCustomWeights && (
-                <select
-                  value={weightMode}
-                  onChange={(e) =>
-                    updateProgressReport(activeReport.id, {
-                      weightMode: e.target.value as ProgressReport["weightMode"],
-                    })
-                  }
-                  className="h-9 rounded-lg border border-border bg-bg-input px-2 text-xs text-txt outline-none focus:border-accent"
+              {activeReport.sheets.length > 1 && (
+                <button
+                  type="button"
+                  onClick={toggleAllSections}
+                  className="text-[11px] font-medium text-txt-muted transition hover:text-txt"
                 >
-                  <option value="equal">Equal weights</option>
-                  <option value="custom">Custom weights</option>
-                </select>
-              )}
-              {progressViewMode === "table" && (
-              <div className="relative" ref={columnsMenuRef}>
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={() => {
-                    setColumnDraft(ensureCoreColumns(activeInputMode, visibleColumns));
-                    setShowColumns((prev) => !prev);
-                  }}
-                >
-                  <Columns3 size={14} /> Columns
-                </Button>
-                {showColumns && (
-                  <div className="absolute right-0 z-50 mt-2 w-[320px] rounded-2xl border border-border bg-bg-surface p-4 shadow-xl shadow-black/30">
-                    <div className="mb-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Table presets</div>
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        {(["simple", "detailed", "quantity", "commercial"] as const).map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setColumnDraft(progressColumnPresets[activeInputMode][preset])}
-                            className="rounded-lg border border-border bg-bg-input px-3 py-2 text-xs font-semibold capitalize text-txt-muted hover:border-accent hover:text-txt"
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="max-h-[280px] space-y-2 overflow-auto border-y border-border py-3">
-                      {activeColumnOrder.map((column) => {
-                        const isLocked = lockedColumns.includes(column);
-                        const isChecked = columnDraft.includes(column) || isLocked;
-                        return (
-                          <label key={column} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-bg-hover">
-                            <span className={isLocked ? "text-txt" : "text-txt-muted"}>{columnLabels[column]}</span>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              disabled={isLocked}
-                              onChange={(e) => {
-                                setColumnDraft((prev) =>
-                                  e.target.checked
-                                    ? Array.from(new Set([...prev, column]))
-                                    : prev.filter((item) => item !== column)
-                                );
-                              }}
-                            />
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="flex-1 justify-center"
-                        onClick={() => {
-                          const next = progressColumnPresets[activeInputMode].simple;
-                          saveColumns(activeInputMode, next);
-                          setShowColumns(false);
-                        }}
-                      >
-                        Reset
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="flex-1 justify-center"
-                        onClick={() => setShowColumns(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        className="flex-1 justify-center"
-                        onClick={() => {
-                          saveColumns(activeInputMode, columnDraft);
-                          setShowColumns(false);
-                        }}
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  {allExpanded ? "Collapse all" : "Expand all"}
+                </button>
               )}
             </div>
-          </div>
-          {progressViewMode === "visual" ? (
-            <ProgressVisualRows rows={visualRows} />
-          ) : (
-          <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 450px)" }}>
-            <table className="data-table data-table-sticky text-[11px]" style={{ minWidth: Math.max(360, displayColumns.length * 116) }}>
-              <thead>
-                <tr>
-                  {/* Body "#" gutter is hidden globally (.data-cell-index → display:none),
-                      so the header must hide too or thead/tbody columns shift. */}
-                  <th className="hidden" aria-hidden="true" />
-                  {displayColumns.map((column) => (
-                    <th
-                      key={column}
-                      className={
-                        column === "description"
-                          ? "data-sticky-col left-0 data-sticky-edge w-[124px] min-w-[124px] sm:min-w-[260px] sm:w-auto"
-                          : ""
-                      }
-                    >
-                      {columnLabels[column]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {activeReport.sheets[activeSheetIdx]?.items.map((item, index) => (
-                  <tr key={item.id}>
-                    <td className="data-cell-index" aria-hidden="true">{index + 1}</td>
-                    {displayColumns.map((column) => (
-                      <Fragment key={column}>{renderProgressCell(item, column)}</Fragment>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
           )}
-        </div>
+          {isEditMode && showWeights && (
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-bg-surface px-3 py-2">
+              <span className="text-[11px] text-txt-muted">
+                Activity weights total{" "}
+                <strong className={Math.abs(weightTotal - 1) < 0.005 ? "text-ok" : "text-warn"}>
+                  {weightTotal.toFixed(3)}
+                </strong>{" "}
+                of 1.000 — editing a ratio locks it; the rest rebalance.
+              </span>
+              <button
+                type="button"
+                onClick={() => resetProgressWeights(activeReport.id)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-accent transition hover:underline"
+              >
+                <RotateCcw size={12} /> Reset to equal
+              </button>
+            </div>
+          )}
+          <div className="flex flex-col gap-2.5">
+            {activeReport.sheets.map((sheet) => (
+              <ProgressSection
+                key={sheet.id}
+                sheet={sheet}
+                ratios={ratios}
+                expanded={!collapsedSections.has(sheet.id)}
+                onToggle={() => toggleSection(sheet.id)}
+                editMode={isEditMode}
+                showWeights={isEditMode && showWeights}
+                onItemChange={(sheetId, itemId, value) =>
+                  updateProgressItem(activeReport.id, sheetId, itemId, "actualPercent", value)
+                }
+                onWeightCommit={(itemId, ratio) => setProgressWeight(activeReport.id, itemId, ratio)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {showSettings && <ProgressSettingsModal open={showSettings} report={activeReport} onClose={() => setShowSettings(false)} />}
