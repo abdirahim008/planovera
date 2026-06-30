@@ -136,7 +136,6 @@ const PROGRESS_REPORT_SECTION_META: Array<{
   description: string;
 }> = [
   { id: "cover", label: "Cover page", description: "Title page with project, period and reference" },
-  { id: "executiveSummary", label: "Executive summary", description: "Narrative overview of the period" },
   { id: "keyMetrics", label: "Key metrics", description: "Planned / Actual / Variance / Earned tiles" },
   { id: "itemTable", label: "Item-level progress", description: "Full table from the linked progress register" },
   { id: "sheetBreakdown", label: "Section breakdown", description: "Per-section aggregated progress" },
@@ -147,6 +146,7 @@ const PROGRESS_REPORT_SECTION_META: Array<{
   { id: "siteNotes", label: "Site notes & inspections", description: "Site notes recorded within the reporting period" },
   { id: "correspondenceLog", label: "Correspondence log", description: "Instructions, RFIs, submittals and claims within the period" },
   { id: "qualityControl", label: "Quality control", description: "Material tests and survey records, results and pass rate" },
+  { id: "photos", label: "Photo gallery", description: "Uploaded site photos, two per row, on their own page" },
   { id: "forecast", label: "Forecast & recovery", description: "Next period plan and recovery actions" },
   { id: "signoff", label: "Sign-off", description: "Signature blocks at the end" },
 ];
@@ -174,7 +174,7 @@ const PROGRESS_REPORT_PRESETS: Record<
     workPlanFormat: "gantt",
     sections: {
       cover: true,
-      executiveSummary: false,
+      executiveSummary: true,
       keyMetrics: true,
       itemTable: true,
       sheetBreakdown: false,
@@ -208,7 +208,7 @@ const PROGRESS_REPORT_PRESETS: Record<
       siteNotes: false,
       correspondenceLog: false,
       qualityControl: false,
-      photos: false,
+      photos: true,
       forecast: true,
       signoff: true,
     },
@@ -231,7 +231,7 @@ const PROGRESS_REPORT_PRESETS: Record<
       siteNotes: true,
       correspondenceLog: true,
       qualityControl: true,
-      photos: false,
+      photos: true,
       forecast: true,
       signoff: true,
     },
@@ -692,6 +692,25 @@ function siteVisitPhotosHtml(photos?: SiteNotePhoto[]) {
       <div class="site-photo-grid">${items}</div>
     </section>
   `;
+}
+
+// Curated progress-report photo gallery — two per row, reuses the shared
+// .site-photo-grid styles. Wrapped by the caller in a .section-photos block so
+// it starts on its own PDF page.
+function progressPhotosHtml(photos?: SiteNotePhoto[]) {
+  if (!photos?.length) return "";
+  const items = [...photos]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(
+      (photo) => `
+        <figure class="site-photo-card">
+          <img src="${escapeHtml(photo.dataUrl)}" alt="${escapeHtml(photo.caption || "Progress photo")}" />
+          ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
+        </figure>
+      `,
+    )
+    .join("");
+  return `<div class="site-photo-grid">${items}</div>`;
 }
 
 function siteVisitObservationHtml(observationHtml?: string) {
@@ -1527,6 +1546,11 @@ function documentPrintStyles() {
     .report-section.section-fluid {
       break-inside: auto;
       page-break-inside: auto;
+    }
+    /* The photo gallery always starts on a fresh page in the PDF. */
+    .report-section.section-photos {
+      page-break-before: always;
+      break-before: page;
     }
     .report-section-title {
       font-size: 15px;
@@ -2625,7 +2649,8 @@ function renderProgressReportBody(
   const currencyCode = project?.currency || "USD";
   const blocks: string[] = [];
 
-  if (toggles.executiveSummary) {
+  // Executive summary is mandatory in every progress report, regardless of preset.
+  {
     const summary = doc.executiveSummary?.trim()
       ? richNarrativeToHtml(doc.executiveSummary)
       : blocksToHtml(doc.content);
@@ -2810,6 +2835,18 @@ function renderProgressReportBody(
         <section class="report-section section-fluid">
           <div class="report-section-title">Quality control</div>
           ${qcHtml}
+        </section>
+      `);
+    }
+  }
+
+  if (toggles.photos) {
+    const photosHtml = progressPhotosHtml(doc.reportPhotos);
+    if (photosHtml) {
+      blocks.push(`
+        <section class="report-section section-fluid section-photos">
+          <div class="report-section-title">Photo gallery</div>
+          ${photosHtml}
         </section>
       `);
     }
@@ -4611,6 +4648,56 @@ export default function DocumentsModule() {
     updateGeneratedDocument(activeDocument.id, { [field]: dataUrl } as Partial<GeneratedDocument>);
   };
 
+  // ── Progress-report photo gallery (curated, stored on the document) ──────────
+  const addReportPhotos = async (files: FileList | null) => {
+    if (!activeDocument || !files?.length) return;
+    const existing = activeDocument.reportPhotos || [];
+    const added: SiteNotePhoto[] = [];
+    const list = Array.from(files);
+    for (let i = 0; i < list.length; i++) {
+      const dataUrl = await readFileAsDataUrl(list[i]);
+      if (!dataUrl) continue;
+      added.push({
+        id: uuid(),
+        dataUrl,
+        caption: "",
+        takenAt: new Date().toISOString(),
+        sortOrder: existing.length + i,
+      });
+    }
+    if (added.length) {
+      updateGeneratedDocument(activeDocument.id, { reportPhotos: [...existing, ...added] });
+    }
+  };
+
+  const setReportPhotoCaption = (id: string, caption: string) => {
+    if (!activeDocument) return;
+    const next = (activeDocument.reportPhotos || []).map((photo) =>
+      photo.id === id ? { ...photo, caption } : photo,
+    );
+    updateGeneratedDocument(activeDocument.id, { reportPhotos: next });
+  };
+
+  const removeReportPhoto = (id: string) => {
+    if (!activeDocument) return;
+    const next = (activeDocument.reportPhotos || [])
+      .filter((photo) => photo.id !== id)
+      .map((photo, index) => ({ ...photo, sortOrder: index }));
+    updateGeneratedDocument(activeDocument.id, { reportPhotos: next });
+  };
+
+  const moveReportPhoto = (id: string, direction: -1 | 1) => {
+    if (!activeDocument) return;
+    const photos = [...(activeDocument.reportPhotos || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+    const index = photos.findIndex((photo) => photo.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= photos.length) return;
+    [photos[index], photos[target]] = [photos[target], photos[index]];
+    updateGeneratedDocument(activeDocument.id, {
+      reportPhotos: photos.map((photo, i) => ({ ...photo, sortOrder: i })),
+    });
+  };
+
   const uploadSavedSignature = async (file?: File | null) => {
     if (!file) return;
     const dataUrl = await readFileAsDataUrl(file);
@@ -5617,6 +5704,96 @@ export default function DocumentsModule() {
                   />
                 </div>
               </div>
+            </div>
+          ) : null}
+
+          {isProgressReport && showReportAdvanced ? (
+            <div className="rounded-2xl border border-border bg-bg-surface p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Photo gallery</div>
+                  <div className="mt-1 text-[11px] text-txt-muted">
+                    Two per row, printed on their own page. Enable the &ldquo;Photo gallery&rdquo; section to include them.
+                  </div>
+                </div>
+                {isEditMode ? (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-bg-input px-3 py-2 text-sm transition hover:border-accent/50">
+                    <ImagePlus size={14} /> Add photos
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        await addReportPhotos(e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </div>
+              {(activeDocument.reportPhotos || []).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-bg-input/40 p-6 text-center text-[12px] text-txt-muted">
+                  No photos yet.{isEditMode ? " Use “Add photos” to upload site images." : ""}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[...(activeDocument.reportPhotos || [])]
+                    .sort((a, b) => a.sortOrder - b.sortOrder)
+                    .map((photo, index, arr) => (
+                      <div key={photo.id} className="overflow-hidden rounded-xl border border-border bg-bg-input/40">
+                        <div className="relative h-36 w-full overflow-hidden bg-bg">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={photo.dataUrl} alt={photo.caption || "Progress photo"} className="h-full w-full object-cover" />
+                          {isEditMode ? (
+                            <button
+                              type="button"
+                              onClick={() => removeReportPhoto(photo.id)}
+                              className="absolute right-1.5 top-1.5 cursor-pointer rounded-md border-none bg-black/50 p-1 text-white transition hover:bg-err"
+                              title="Remove photo"
+                            >
+                              <X size={13} />
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="space-y-2 p-2.5">
+                          <input
+                            value={photo.caption}
+                            disabled={!isEditMode}
+                            onChange={(e) => setReportPhotoCaption(photo.id, e.target.value)}
+                            placeholder="Caption"
+                            className="w-full rounded-md border border-border bg-bg-surface px-2 py-1.5 text-xs text-txt outline-none focus:border-accent disabled:opacity-70"
+                          />
+                          {isEditMode ? (
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] text-txt-dim">Photo {index + 1}</span>
+                              <div className="flex gap-1">
+                                <button
+                                  type="button"
+                                  disabled={index === 0}
+                                  onClick={() => moveReportPhoto(photo.id, -1)}
+                                  className="cursor-pointer rounded border border-border bg-bg-surface px-1.5 py-0.5 text-[11px] text-txt-muted transition hover:border-accent/40 hover:text-txt disabled:cursor-default disabled:opacity-40"
+                                  title="Move up"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={index === arr.length - 1}
+                                  onClick={() => moveReportPhoto(photo.id, 1)}
+                                  className="cursor-pointer rounded border border-border bg-bg-surface px-1.5 py-0.5 text-[11px] text-txt-muted transition hover:border-accent/40 hover:text-txt disabled:cursor-default disabled:opacity-40"
+                                  title="Move down"
+                                >
+                                  ↓
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           ) : null}
 

@@ -461,6 +461,9 @@ export interface GeneratedDocument {
   linkedSiteNoteId?: string;
   siteVisitObservationHtml?: string;
   siteVisitPhotos?: SiteNotePhoto[];
+  /** Curated photo gallery for the progress report's "Photos" section (2-up grid,
+   *  rendered on its own page in the PDF). Separate from siteVisitPhotos. */
+  reportPhotos?: SiteNotePhoto[];
   /** Progress report extras: section toggles + per-section narratives. */
   reportSections?: ReportSectionToggles;
   /** Optional reporting period bounds shown on the cover and used to scope photos. */
