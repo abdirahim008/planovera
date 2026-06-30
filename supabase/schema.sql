@@ -961,18 +961,18 @@ begin
     p.code,
     p.audience,
     p.billing_interval,
-    -- New signups start as 'incomplete' (awaiting manual admin approval) rather
-    -- than auto-granting a trial. A platform admin activates access via
+    -- New signups get an automatic 30-day free trial. When it lapses the
+    -- subscription becomes unusable and a platform admin must activate it via
     -- admin_set_organization_subscription. Users invited into an already-active
-    -- organization still get access through that organization's subscription.
-    'incomplete',
+    -- organization get access through that organization's subscription.
+    'trialing',
     greatest(1, p.included_seats),
     p.included_seats,
     p.base_price_cents,
     p.per_seat_price_cents,
-    null,
-    null,
-    null
+    timezone('utc', now()),
+    timezone('utc', now()) + interval '30 days',
+    timezone('utc', now()) + interval '30 days'
   from public.billing_plans p
   where p.code = 'individual-monthly'
     and not exists (
@@ -1458,17 +1458,17 @@ begin
       plan_record.code,
       plan_record.audience,
       plan_record.billing_interval,
-      -- New organizations start as 'incomplete' (awaiting manual admin approval).
-      -- A platform admin grants access via admin_set_organization_subscription,
-      -- which sets seats, status, and the access period.
-      'incomplete',
+      -- New organizations get an automatic 30-day free trial. When it lapses a
+      -- platform admin must activate access via admin_set_organization_subscription,
+      -- which sets seats, status, and the paid access period.
+      'trialing',
       greatest(plan_record.included_seats, 5),
       plan_record.included_seats,
       plan_record.base_price_cents,
       plan_record.per_seat_price_cents,
-      null,
-      null,
-      null
+      timezone('utc', now()),
+      timezone('utc', now()) + interval '30 days',
+      timezone('utc', now()) + interval '30 days'
     )
     on conflict (organization_id) do nothing;
   end if;
