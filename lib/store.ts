@@ -2028,6 +2028,10 @@ interface AppState {
   addGeneratedDocument: (doc: GeneratedDocument) => void;
   updateGeneratedDocument: (id: string, updates: Partial<GeneratedDocument>) => void;
   deleteGeneratedDocument: (id: string) => void;
+  // Which generated document the Documents module currently has open. Synced
+  // from that module's local state so the AI assistant can fill its fields.
+  activeGeneratedDocumentId: string | null;
+  setActiveGeneratedDocumentId: (id: string | null) => void;
 
   // ─── Correspondence / Approvals ─────────────────────────────────
   correspondenceRecords: CorrespondenceRecord[];
@@ -3506,6 +3510,8 @@ export const useAppStore = create<AppState>()(
         })),
       deleteGeneratedDocument: (id) =>
         set((s) => ({ generatedDocuments: s.generatedDocuments.filter((doc) => doc.id !== id) })),
+      activeGeneratedDocumentId: null,
+      setActiveGeneratedDocumentId: (id) => set({ activeGeneratedDocumentId: id }),
 
       // ═══════════════════════════════════════════════════════════════
       // ─── Correspondence / Approvals ───────────────────────────────

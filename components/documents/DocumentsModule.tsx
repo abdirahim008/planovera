@@ -4522,9 +4522,17 @@ export default function DocumentsModule() {
     addGeneratedDocument,
     updateGeneratedDocument,
     deleteGeneratedDocument,
+    setActiveGeneratedDocumentId,
   } = useAppStore();
 
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
+
+  // Mirror the open document to the store so the AI assistant can fill its
+  // fields. Clear it when leaving the module.
+  useEffect(() => {
+    setActiveGeneratedDocumentId(activeDocumentId);
+    return () => setActiveGeneratedDocumentId(null);
+  }, [activeDocumentId, setActiveGeneratedDocumentId]);
   const [showCreate, setShowCreate] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [templateType, setTemplateType] = useState<DocumentTemplateType>("progress-report");
