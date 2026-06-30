@@ -5,6 +5,9 @@ import AuthPage from "@/components/auth/AuthPage";
 import { AUTH_BYPASS_ENABLED } from "@/lib/demo-access";
 import { getSupabaseServerClient, isServerSupabaseConfigured } from "@/lib/supabase-server";
 
+// Auth page — keep out of search results.
+export const metadata = { robots: { index: false, follow: false } };
+
 export default async function LoginPage() {
   if (AUTH_BYPASS_ENABLED) {
     redirect("/workspace");
