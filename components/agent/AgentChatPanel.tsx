@@ -26,6 +26,7 @@ import type {
   AgentTable,
   WorkPlanDraftResponse,
   DocumentDraftResponse,
+  DocumentFillResponse,
 } from "@/lib/agent/types";
 import { buildProjectSnapshot, buildPortfolioSnapshot } from "@/lib/agent/snapshot";
 
@@ -146,6 +147,12 @@ export default function AgentChatPanel() {
       snapshot: buildProjectSnapshot(st) as unknown as Record<string, unknown> | null,
       // Slim per-project rows so portfolio questions work even with no active project.
       portfolio: buildPortfolioSnapshot(st) as unknown as Record<string, unknown>[],
+      activeDocument: (() => {
+        const d = st.activeGeneratedDocumentId
+          ? st.generatedDocuments.find((x) => x.id === st.activeGeneratedDocumentId)
+          : null;
+        return d ? { id: d.id, templateType: d.templateType, title: d.title } : null;
+      })(),
     };
   }
 
@@ -452,6 +459,58 @@ export default function AgentChatPanel() {
     );
   }
 
+  // Readable names for the document fields the assistant can fill.
+  const FIELD_LABELS: Record<string, string> = {
+    executiveSummary: "executive summary",
+    forecastNarrative: "forecast / outlook",
+    content: "body",
+    siteVisitObservationHtml: "observations",
+    statusHighlights: "highlights",
+    statusIssues: "issues",
+    statusUpcoming: "upcoming work",
+    statusTopRisks: "top risks",
+    statusResourceAsks: "resource asks",
+  };
+
+  async function fillDocument(instruction?: string, fields?: string[]) {
+    const st = useAppStore.getState();
+    const docId = st.activeGeneratedDocumentId;
+    const doc = docId ? st.generatedDocuments.find((d) => d.id === docId) : null;
+    if (!doc) {
+      push(
+        "assistant",
+        "Open the document you'd like me to fill in the Documents module first, then ask again.",
+        "status",
+      );
+      return;
+    }
+    push("assistant", "Writing the document sections…", "status");
+    const res = await fetch("/api/ai/document-fill", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        templateType: doc.templateType,
+        fields,
+        instruction,
+        context: buildProjectSnapshot(st),
+      }),
+    });
+    const data = (await res.json()) as DocumentFillResponse & { error?: string };
+    if (!res.ok || !data.values || Object.keys(data.values).length === 0) {
+      throw new Error(data.error || "Nothing was generated for this document.");
+    }
+    st.updateGeneratedDocument(doc.id, data.values);
+    st.setActiveModule("documents");
+    const filled = Object.keys(data.values)
+      .map((k) => FIELD_LABELS[k] || k)
+      .join(", ");
+    push(
+      "assistant",
+      `✅ Filled the ${filled} in "${doc.title}". Review and tweak the wording as needed.`,
+      "status",
+    );
+  }
+
   async function runAction(action: AgentAction) {
     // Workspace actions only make sense on the workspace page — bring the user there.
     if (action.type !== "none" && pathname !== "/workspace") {
@@ -478,6 +537,9 @@ export default function AgentChatPanel() {
         break;
       case "create_payment_certificate":
         await createPaymentCertificate(action.certType || "interim");
+        break;
+      case "fill_document":
+        await fillDocument(action.instruction, action.fields);
         break;
       case "open_module":
         useAppStore.getState().setActiveModule(action.module);

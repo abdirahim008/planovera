@@ -73,6 +73,8 @@ export type AgentAction =
   | { type: "draft_document"; templateType: DocumentTemplateType; title?: string; brief?: string }
   /** Scaffold a payment certificate from the project's BOQ (no money is computed by AI). */
   | { type: "create_payment_certificate"; certType?: "interim" | "final" }
+  /** Fill the narrative fields of the document currently open in the Documents module. */
+  | { type: "fill_document"; instruction?: string; fields?: string[] }
   /** Navigate the workspace to a module. */
   | { type: "open_module"; module: AgentModule };
 
@@ -107,6 +109,8 @@ export interface AgentContext {
   snapshot?: Record<string, unknown> | null;
   /** Slim per-project summaries across the whole portfolio, for portfolio Q&A. */
   portfolio?: Record<string, unknown>[] | null;
+  /** The document currently open in the Documents module, if any. */
+  activeDocument?: { id: string; templateType: string; title: string } | null;
 }
 
 export interface AgentChatMessage {
@@ -138,6 +142,11 @@ export interface DocumentDraftResponse {
   title: string;
   /** Plain-text body: blank-line-separated paragraphs; lines starting with "- " are bullets. */
   content: string;
+}
+
+/** Field → value map returned by POST /api/ai/document-fill. */
+export interface DocumentFillResponse {
+  values: Record<string, string>;
 }
 
 // Re-export the store-facing shapes the panel applies, so callers have one stop.

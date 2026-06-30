@@ -46,6 +46,7 @@ function buildSystemPrompt(ctx: AgentContext): string {
     '{"type":"create_progress_report","name":"<short title>","inputMode":"percent"|"quantity"} — create a progress report the user can fill in. Requires an active project that has a BOQ. Default inputMode to "percent".',
     `{"type":"draft_document","templateType":"<one of: ${AGENT_DOC_TEMPLATES.join(", ")}>","title":"<short title>","brief":"<what the document should say>"} — write a project document/letter. Pick the templateType that best matches the user's request (e.g. a start/commencement order → commencement-letter, an instruction to the contractor → instruction-letter, a one-page RAG update → status-report). Put the specifics in "brief".`,
     '{"type":"create_payment_certificate","certType":"interim"|"final"} — scaffold a payment certificate (IPC) from the project BOQ for the user to enter quantities. Requires an active project that has a BOQ. Default certType to "interim". Never quote money amounts — the app computes them.',
+    '{"type":"fill_document","instruction":"<what to write>","fields":[<optional field names>]} — fill the narrative sections of the document CURRENTLY OPEN in the Documents module (e.g. progress report executive summary & forecast, completion certificate body, site-visit observations, status-report highlights/issues). Requires a document to be open (see "Active document open" below). The app writes the fields appropriate to that document type from the real project figures; only pass "fields" if the user named specific sections. If no document is open, ask the user to open the document first.',
     `{"type":"open_module","module":"<one of: ${ENABLED_MODULES.join(", ")}>"} — navigate the workspace.`,
     "",
     "Answering questions:",
@@ -63,10 +64,15 @@ function buildSystemPrompt(ctx: AgentContext): string {
     "- draft_document: if the document type or its key contents weren't given, ask which document and the essentials before drafting.",
     "- generate_work_plan / create_progress_report / create_payment_certificate build on the active project's BOQ — proceed once that exists; only ask if something essential is genuinely missing (e.g. a useful start date for the work plan).",
     "- Don't over-ask: a single follow-up listing what you need is enough, and never re-ask for things the user already provided. Respect it when the user wants to skip optional fields.",
+    "- fill_document needs a document open in the Documents module. If one is open, proceed; if not, tell the user to open the document first.",
+    "",
+    "Picking a project when none is active:",
+    "- If NO project is active and the user asks for a project-specific task or question (BOQ, work plan, progress, a document, payment, or a figure about a project), do NOT guess or pick one yourself. List the existing projects (a short bullet list of their names, or a table) and ask which one they mean.",
+    "- When the user names/picks a project, select it with select_project. Then carry out their original request on the next turn (your reply can say what you'll do next).",
     "",
     "Rules:",
     "- Act once you have the essential details (see above); otherwise ask one brief follow-up instead of acting.",
-    "- If the user asks for a BOQ or work plan but no project is active, first guide them to create or select a project.",
+    "- If the user asks for a BOQ or work plan but no project is active, follow 'Picking a project when none is active'.",
     "- Only ONE action per turn. To do several things, do the first and tell the user the next step in your reply (they will say yes).",
     "- Keep replies short, warm, and plain — no markdown, no code, 1-3 sentences.",
     `- Relevant BOQ categories: ${TAXONOMY_TEXT}.`,
@@ -76,6 +82,7 @@ function buildSystemPrompt(ctx: AgentContext): string {
     `- Active project: ${ctx.hasProject ? `${ctx.projectName} (${ctx.projectType || "construction"})` : "none"}`,
     `- Current module: ${ctx.currentModule || "dashboard"}`,
     `- Active project has a BOQ: ${ctx.hasBOQ ? `yes (${ctx.boqItemCount ?? 0} items)` : "no"}`,
+    `- Active document open: ${ctx.activeDocument ? `${ctx.activeDocument.title} [${ctx.activeDocument.templateType}]` : "none"}`,
     `- Existing projects: ${ctx.existingProjects?.length ? ctx.existingProjects.slice(0, 30).join("; ") : "none"}`,
   ];
   if (ctx.snapshot) {
@@ -189,6 +196,12 @@ function normalizeAction(raw: unknown): AgentAction {
       return {
         type: "create_payment_certificate",
         certType: str(a.certType) === "final" ? "final" : "interim",
+      };
+    case "fill_document":
+      return {
+        type: "fill_document",
+        instruction: str(a.instruction) || undefined,
+        fields: Array.isArray(a.fields) ? a.fields.map(str).filter(Boolean).slice(0, 10) : undefined,
       };
     case "open_module": {
       const module = str(a.module);
