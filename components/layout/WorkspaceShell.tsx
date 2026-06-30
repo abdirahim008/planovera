@@ -145,6 +145,9 @@ type SubscriptionBlockState = {
   // a per-member lockout distinct from awaitingApproval (org not yet activated)
   // or the default expired state (subscription lapsed).
   deactivated?: boolean;
+  // The block is a lapsed 30-day free trial (vs a previously-paid subscription
+  // that expired) — drives trial-specific copy on the block screen.
+  trialExpired?: boolean;
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
@@ -152,11 +155,14 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12
 function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState }) {
   const pending = block.awaitingApproval;
   const deactivated = block.deactivated === true;
+  const trialEnded = !deactivated && !pending && block.trialExpired === true;
   const headline = deactivated
     ? "Access deactivated"
     : pending
       ? "Awaiting approval"
-      : "Subscription expired";
+      : trialEnded
+        ? "Free trial ended"
+        : "Subscription expired";
   const headlineColor = deactivated
     ? "text-warn"
     : pending
@@ -166,7 +172,9 @@ function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState })
     ? "Your organization administrator has deactivated your access. Your work is preserved — contact your administrator to be reactivated."
     : pending
       ? "Your account is registered. An administrator will activate your access once your subscription is confirmed. Your data is safe in the meantime."
-      : `Access ended ${block.expiresAt}.`;
+      : trialEnded
+        ? "Your 30-day free trial has ended — contact us to activate. Your data is safe in the meantime."
+        : `Access ended ${block.expiresAt}.`;
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6">
       <div className="w-full max-w-md rounded-2xl border border-border bg-bg-surface p-7 text-center">
@@ -191,7 +199,7 @@ function SubscriptionExpiredScreen({ block }: { block: SubscriptionBlockState })
           {block.canManage && !deactivated ? (
             <a
               href={`mailto:support@planovera.com?subject=Planovera subscription ${
-                pending ? "activation" : "reactivation"
+                pending || trialEnded ? "activation" : "reactivation"
               }`}
               className="inline-flex items-center justify-center rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-accent-hover"
             >
@@ -584,6 +592,8 @@ export default function WorkspaceShell() {
         // "subscription expired" copy used when a previously-active license lapses.
         const awaitingApproval =
           !firstSubscription || firstSubscription.status === "incomplete";
+        // A 'trialing' subscription that is no longer usable is a lapsed free trial.
+        const trialExpired = firstSubscription?.status === "trialing";
         setPrograms([]);
         setCategories([]);
         setProjects([]);
@@ -594,6 +604,7 @@ export default function WorkspaceShell() {
           expiresAt: formatSubscriptionExpiry(firstSubscription),
           canManage: firstMembership.role === "owner" || firstMembership.role === "admin",
           awaitingApproval,
+          trialExpired,
         });
         setWorkspaceNotice(null);
         setProjectsReady(true);
