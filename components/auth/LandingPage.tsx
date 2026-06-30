@@ -63,6 +63,12 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
           </a>
 
           <nav className="flex items-center gap-3">
+            <a
+              href="/templates"
+              className="hidden rounded-2xl px-4 py-3 text-sm font-semibold text-txt-muted transition hover:text-txt sm:inline-flex"
+            >
+              Free templates
+            </a>
             {authenticated ? (
               <>
                 <LandingSignOut className="rounded-2xl border border-border bg-bg-surface px-5 py-3 text-sm font-semibold text-txt transition hover:border-accent/50 hover:bg-bg-hover disabled:opacity-60" />
@@ -618,9 +624,14 @@ export default function LandingPage({ authenticated = false }: { authenticated?:
           <p className="text-[13px] text-txt-dim">
             &copy; {new Date().getFullYear()} Planovera. Project controls for delivery teams.
           </p>
-          <a href={enterHref} className="text-[13px] font-semibold text-accent transition hover:text-accent-hover">
-            Sign in
-          </a>
+          <div className="flex items-center gap-4">
+            <a href="/templates" className="text-[13px] font-semibold text-accent transition hover:text-accent-hover">
+              Free templates
+            </a>
+            <a href={enterHref} className="text-[13px] font-semibold text-accent transition hover:text-accent-hover">
+              Sign in
+            </a>
+          </div>
         </footer>
       </div>
     </main>
