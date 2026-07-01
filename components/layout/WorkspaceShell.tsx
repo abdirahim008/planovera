@@ -291,7 +291,9 @@ function Workspace({
           </div>
         </header>
 
-        <main className={`flex-1 overflow-auto bg-bg ${isDrawingWorkspace ? "p-2 lg:p-3" : "p-3 sm:p-4 lg:p-6"}`}>
+        {/* Extra bottom padding so content can scroll clear of the fixed
+            Assistant button in the bottom-right corner (hidden on the drawing canvas). */}
+        <main className={`flex-1 overflow-auto bg-bg ${isDrawingWorkspace ? "p-2 lg:p-3" : "p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24"}`}>
           {hasProject && visibleCollaborators.length > 0 ? (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {visibleCollaborators.map((collaborator) => {
