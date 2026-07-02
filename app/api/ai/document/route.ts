@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { aiChatJSON, isAiConfigured, AiError } from "@/lib/ai/provider";
-import { isAiRequestAuthorized } from "@/lib/ai/access";
+import { guardAiRequest } from "@/lib/ai/access";
 import { AGENT_DOC_TEMPLATES, type DocumentDraftResponse } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
@@ -54,9 +54,8 @@ const str = (v: unknown): string =>
   typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
 
 export async function POST(req: Request) {
-  if (!(await isAiRequestAuthorized())) {
-    return NextResponse.json({ error: "Sign in to use the assistant." }, { status: 401 });
-  }
+  const blocked = await guardAiRequest(req);
+  if (blocked) return blocked;
   if (!isAiConfigured()) {
     return NextResponse.json(
       { error: "The assistant is not configured on the server." },
