@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { aiChatJSON, isAiConfigured, AiError, type AiChatTurn } from "@/lib/ai/provider";
-import { isAiRequestAuthorized } from "@/lib/ai/access";
+import { guardAiRequest } from "@/lib/ai/access";
 import { BOQ_LIBRARY_TAXONOMY } from "@/lib/boqLibrary";
 import {
   AGENT_MODULES,
@@ -216,9 +216,8 @@ function normalizeAction(raw: unknown): AgentAction {
 }
 
 export async function POST(req: Request) {
-  if (!(await isAiRequestAuthorized())) {
-    return NextResponse.json({ error: "Sign in to use the assistant." }, { status: 401 });
-  }
+  const blocked = await guardAiRequest(req);
+  if (blocked) return blocked;
   if (!isAiConfigured()) {
     return NextResponse.json(
       { error: "The assistant is not configured on the server." },
