@@ -1421,6 +1421,20 @@ begin
     raise exception 'Organization name is required.';
   end if;
 
+  -- Anti-abuse quota: cap how many organizations a single account can create
+  -- in-app, so accounts can't be used to farm unlimited 30-day trials. The
+  -- personal workspace auto-created at signup does not count toward this limit.
+  -- Raise the number here (or activate a customer manually) if a legitimate
+  -- user needs more.
+  if (
+    select count(*)
+    from public.organizations
+    where owner_id = auth.uid()
+      and personal = false
+  ) >= 3 then
+    raise exception 'You have reached the maximum number of organizations for your account. Contact support to add more.';
+  end if;
+
   insert into public.organizations (name, owner_id, personal)
   values (trim(org_name), auth.uid(), false)
   returning * into created_org;
