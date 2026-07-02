@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { v4 as uuid } from "uuid";
+import { compressImageFile } from "@/lib/imageCompression";
 import {
   Bold,
   Camera,
@@ -111,12 +112,9 @@ const reportOptionGroups: Array<{
 const todayISO = () => new Date().toISOString().split("T")[0];
 
 function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Unable to read image"));
-    reader.readAsDataURL(file);
-  });
+  // Compress large images on the way in so they don't blow the localStorage
+  // quota or bloat sync payloads (falls back to the original on failure).
+  return compressImageFile(file);
 }
 
 function notePreview(text: string) {

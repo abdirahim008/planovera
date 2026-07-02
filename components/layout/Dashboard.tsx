@@ -1,6 +1,7 @@
 "use client";
 
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { compressImageFile } from "@/lib/imageCompression";
 import { useRouter } from "next/navigation";
 import { v4 as uuid } from "uuid";
 import type { LucideIcon } from "lucide-react";
@@ -225,12 +226,9 @@ function monthsBetweenIso(startIso: string, endIso: string): string {
 }
 
 function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Unable to read file"));
-    reader.readAsDataURL(file);
-  });
+  // Compress large images on the way in so they don't blow the localStorage
+  // quota or bloat sync payloads (falls back to the original on failure).
+  return compressImageFile(file);
 }
 
 type ProgressSnapshot = {

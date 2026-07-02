@@ -7,6 +7,7 @@ import { Menu } from "lucide-react";
 
 import { useAppStore } from "@/lib/store";
 import Sidebar from "@/components/layout/Sidebar";
+import StorageWarningBanner from "@/components/layout/StorageWarningBanner";
 import LandingSignOut from "@/components/auth/LandingSignOut";
 import {
   getSupabaseBrowserClient,
@@ -264,6 +265,7 @@ function Workspace({
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
+      <StorageWarningBanner />
       <Sidebar forceCollapsed={isDrawingWorkspace} />
       <Sidebar
         isMobile
