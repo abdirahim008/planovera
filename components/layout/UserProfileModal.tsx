@@ -7,14 +7,12 @@ import { useAppStore } from "@/lib/store";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
+import { compressImageFile } from "@/lib/imageCompression";
 
 function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Unable to read file"));
-    reader.readAsDataURL(file);
-  });
+  // Compress large images on the way in so they don't blow the localStorage
+  // quota or bloat sync payloads (falls back to the original on failure).
+  return compressImageFile(file);
 }
 
 /**

@@ -2155,7 +2155,13 @@ function createDebouncedStorage<T>(delayMs = 600): PersistStorage<T> {
     try {
       window.localStorage.setItem(pending.name, JSON.stringify(pending.value));
     } catch {
-      /* quota or serialization error — keep running */
+      // Quota exceeded (or serialization failure). Don't lose the change
+      // silently — the workspace still lives in memory (and syncs to the server
+      // when Supabase is configured); surface it so the user knows local save
+      // failed. A listener shows a banner; see StorageWarningBanner.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("planovera:storage-error"));
+      }
     }
     pending = null;
   };
