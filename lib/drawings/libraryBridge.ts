@@ -153,6 +153,10 @@ export async function fetchSharedLibraryItems(): Promise<{ items: LibraryItem[];
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return { items: [] };
   try {
+    // Wait for the session to load first — the client recovers auth
+    // asynchronously, so a query fired immediately can race ahead of it and
+    // come back empty (RLS blocks anon reads), hiding the shared library.
+    await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("drawing_library_items")
       .select("id,name,category,description,tags,author_id,author_name,updated_at")
@@ -201,6 +205,10 @@ export async function fetchDrawingLibrary(): Promise<LibraryItem[]> {
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return loadLibraryItems();
   try {
+    // Ensure the session is recovered before querying — otherwise the request
+    // can race ahead of auth and return zero rows (RLS blocks anon), which
+    // silently collapses the warehouse to just the built-in seed drawings.
+    await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("drawing_library_items")
       .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
@@ -221,6 +229,7 @@ export async function fetchLibraryItemSvg(item: LibraryItem): Promise<string> {
   if (!isSupabaseConfigured()) return "";
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return "";
+  await supabase.auth.getSession(); // carry auth so RLS doesn't drop the row
   const { data } = await supabase
     .from("drawing_library_items")
     .select("svg")
