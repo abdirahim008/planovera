@@ -14,11 +14,14 @@ import {
   fetchLibraryItemSvg,
   postLibraryImport,
 } from "@/lib/drawings/libraryBridge";
+import { useDrawingsAuthGuard } from "@/lib/drawings/useDrawingsAuthGuard";
 
 // Standalone library browser — opened in its own tab from the studio so the
 // canvas tab stays light. "Import" hands the chosen drawing to the studio tab
 // (via the cross-tab queue); only then is it inserted on the canvas.
 export default function DrawingLibraryPage() {
+  // Kick this tab to /login if the session ends (here or in another tab).
+  useDrawingsAuthGuard();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
