@@ -32,6 +32,7 @@ import { PATTERNS, PatternType } from "@/lib/drawings/patterns";
 import {
   LIBRARY_CATEGORIES,
   LibraryCategory,
+  LibraryFabricJson,
   LibraryItem,
   LibraryItemRecord,
   ProfileRecord,
@@ -124,6 +125,8 @@ type LibrarySaveDraft = {
   description: string;
   tags: string;
   svg: string;
+  /** Structured Fabric objects captured with the svg — grouping preserved. */
+  fabricJson: LibraryFabricJson | null;
 };
 
 type LinkedProjectContext = {
@@ -171,6 +174,38 @@ function serializeLibraryObject(object: FabricNS.FabricObject) {
   const width = Math.max(bounds.width, 1);
   const height = Math.max(bounds.height, 1);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.left} ${bounds.top} ${width} ${height}" fill="none">${object.toSVG()}</svg>`;
+}
+
+// Custom keys carried through library JSON serialization (mirrors the
+// FabricObject.customProperties registration below) so walls, openings and
+// parametric blocks stay editable after a warehouse round-trip.
+const LIBRARY_JSON_KEYS = [
+  WALL_KEY,
+  WALL_THICKNESS_KEY,
+  OPENING_KEY,
+  OPENING_TYPE_KEY,
+  OPENING_WIDTH_KEY,
+  PARAMETRIC_KIND_KEY,
+  PARAMETRIC_PARAMS_KEY,
+  PARAMETRIC_LABEL_KEY,
+];
+
+/**
+ * Serialize the exportable canvas objects to structured Fabric JSON. Unlike
+ * toSVG (which flattens everything to paths on re-import), this preserves the
+ * admin's grouping and parametric metadata — warehouse curation persists in
+ * the library until the next admin update.
+ */
+function serializeCanvasFabricJson(canvas: FabricNS.Canvas): LibraryFabricJson | null {
+  const objects = canvas
+    .getObjects()
+    .filter((object) => !object.excludeFromExport)
+    .map((object) => object.toObject(LIBRARY_JSON_KEYS) as unknown);
+  return objects.length > 0 ? { objects } : null;
+}
+
+function serializeObjectFabricJson(object: FabricNS.FabricObject): LibraryFabricJson {
+  return { objects: [object.toObject(LIBRARY_JSON_KEYS) as unknown] };
 }
 
 function getStyleTargets(object: FabricNS.FabricObject): FabricNS.FabricObject[] {
@@ -351,10 +386,15 @@ export default function Editor({
     category: LibraryCategory;
     description: string;
     tags: string[];
+    /** Seed items publish a DB override on update instead of an in-place edit. */
+    source: LibraryItem["source"];
   } | null>(null);
   // SVG queued to load once the editing sheet's canvas is ready (see the canvas
   // init effect, which loads it after the blank page mounts).
   const pendingLoadRef = useRef<string | null>(null);
+  // Structured Fabric JSON queued the same way — takes priority over the SVG so
+  // a curated drawing re-opens with its saved grouping intact.
+  const pendingLoadJsonRef = useRef<LibraryFabricJson | null>(null);
 
   const recordLibraryUse = useCallback((libraryId: string) => {
     setRecentIds((current) => {
@@ -1868,6 +1908,31 @@ export default function Editor({
 
     // A drawing queued for editing loads onto this (blank) sheet once ready.
     const loadPending = () => {
+      const json = pendingLoadJsonRef.current;
+      if (json) {
+        // Curated payload: re-create the exact objects the admin saved —
+        // grouping and parametric metadata intact, nothing split or flattened.
+        pendingLoadJsonRef.current = null;
+        pendingLoadRef.current = null;
+        const enliven = fabricMod.util.enlivenObjects as unknown as (
+          objects: unknown[],
+        ) => Promise<FabricNS.FabricObject[]>;
+        void enliven(json.objects)
+          .then((objects) => {
+            objects.forEach((object) => {
+              makeStrokeNonScaling(object);
+              canvas.add(object);
+            });
+            canvas.requestRenderAll();
+            commitHistory();
+          })
+          .catch((error) => {
+            setMessage(
+              `Could not render the drawing: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+        return;
+      }
       const svg = pendingLoadRef.current;
       if (!svg) return;
       pendingLoadRef.current = null;
@@ -2018,6 +2083,64 @@ export default function Editor({
     [libraryItems],
   );
 
+  // Resolve a library item's full payload for insert/edit: the structured
+  // Fabric JSON when the item has one (grouping preserved) plus the SVG
+  // fallback for older items that were only ever saved as SVG.
+  const fetchLibraryPayload = useCallback(
+    async (id: string): Promise<{ svg: string; fabricJson: LibraryFabricJson | null }> => {
+      const local = libraryItems.find((item) => item.id === id);
+      if (local?.fabricJson) return { svg: local.svg || "", fabricJson: local.fabricJson };
+      // Seed/personal items live fully in memory — nothing heavier to fetch.
+      if (local && local.source !== "admin") {
+        return { svg: local.svg || "", fabricJson: local.fabricJson ?? null };
+      }
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        const { data } = await supabase
+          .from("drawing_library_items")
+          .select("svg,fabric_json")
+          .eq("id", id)
+          .single();
+        if (data) {
+          return {
+            svg: (data.svg as string) ?? "",
+            fabricJson: (data.fabric_json as LibraryFabricJson | null) ?? null,
+          };
+        }
+      }
+      return { svg: local?.svg ?? "", fabricJson: local?.fabricJson ?? null };
+    },
+    [libraryItems],
+  );
+
+  // Drop stored Fabric objects onto the canvas exactly as the admin saved them —
+  // grouping and parametric metadata intact (the SVG path flattens both).
+  const addFabricJsonToCanvas = useCallback(
+    async (json: LibraryFabricJson): Promise<boolean> => {
+      const canvas = fabricRef.current;
+      if (!canvas || !fabricMod || !Array.isArray(json?.objects) || json.objects.length === 0) {
+        return false;
+      }
+      try {
+        const enliven = fabricMod.util.enlivenObjects as unknown as (
+          objects: unknown[],
+        ) => Promise<FabricNS.FabricObject[]>;
+        const objects = await enliven(json.objects);
+        if (objects.length === 0) return false;
+        objects.forEach((object) => {
+          makeStrokeNonScaling(object);
+          canvas.add(object);
+        });
+        canvas.setActiveObject(objects[objects.length - 1]);
+        canvas.requestRenderAll();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [fabricMod],
+  );
+
   // Rasterize an SVG to a small PNG data URL, stored alongside published drawings
   // so the library grid never needs to load the full svg just to show a preview.
   const svgToThumbnail = useCallback(async (svg: string): Promise<string> => {
@@ -2090,20 +2213,27 @@ export default function Editor({
           item.parametricParams as Partial<ParametricBlockParams>,
         );
       } else {
-        const svg = item.svg || (await fetchLibrarySvg(item.id));
         const canvas = fabricRef.current;
-        if (svg && canvas && fabricMod) {
-          try {
-            // Import warehouse drawings split + ungrouped — same as the admin
-            // edit flow — so their text is directly editable and any section can
-            // be box-selected. Available to every user, not just admins.
-            await addSvgToCanvas(fabricMod, canvas, splitSvgSubpaths(sanitizeSvgMarkup(svg)), {
-              ungroup: true,
-            });
+        if (canvas && fabricMod) {
+          const payload = await fetchLibraryPayload(item.id);
+          if (payload.fabricJson && (await addFabricJsonToCanvas(payload.fabricJson))) {
+            // Curated item: inserted exactly as the admin grouped it.
             commitHistory();
-            setMessage("Drawing imported — text is editable; use Select area to grab a section.");
-          } catch (error) {
-            setMessage(`Drawing import failed: ${error instanceof Error ? error.message : String(error)}`);
+            setMessage(`${item.name} inserted with its saved grouping — double-click a group to edit inside it.`);
+          } else if (payload.svg) {
+            try {
+              // Legacy SVG-only item: import split + ungrouped so its text is
+              // directly editable and any section can be box-selected.
+              await addSvgToCanvas(fabricMod, canvas, splitSvgSubpaths(sanitizeSvgMarkup(payload.svg)), {
+                ungroup: true,
+              });
+              commitHistory();
+              setMessage("Drawing imported — text is editable; use Select area to grab a section.");
+            } catch (error) {
+              setMessage(`Drawing import failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          } else {
+            setMessage(`Could not load ${item.name}.`);
           }
         }
       }
@@ -2114,9 +2244,10 @@ export default function Editor({
       void saveCurrentPage();
     },
     [
+      addFabricJsonToCanvas,
       commitHistory,
       fabricMod,
-      fetchLibrarySvg,
+      fetchLibraryPayload,
       handleAddParametricBlock,
       recordLibraryUse,
       saveCurrentPage,
@@ -2128,7 +2259,9 @@ export default function Editor({
   // title block), so a clean-up can be saved straight back over the source item.
   const handleEditLibraryItem = useCallback(
     async (libraryId: string) => {
-      if (session?.role !== "admin") {
+      // Demo mode (no auth) works on the local library; with real auth this is
+      // admin-only — same gate as publishing (RLS enforces it server-side too).
+      if (authConfigured && session?.role !== "admin") {
         setMessage("Only admins can edit shared library drawings.");
         return;
       }
@@ -2137,26 +2270,35 @@ export default function Editor({
         setMessage("That drawing is no longer in the library.");
         return;
       }
-      const svg = item.svg || (await fetchLibrarySvg(libraryId));
-      if (!svg) {
+      const payload = await fetchLibraryPayload(libraryId);
+      if (!payload.fabricJson && !payload.svg) {
         setMessage("Could not load that drawing for editing.");
         return;
       }
-      pendingLoadRef.current = svg;
+      // Prefer the curated Fabric JSON so the drawing re-opens with the
+      // grouping from the last warehouse update; fall back to the flat SVG.
+      if (payload.fabricJson) {
+        pendingLoadJsonRef.current = payload.fabricJson;
+        pendingLoadRef.current = null;
+      } else {
+        pendingLoadRef.current = payload.svg;
+        pendingLoadJsonRef.current = null;
+      }
       setEditingLibraryItem({
         id: item.id,
         name: item.name,
         category: item.category,
         description: item.description,
         tags: item.tags,
+        source: item.source,
       });
       const nextPages = await saveCurrentPage();
       const newPages = syncSheetLabels([...nextPages, createBlankPage(nextPages.length + 1)]);
       setPages(newPages);
       setCurrentPageIndex(newPages.length - 1);
-      setMessage(`Editing "${item.name}" — clean it up, then save to the library.`);
+      setMessage(`Editing "${item.name}" — group parts, remove clutter, then save to the library.`);
     },
-    [fetchLibrarySvg, libraryItems, saveCurrentPage, session, setMessage],
+    [authConfigured, fetchLibraryPayload, libraryItems, saveCurrentPage, session, setMessage],
   );
 
   // Receive actions raised from the standalone library tab. Import drops the
@@ -2741,6 +2883,14 @@ export default function Editor({
             : "Complete editable drawing saved from the current sheet.",
         tags: mode === "object" ? "object, reusable, detail" : "drawing, layout, sheet",
         svg: mode === "object" && active ? serializeLibraryObject(active) : canvas.toSVG(),
+        // Multi-select has selection-relative coords that don't survive
+        // enlivenment — group it first to keep the structured payload.
+        fabricJson:
+          mode === "object"
+            ? active && active.type !== "activeselection"
+              ? serializeObjectFabricJson(active)
+              : null
+            : serializeCanvasFabricJson(canvas),
       });
     },
     [authConfigured, currentPage.name, projectName, session?.role, setMessage],
@@ -2770,6 +2920,7 @@ export default function Editor({
             description,
             tags: tags.length > 0 ? tags : parseTags(cleanName),
             svg: draft.svg,
+            fabricJson: draft.fabricJson,
             source: "admin",
             assetType: draft.mode,
             author: session?.name || "Demo Admin",
@@ -2795,6 +2946,7 @@ export default function Editor({
             description,
             tags: tags.length > 0 ? tags : parseTags(cleanName),
             svg: draft.svg,
+            fabric_json: draft.fabricJson,
             thumbnail: await svgToThumbnail(draft.svg),
             author_id: userId,
             author_name: session.name,
@@ -2809,6 +2961,7 @@ export default function Editor({
 
         const item = {
           ...mapLibraryRecord(data as LibraryItemRecord),
+          fabricJson: draft.fabricJson,
           assetType: draft.mode,
         } satisfies LibraryItem;
         setLibraryItems((previous) => mergeLibraryItems([item, ...previous.filter((entry) => entry.id !== item.id)]));
@@ -2823,6 +2976,7 @@ export default function Editor({
         description,
         tags: tags.length > 0 ? tags : parseTags(cleanName),
         svg: draft.svg,
+        fabricJson: draft.fabricJson,
         source: "personal",
         assetType: draft.mode,
         author: session?.name || "Local Engineer",
@@ -3088,6 +3242,7 @@ export default function Editor({
       if (!supabase || !canvas || session?.role !== "admin") return;
 
       const canvasSvg = canvas.toSVG();
+      const fabricJson = serializeCanvasFabricJson(canvas);
       const { data, error } = await supabase
         .from("drawing_library_items")
         .insert({
@@ -3096,6 +3251,7 @@ export default function Editor({
           description: payload.description.trim() || "Canvas drawing published from the admin workspace.",
           tags: payload.tags.length > 0 ? payload.tags : parseTags(projectName),
           svg: canvasSvg,
+          fabric_json: fabricJson,
           thumbnail: await svgToThumbnail(canvasSvg),
           author_id: userId,
           author_name: session.name,
@@ -3110,6 +3266,7 @@ export default function Editor({
 
       const item = {
         ...mapLibraryRecord(data as LibraryItemRecord),
+        fabricJson,
         assetType: "drawing" as const,
       };
       setLibraryItems((previous) => mergeLibraryItems([item, ...previous.filter((entry) => entry.id !== item.id)]));
@@ -3124,29 +3281,106 @@ export default function Editor({
     if (!editingLibraryItem) return;
     const supabase = getSupabaseBrowserClient();
     const canvas = fabricRef.current;
-    if (!supabase || !canvas || session?.role !== "admin") {
+    if (!canvas || (authConfigured && session?.role !== "admin")) {
       setMessage("Only admins can update shared library drawings.");
       return;
     }
+    // Save both formats: the SVG renders thumbnails/previews, the Fabric JSON
+    // preserves the admin's grouping + parametric metadata — so the curated
+    // structure persists in the warehouse until the next admin update.
     const canvasSvg = canvas.toSVG();
+    const fabricJson = serializeCanvasFabricJson(canvas);
     const thumbnail = await svgToThumbnail(canvasSvg);
     const updatedAt = new Date().toISOString();
-    const { error } = await supabase
-      .from("drawing_library_items")
-      .update({ svg: canvasSvg, thumbnail, updated_at: updatedAt })
-      .eq("id", editingLibraryItem.id);
-    if (error) {
-      setMessage(`Library update failed: ${error.message}`);
+
+    // Personal items — and everything in demo mode — live in local storage.
+    if (!supabase || editingLibraryItem.source === "personal") {
+      let nextItems: LibraryItem[];
+      if (editingLibraryItem.source === "seed") {
+        // Built-in item: persist an admin copy under the same name; the loader
+        // prefers stored items over seeds by name, so the curated version wins.
+        const replacement = createLibraryItem({
+          name: editingLibraryItem.name,
+          category: editingLibraryItem.category,
+          description: editingLibraryItem.description,
+          tags: editingLibraryItem.tags,
+          svg: canvasSvg,
+          fabricJson,
+          source: "admin",
+          author: session?.name || "Demo Admin",
+        });
+        nextItems = [
+          { ...replacement, thumbnail },
+          ...libraryItems.filter((entry) => entry.id !== editingLibraryItem.id),
+        ];
+      } else {
+        nextItems = libraryItems.map((entry) =>
+          entry.id === editingLibraryItem.id
+            ? { ...entry, svg: canvasSvg, fabricJson, thumbnail, updatedAt }
+            : entry,
+        );
+      }
+      setLibraryItems(nextItems);
+      persistLibraryItems(nextItems);
+      setMessage(`Updated "${editingLibraryItem.name}" in the library.`);
+      setEditingLibraryItem(null);
       return;
     }
-    setLibraryItems((previous) =>
-      previous.map((entry) =>
-        entry.id === editingLibraryItem.id ? { ...entry, svg: canvasSvg, thumbnail, updatedAt } : entry,
-      ),
-    );
+
+    if (session?.role !== "admin") {
+      setMessage("Only admins can update shared library drawings.");
+      return;
+    }
+
+    if (editingLibraryItem.source === "seed") {
+      // Built-in item: publish a DB override with the same name — the library
+      // merge prefers DB items over seeds, so this replaces it for everyone.
+      const { data, error } = await supabase
+        .from("drawing_library_items")
+        .insert({
+          name: editingLibraryItem.name,
+          category: editingLibraryItem.category,
+          description: editingLibraryItem.description,
+          tags: editingLibraryItem.tags,
+          svg: canvasSvg,
+          fabric_json: fabricJson,
+          thumbnail,
+          author_id: userId,
+          author_name: session.name,
+        })
+        .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+        .single();
+      if (error) {
+        setMessage(`Library update failed: ${error.message}`);
+        return;
+      }
+      const item: LibraryItem = { ...mapLibraryRecord(data as LibraryItemRecord), svg: canvasSvg, fabricJson };
+      setLibraryItems((previous) =>
+        mergeLibraryItems([
+          item,
+          ...previous.filter((entry) => entry.id !== item.id && entry.id !== editingLibraryItem.id),
+        ]),
+      );
+    } else {
+      const { error } = await supabase
+        .from("drawing_library_items")
+        .update({ svg: canvasSvg, fabric_json: fabricJson, thumbnail, updated_at: updatedAt })
+        .eq("id", editingLibraryItem.id);
+      if (error) {
+        setMessage(`Library update failed: ${error.message}`);
+        return;
+      }
+      setLibraryItems((previous) =>
+        previous.map((entry) =>
+          entry.id === editingLibraryItem.id
+            ? { ...entry, svg: canvasSvg, fabricJson, thumbnail, updatedAt }
+            : entry,
+        ),
+      );
+    }
     setMessage(`Updated "${editingLibraryItem.name}" in the library.`);
     setEditingLibraryItem(null);
-  }, [editingLibraryItem, session, setMessage, svgToThumbnail]);
+  }, [authConfigured, editingLibraryItem, libraryItems, session, setMessage, svgToThumbnail, userId]);
 
   // Admin: save the cleaned canvas as a new copy instead of overwriting.
   const handleSaveEditAsNew = useCallback(() => {
