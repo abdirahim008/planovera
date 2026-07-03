@@ -7,7 +7,6 @@ import { useSearchParams } from "next/navigation";
 import Editor from "@/components/drawings/Editor";
 import type { Project } from "@/lib/supabase";
 import { useAppStore } from "@/lib/store";
-import { useDrawingsAuthGuard } from "@/lib/drawings/useDrawingsAuthGuard";
 
 function toLinkedProject(project: Project) {
   return {
@@ -23,8 +22,6 @@ function toLinkedProject(project: Project) {
 }
 
 export default function DrawingStudioRoute() {
-  // Redirect the studio tab to /login when the session ends (same as the warehouse).
-  useDrawingsAuthGuard();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
   const editLibraryId = searchParams.get("editLibraryId");
