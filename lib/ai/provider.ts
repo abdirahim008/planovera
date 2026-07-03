@@ -38,6 +38,13 @@ export interface AiChatRequest {
   messages?: AiChatTurn[];
   /** Output cap. Keep modest — the response is a compact JSON object. */
   maxTokens?: number;
+  /**
+   * Opt back into the model's slow reasoning mode. Off by default: our tasks
+   * emit structured JSON and don't need chain-of-thought, and thinking mode on
+   * deepseek-v4-flash is ~10× slower (and pricier). Set true only for a call
+   * that genuinely benefits from deliberation.
+   */
+  thinking?: boolean;
 }
 
 interface ProviderConfig {
@@ -112,6 +119,10 @@ async function attemptChatJSON<T>(cfg: ProviderConfig, req: AiChatRequest): Prom
             : [{ role: "user", content: req.user ?? "" }]),
         ],
         response_format: { type: "json_object" },
+        // deepseek-v4-flash reasons before answering by default (~10× slower).
+        // Our calls emit structured JSON, so disable thinking unless a caller
+        // explicitly opts in — this is what keeps the assistant snappy.
+        thinking: { type: req.thinking ? "enabled" : "disabled" },
         max_tokens: req.maxTokens ?? 4000,
         stream: false,
       }),
