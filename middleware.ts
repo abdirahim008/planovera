@@ -74,5 +74,14 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/workspace/:path*", "/login", "/invite", "/organization/:path*", "/admin/:path*"],
+  matcher: [
+    "/workspace/:path*",
+    "/login",
+    "/invite",
+    "/organization/:path*",
+    "/admin/:path*",
+    // The drawing studio and its warehouse (opened in their own tabs) require a
+    // session too — otherwise they stay reachable after sign-out.
+    "/drawings/:path*",
+  ],
 };
