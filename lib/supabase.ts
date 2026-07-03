@@ -71,6 +71,14 @@ export interface ProjectDocumentBranding {
   issuerDisplayName?: string;
   issuerAddress?: string;
   headerTagline?: string;
+  /** Contact strip rendered in the letterhead footer (Tel · Email · Web). */
+  issuerPhone?: string;
+  issuerEmail?: string;
+  issuerWebsite?: string;
+  /** Letterhead accent colours (hex). Primary drives the tagline + main rule,
+   *  secondary the short contrast segment of the two-tone rules. */
+  accentPrimary?: string;
+  accentSecondary?: string;
 }
 
 export interface UserSignatureProfile {
@@ -787,6 +795,11 @@ export interface ProjectRecord {
   issuer_display_name?: string | null;
   issuer_address?: string | null;
   header_tagline?: string | null;
+  issuer_phone?: string | null;
+  issuer_email?: string | null;
+  issuer_website?: string | null;
+  brand_accent_primary?: string | null;
+  brand_accent_secondary?: string | null;
 }
 
 export interface ProgramRecord {
@@ -949,6 +962,11 @@ export const mapProjectRecord = (record: ProjectRecord): Project => ({
     issuerDisplayName: record.issuer_display_name || "",
     issuerAddress: record.issuer_address || "",
     headerTagline: record.header_tagline || "",
+    issuerPhone: record.issuer_phone || "",
+    issuerEmail: record.issuer_email || "",
+    issuerWebsite: record.issuer_website || "",
+    accentPrimary: record.brand_accent_primary || "",
+    accentSecondary: record.brand_accent_secondary || "",
   },
 });
 
@@ -1053,6 +1071,11 @@ export const toProjectRecord = (
   issuer_display_name: project.documentBranding?.issuerDisplayName || null,
   issuer_address: project.documentBranding?.issuerAddress || null,
   header_tagline: project.documentBranding?.headerTagline || null,
+  issuer_phone: project.documentBranding?.issuerPhone || null,
+  issuer_email: project.documentBranding?.issuerEmail || null,
+  issuer_website: project.documentBranding?.issuerWebsite || null,
+  brand_accent_primary: project.documentBranding?.accentPrimary || null,
+  brand_accent_secondary: project.documentBranding?.accentSecondary || null,
 });
 
 export const mapBOQLibraryItemRecord = (

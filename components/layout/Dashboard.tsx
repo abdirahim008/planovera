@@ -117,7 +117,16 @@ type ProjectFormData = {
   documentIssuerDisplayName: string;
   documentIssuerAddress: string;
   documentHeaderTagline: string;
+  documentIssuerPhone: string;
+  documentIssuerEmail: string;
+  documentIssuerWebsite: string;
+  documentAccentPrimary: string;
+  documentAccentSecondary: string;
 };
+
+/** Default letterhead accents (kept in sync with the documents module). */
+const DEFAULT_ACCENT_PRIMARY = "#1b9cd8";
+const DEFAULT_ACCENT_SECONDARY = "#f5821f";
 
 const defaultProjectFormData = (): ProjectFormData => ({
   name: "",
@@ -153,6 +162,11 @@ const defaultProjectFormData = (): ProjectFormData => ({
   documentIssuerDisplayName: "",
   documentIssuerAddress: "",
   documentHeaderTagline: "",
+  documentIssuerPhone: "",
+  documentIssuerEmail: "",
+  documentIssuerWebsite: "",
+  documentAccentPrimary: "",
+  documentAccentSecondary: "",
 });
 
 const projectToFormData = (project: Project): ProjectFormData => ({
@@ -190,6 +204,11 @@ const projectToFormData = (project: Project): ProjectFormData => ({
   documentIssuerDisplayName: project.documentBranding?.issuerDisplayName || "",
   documentIssuerAddress: project.documentBranding?.issuerAddress || "",
   documentHeaderTagline: project.documentBranding?.headerTagline || "",
+  documentIssuerPhone: project.documentBranding?.issuerPhone || "",
+  documentIssuerEmail: project.documentBranding?.issuerEmail || "",
+  documentIssuerWebsite: project.documentBranding?.issuerWebsite || "",
+  documentAccentPrimary: project.documentBranding?.accentPrimary || "",
+  documentAccentSecondary: project.documentBranding?.accentSecondary || "",
 });
 
 /**
@@ -1180,6 +1199,11 @@ export default function Dashboard() {
           formData.documentIssuerDisplayName.trim() || formData.consultantName.trim(),
         issuerAddress: formData.documentIssuerAddress.trim(),
         headerTagline: formData.documentHeaderTagline.trim(),
+        issuerPhone: formData.documentIssuerPhone.trim(),
+        issuerEmail: formData.documentIssuerEmail.trim(),
+        issuerWebsite: formData.documentIssuerWebsite.trim(),
+        accentPrimary: formData.documentAccentPrimary.trim(),
+        accentSecondary: formData.documentAccentSecondary.trim(),
       },
     };
 
@@ -3578,10 +3602,79 @@ function CreateProjectModal({
                 </label>
                 <input
                   className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
-                  placeholder="Optional short line below the main issuer name"
+                  placeholder='e.g. "Civil Engineering Consultancy" — shown top-right of the letterhead'
                   value={formData.documentHeaderTagline}
                   onChange={(e) => setFormData((prev) => ({ ...prev, documentHeaderTagline: e.target.value }))}
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
+                  Phone
+                </label>
+                <input
+                  className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
+                  placeholder="+252 610 810 444"
+                  value={formData.documentIssuerPhone}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, documentIssuerPhone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
+                  Email
+                </label>
+                <input
+                  className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
+                  placeholder="info@company.com"
+                  value={formData.documentIssuerEmail}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, documentIssuerEmail: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
+                  Website
+                </label>
+                <input
+                  className="w-full rounded-xl border border-border bg-bg-input px-4 py-3 text-sm font-medium text-txt outline-none transition-all focus:border-accent focus:ring-4 focus:ring-accent/10"
+                  placeholder="www.company.com"
+                  value={formData.documentIssuerWebsite}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, documentIssuerWebsite: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-txt-muted">
+                  Letterhead Colours
+                </label>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-txt">
+                    <input
+                      type="color"
+                      className="h-9 w-12 cursor-pointer rounded border border-border bg-bg-input"
+                      value={formData.documentAccentPrimary || DEFAULT_ACCENT_PRIMARY}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, documentAccentPrimary: e.target.value }))}
+                    />
+                    Primary
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-medium text-txt">
+                    <input
+                      type="color"
+                      className="h-9 w-12 cursor-pointer rounded border border-border bg-bg-input"
+                      value={formData.documentAccentSecondary || DEFAULT_ACCENT_SECONDARY}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, documentAccentSecondary: e.target.value }))}
+                    />
+                    Accent
+                  </label>
+                  {(formData.documentAccentPrimary || formData.documentAccentSecondary) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({ ...prev, documentAccentPrimary: "", documentAccentSecondary: "" }))
+                      }
+                      className="text-xs font-semibold text-txt-muted underline-offset-2 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
