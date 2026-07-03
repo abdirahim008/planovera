@@ -39,6 +39,17 @@ export type LibraryCategory =
   | "civil"
   | "details";
 
+/**
+ * Fabric object JSON stored alongside a library item's SVG. Unlike SVG (which
+ * flattens everything to paths on re-import), this preserves the admin's
+ * grouping and the parametric block metadata, so warehouse curation survives
+ * the save → insert/re-edit round-trip.
+ */
+export interface LibraryFabricJson {
+  version?: string;
+  objects: unknown[];
+}
+
 export interface LibraryItem {
   id: string;
   name: string;
@@ -50,6 +61,12 @@ export interface LibraryItem {
   // grid can load without pulling every full SVG; the full `svg` is fetched
   // lazily on insert (it may be empty until then).
   thumbnail?: string;
+  /**
+   * Structured Fabric objects for insert/edit (grouping + parametric metadata
+   * intact). DB items load without it (fetched lazily with the svg); older
+   * items may not have one at all — the svg remains the fallback.
+   */
+  fabricJson?: LibraryFabricJson | null;
   source: "seed" | "admin" | "personal";
   assetType?: "object" | "drawing";
   author: string;
@@ -93,6 +110,7 @@ export interface LibraryItemRecord {
   tags: string[] | null;
   svg?: string;
   thumbnail?: string | null;
+  fabric_json?: LibraryFabricJson | null;
   author_id: string | null;
   author_name: string | null;
   updated_at: string;
@@ -606,6 +624,7 @@ export function createLibraryItem(input: {
   description: string;
   tags: string[];
   svg: string;
+  fabricJson?: LibraryFabricJson | null;
   source?: "seed" | "admin" | "personal";
   assetType?: "object" | "drawing";
   author?: string;
@@ -617,6 +636,7 @@ export function createLibraryItem(input: {
     description: input.description,
     tags: input.tags,
     svg: input.svg,
+    fabricJson: input.fabricJson ?? null,
     source: input.source ?? "admin",
     assetType: input.assetType,
     author: input.author ?? "Admin",
@@ -656,6 +676,7 @@ export function mapLibraryRecord(record: LibraryItemRecord): LibraryItem {
     tags: record.tags ?? [],
     svg: record.svg ?? "",
     thumbnail: record.thumbnail ?? undefined,
+    fabricJson: record.fabric_json ?? null,
     source: "admin",
     author: record.author_name || "Admin",
     updatedAt: record.updated_at,
@@ -672,7 +693,13 @@ export function loadLibraryItems(): LibraryItem[] {
     if (!Array.isArray(parsed) || parsed.length === 0) return SEED_LIBRARY_ITEMS;
     const seedIds = new Set(SEED_LIBRARY_ITEMS.map((item) => item.id));
     const customItems = parsed.filter((item) => item.source !== "seed" && !seedIds.has(item.id));
-    return [...SEED_LIBRARY_ITEMS, ...customItems];
+    // A saved item with a seed's name overrides that seed (mirrors the DB-first
+    // merge in production), so admin-curated versions replace the built-ins.
+    const customNames = new Set(customItems.map((item) => item.name.toLowerCase()));
+    return [
+      ...SEED_LIBRARY_ITEMS.filter((item) => !customNames.has(item.name.toLowerCase())),
+      ...customItems,
+    ];
   } catch {
     return SEED_LIBRARY_ITEMS;
   }
