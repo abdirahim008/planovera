@@ -23,8 +23,14 @@ import {
   CalendarRange,
   Flag,
   CheckCircle2,
+  Link2,
 } from "lucide-react";
 import { isWorkPlanRowAchieved } from "@/lib/work-plan-milestones";
+import {
+  computeRowNumbers,
+  formatPredecessors,
+  parsePredecessorInput,
+} from "@/lib/workplan-scheduling";
 import { useAppStore } from "@/lib/store";
 import { labelsForType } from "@/lib/project-labels";
 import Button from "@/components/ui/Button";
@@ -231,6 +237,50 @@ function WorkPlanListView({
 }
 
 // ─── Work Plan Table (view/edit) ──────────────────────────────────
+/**
+ * Predecessor cell: shows/accepts row IDs from the "#" column ("3" or "2, 5").
+ * Commits on blur/Enter; an invalid entry keeps the previous value and shows
+ * the reason as a red ring + tooltip. Links are finish-to-start.
+ */
+function PredecessorCellInput({
+  display,
+  onCommit,
+}: {
+  display: string;
+  /** Returns an error message when the input is rejected, null when applied. */
+  onCommit: (raw: string) => string | null;
+}) {
+  const [draft, setDraft] = useState(display);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setDraft(display);
+  }, [display]);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      className={`data-cell-input text-center font-mono text-xs ${error ? "ring-1 ring-inset ring-err" : ""}`}
+      value={draft}
+      placeholder="—"
+      title={error || 'Predecessor row IDs from the "#" column, e.g. "3" or "2, 5"'}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (error) setError(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      onBlur={() => {
+        const err = onCommit(draft);
+        if (err) {
+          setError(err);
+          setDraft(display);
+        }
+      }}
+    />
+  );
+}
+
 function WorkPlanTable({
   readOnly = false,
   summaryMode = "all",
@@ -251,9 +301,14 @@ function WorkPlanTable({
     moveActivity,
     pasteActivityAt,
     deleteActivities,
+    setActivityPredecessors,
   } = useAppStore();
 
   const activities = workPlanSheets[activeWorkPlanSheetIndex]?.activities || [];
+  // Row IDs for the "#" column (every row, 1-based). Predecessor links store
+  // stable activity UUIDs, so these display numbers can shift freely when rows
+  // are inserted/moved/deleted without breaking any link.
+  const rowNumbers = useMemo(() => computeRowNumbers(activities), [activities]);
   // Precompute which flagged milestones are achieved once per render so each row
   // is an O(1) Set lookup rather than re-scanning the activity list.
   const achievedMilestoneIds = useMemo(() => {
@@ -469,13 +524,22 @@ function WorkPlanTable({
               {/* The body "#" gutter is hidden globally (.data-cell-index → display:none),
                   so the header must hide too or thead/tbody columns shift out of alignment. */}
               <th className="hidden" aria-hidden="true" />
-              <th className="data-sticky-col left-0 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%]">Description</th>
+              {/* Row ID (MS Project-style): editor-only — never appears in PDF/Excel
+                  exports or in reports; predecessors reference these numbers. */}
+              <th className="data-sticky-col left-0 w-[34px] min-w-[34px] text-center" title="Row ID — reference these numbers in the Predecessors column">
+                #
+              </th>
+              <th className="data-sticky-col left-[34px] data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[54%]">Description</th>
               <th className="text-center w-[46px] sm:w-[110px]">
                 <span className="sm:hidden">Days</span>
                 <span className="hidden sm:inline">Duration (days)</span>
               </th>
               <th className="text-center w-[88px] sm:w-[130px]">Start Date</th>
               <th className="text-center w-[88px] sm:w-[130px]">End Date</th>
+              <th className="text-center w-[64px] sm:w-[110px]" title='Finish-to-start links: enter predecessor row IDs, e.g. "3" or "2, 5"'>
+                <span className="sm:hidden">Pred.</span>
+                <span className="hidden sm:inline">Predecessors</span>
+              </th>
               {!readOnly && <th style={{ width: 40 }} aria-label="Actions" />}
             </tr>
           </thead>
@@ -485,6 +549,7 @@ function WorkPlanTable({
               const isSection = rowType === "section";
               const activityOrdinal =
                 1 + activities.slice(0, i).filter((a) => (a.rowType || "activity") !== "section").length;
+              const hasPreds = !isSection && (act.predecessorIds?.length ?? 0) > 0;
               return (
               <tr
                 key={act.id}
@@ -493,7 +558,10 @@ function WorkPlanTable({
                 onClick={(e) => handleRowClick(e, act.id)}
               >
                 <td className="data-cell-index" aria-hidden="true">{isSection ? "" : activityOrdinal}</td>
-                <td className={`data-cell-wrap data-sticky-col left-0 data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[58%] transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                <td className="data-sticky-col left-0 w-[34px] min-w-[34px] text-center text-[11px] font-mono text-txt-muted">
+                  {rowNumbers.get(act.id) ?? ""}
+                </td>
+                <td className={`data-cell-wrap data-sticky-col left-[34px] data-sticky-edge w-[132px] min-w-[132px] sm:min-w-[420px] sm:w-[54%] transition-colors ${isInSelection(i, "description") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "description")} onMouseEnter={() => handleMouseEnter(i, "description")}>
                   <div className="flex items-start gap-1.5">
                     {act.isMilestone ? (
@@ -519,10 +587,36 @@ function WorkPlanTable({
                 <td className={`text-center transition-colors ${isInSelection(i, "startDate") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "startDate")} onMouseEnter={() => handleMouseEnter(i, "startDate")}>
                   {readOnly || isSection ? <span className="text-xs text-txt">{act.startDate || "—"}</span>
+                    : hasPreds ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs text-txt"
+                        title="Start date follows the latest predecessor — clear the Predecessors cell to set it manually"
+                      >
+                        <Link2 size={11} className="shrink-0 text-accent" aria-hidden="true" />
+                        {act.startDate || "—"}
+                      </span>
+                    )
                     : <input type="date" className="data-cell-input [color-scheme:light] text-center text-xs" value={act.startDate}
                         onChange={(e) => updateActivity(act.id, "startDate", e.target.value)} onPaste={(e) => handlePaste(i, "startDate", e)} />}
                 </td>
                 <td className="text-center text-xs font-mono text-txt-muted">{act.endDate || "—"}</td>
+                <td className="text-center">
+                  {isSection ? (
+                    <span className="text-xs text-txt-muted">—</span>
+                  ) : readOnly ? (
+                    <span className="text-xs font-mono text-txt">{formatPredecessors(act, rowNumbers) || "—"}</span>
+                  ) : (
+                    <PredecessorCellInput
+                      display={formatPredecessors(act, rowNumbers)}
+                      onCommit={(raw) => {
+                        const parsed = parsePredecessorInput(raw, activities, act.id);
+                        if ("error" in parsed) return parsed.error;
+                        setActivityPredecessors(act.id, parsed.ids);
+                        return null;
+                      }}
+                    />
+                  )}
+                </td>
                 {!readOnly && (
                   <td className="data-cell-action">
                     <button onClick={() => deleteActivity(act.id)} className="data-row-action danger" aria-label="Delete activity"><Trash2 size={13} /></button>

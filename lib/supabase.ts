@@ -207,6 +207,14 @@ export interface WorkPlanActivity {
   /** User-flagged key milestone. An activity milestone is "achieved" when its
    *  status is completed; a section milestone when all its child activities are. */
   isMilestone?: boolean;
+  /**
+   * Finish-to-start predecessors (MS Project-style). Stores the predecessor
+   * activities' stable UUIDs — the UI displays/accepts row numbers, which are
+   * re-derived from row position so links survive insert/delete/reorder.
+   * A linked activity starts the day after its latest predecessor finishes;
+   * date changes cascade downstream automatically.
+   */
+  predecessorIds?: string[];
 }
 
 export interface WorkPlanSheet {

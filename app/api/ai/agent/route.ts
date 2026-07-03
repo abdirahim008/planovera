@@ -43,7 +43,7 @@ function buildSystemPrompt(ctx: AgentContext): string {
     '{"type":"create_project","project":{"name":"...","projectType":"construction"|"non-construction","role":"contractor"|"supervision"|"employer","location":"...","clientName":"...","contractorName":"...","consultantName":"...","contractNumber":"...","contractAmount":"...","currency":"..."}} — only "name" is required; include other fields only if the user gave them. Default projectType to "construction" and role to "contractor" unless told otherwise.',
     '{"type":"select_project","name":"..."} — switch to an existing project the user names.',
     '{"type":"draft_boq","brief":"<concise works description>","boqName":"<short title>"} — draft a BOQ. Requires an active project. Pack the brief with the elements the user mentioned (e.g. "elevated steel water tank 150 m3 on 12m tower, septic tank 20 m3, pump house, perimeter fence").',
-    '{"type":"generate_work_plan","planName":"<short title>","startDate":"YYYY-MM-DD"} — build a work plan from the active project\'s current BOQ. Requires an active project that already has a BOQ. startDate is optional.',
+    '{"type":"generate_work_plan","planName":"<short title>","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","durationDays":<number>,"mode":"new"|"update"} — build a realistic work plan timeline from the active project\'s current BOQ, with finish-to-start activity dependencies. Requires an active project that already has a BOQ. startDate plus either endDate or durationDays calibrate the timeline: take them from the project snapshot (start/end dates) when filled; otherwise ask the user for the start date and either the end date or the duration BEFORE acting. Use mode "update" when the user wants to rebuild/reschedule the work plan that is already open, "new" (default) to create a fresh plan.',
     '{"type":"create_progress_report","name":"<short title>","inputMode":"percent"|"quantity"} — create a progress report the user can fill in. Requires an active project that has a BOQ. Default inputMode to "percent".',
     `{"type":"draft_document","templateType":"<one of: ${AGENT_DOC_TEMPLATES.join(", ")}>","title":"<short title>","brief":"<what the document should say>"} — write a project document/letter. Pick the templateType that best matches the user's request (e.g. a start/commencement order → commencement-letter, an instruction to the contractor → instruction-letter, a one-page RAG update → status-report). Put the specifics in "brief".`,
     '{"type":"create_payment_certificate","certType":"interim"|"final"} — scaffold a payment certificate (IPC) from the project BOQ for the user to enter quantities. Requires an active project that has a BOQ. Default certType to "interim". Never quote money amounts — the app computes them.',
@@ -63,7 +63,8 @@ function buildSystemPrompt(ctx: AgentContext): string {
     "- create_project: you need at least the project NAME. In ONE short, friendly question also ask for the important details: client/employer, contractor, the user's role (contractor / supervision / employer), project type (construction or non-construction), location, and contract amount + currency. Only emit create_project once you have the name; fill in whatever the user gave and leave the rest blank. If the user says 'just create it' or only wants a name, create it with what you have.",
     "- draft_boq: make sure you know WHAT the BOQ should cover. If the request is vague (e.g. just 'create a BOQ' or 'draft a BOQ'), ask the user to describe the works/structures first (e.g. 'an elevated water tank, septic tank and pump house'); only emit draft_boq once you have a concrete scope.",
     "- draft_document: if the document type or its key contents weren't given, ask which document and the essentials before drafting.",
-    "- generate_work_plan / create_progress_report / create_payment_certificate build on the active project's BOQ — proceed once that exists; only ask if something essential is genuinely missing (e.g. a useful start date for the work plan).",
+    "- generate_work_plan: needs a start date plus either an end date or a duration to build a realistic timeline. Check the project snapshot first — if the project's start/end dates are filled, use them without asking. If missing, ask ONE question for the start date and either the end date or the overall duration, then act. If the user says they don't care, proceed with just today's date as the start.",
+    "- create_progress_report / create_payment_certificate build on the active project's BOQ — proceed once that exists; only ask if something essential is genuinely missing.",
     "- Don't over-ask: a single follow-up listing what you need is enough, and never re-ask for things the user already provided. Respect it when the user wants to skip optional fields.",
     "- fill_document needs a document open in the Documents module. If one is open, proceed; if not, tell the user to open the document first.",
     "",
@@ -171,12 +172,17 @@ function normalizeAction(raw: unknown): AgentAction {
       if (brief.length < 3) return { type: "none" };
       return { type: "draft_boq", brief, boqName: str(a.boqName) || undefined };
     }
-    case "generate_work_plan":
+    case "generate_work_plan": {
+      const durationDays = Number(a.durationDays);
       return {
         type: "generate_work_plan",
         startDate: str(a.startDate) || undefined,
+        endDate: str(a.endDate) || undefined,
+        durationDays: Number.isFinite(durationDays) && durationDays > 0 ? Math.round(durationDays) : undefined,
         planName: str(a.planName) || undefined,
+        mode: str(a.mode) === "update" ? "update" : "new",
       };
+    }
     case "create_progress_report":
       return {
         type: "create_progress_report",
