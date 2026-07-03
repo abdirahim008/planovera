@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { compressImageFile } from "@/lib/imageCompression";
 import { v4 as uuid } from "uuid";
 import {
@@ -29,6 +29,7 @@ import type {
   PaymentCertificate,
   ProgressReport,
   Project,
+  ProjectDocumentBranding,
   ReportItemFormat,
   ReportSectionId,
   ReportSectionToggles,
@@ -282,24 +283,32 @@ type ResolvedBrandingProfile = {
   issuerDisplayName: string;
   issuerAddress: string;
   headerTagline: string;
+  issuerPhone: string;
+  issuerEmail: string;
+  issuerWebsite: string;
+  accentPrimary: string;
+  accentSecondary: string;
 };
 
+/** Letterhead accent defaults (headed-letter template): blue tagline/rules + orange contrast segment. */
+export const LETTERHEAD_ACCENT_PRIMARY = "#1b9cd8";
+export const LETTERHEAD_ACCENT_SECONDARY = "#f5821f";
+
 function resolveProjectBranding(project: Project | null): ResolvedBrandingProfile {
+  // Only real project data — no synthetic filler. A field the user hasn't
+  // provided stays blank so the document canvas presents it as fill-in-able.
   return {
     clientLogoDataUrl: project?.documentBranding?.clientLogoDataUrl || "",
-    clientDisplayName:
-      project?.documentBranding?.clientDisplayName || project?.clientName || "Client / Employer",
-    clientAddress: project?.documentBranding?.clientAddress || project?.location || "Project Location",
-    issuerDisplayName:
-      project?.documentBranding?.issuerDisplayName ||
-      project?.consultantName ||
-      "Project Management Office",
-    issuerAddress: project?.documentBranding?.issuerAddress || project?.location || "Project Location",
-    headerTagline:
-      project?.documentBranding?.headerTagline ||
-      project?.contractTitle ||
-      project?.name ||
-      "Project correspondence",
+    clientDisplayName: project?.documentBranding?.clientDisplayName || project?.clientName || "",
+    clientAddress: project?.documentBranding?.clientAddress || "",
+    issuerDisplayName: project?.documentBranding?.issuerDisplayName || project?.consultantName || "",
+    issuerAddress: project?.documentBranding?.issuerAddress || "",
+    headerTagline: project?.documentBranding?.headerTagline || "",
+    issuerPhone: project?.documentBranding?.issuerPhone || "",
+    issuerEmail: project?.documentBranding?.issuerEmail || "",
+    issuerWebsite: project?.documentBranding?.issuerWebsite || "",
+    accentPrimary: project?.documentBranding?.accentPrimary || LETTERHEAD_ACCENT_PRIMARY,
+    accentSecondary: project?.documentBranding?.accentSecondary || LETTERHEAD_ACCENT_SECONDARY,
   };
 }
 
@@ -307,16 +316,9 @@ function letterheadDefaults(project: Project | null, templateType: DocumentTempl
   const branding = resolveProjectBranding(project);
   const projectLabel = project?.contractTitle || project?.name || "Project Controls Record";
 
-  if (templateType === "completion-certificate") {
-    return {
-      letterheadTitle: branding.clientDisplayName,
-      letterheadSubtitle: projectLabel,
-      letterheadAddress: branding.clientAddress,
-      brandLogoDataUrl: branding.clientLogoDataUrl,
-    };
-  }
-
   if (templateType === "progress-report" || templateType === "payment-certificate-summary") {
+    // Reports keep the project label as a subtitle fallback — their cover reads
+    // oddly without one. Letters/certificates stay blank so users fill them in.
     return {
       letterheadTitle: branding.issuerDisplayName,
       letterheadSubtitle: branding.headerTagline || projectLabel,
@@ -325,9 +327,11 @@ function letterheadDefaults(project: Project | null, templateType: DocumentTempl
     };
   }
 
+  // Letters + completion certificate: issued on the issuer's (your company's)
+  // letterhead; unset branding fields stay blank (fill-in-able on the canvas).
   return {
     letterheadTitle: branding.issuerDisplayName,
-    letterheadSubtitle: branding.headerTagline || projectLabel,
+    letterheadSubtitle: branding.headerTagline,
     letterheadAddress: branding.issuerAddress,
     brandLogoDataUrl: branding.clientLogoDataUrl,
   };
@@ -446,9 +450,11 @@ function createDocumentDefaults({
 }) {
   const header = letterheadDefaults(project, templateType);
   const branding = resolveProjectBranding(project);
-  const consultant = branding.issuerDisplayName || "Authorized Signatory";
-  const client = branding.clientDisplayName || "Client / Employer";
-  const contractor = project?.contractorName || "Contractor";
+  // Real project data or blank — an empty field renders as a fill-in slot on
+  // the document canvas instead of baked-in filler text.
+  const consultant = branding.issuerDisplayName || "";
+  const client = branding.clientDisplayName || "";
+  const contractor = project?.contractorName || "";
 
   return {
     layoutStyle: layoutForTemplate(templateType),
@@ -481,13 +487,10 @@ function createDocumentDefaults({
         ? "Employer"
         : templateType === "payment-certificate-summary"
         ? "Approving Authority"
-        : "Recipient",
+        : "",
     signatoryName:
       templateType === "completion-certificate" ? client : consultant,
-    signatoryRole:
-      templateType === "completion-certificate"
-        ? "Authorized Employer Representative"
-        : "Authorized Project Representative",
+    signatoryRole: "",
     footerNote:
       templateType === "progress-report"
         ? "Prepared for formal project progress review and record."
@@ -765,9 +768,22 @@ function SiteVisitPhotoGallery({ photos }: { photos?: SiteNotePhoto[] }) {
   );
 }
 
-function documentPrintStyles() {
+/** Only pass through strict hex colours — branding values are user input headed into a <style> tag. */
+function safeAccentColor(value: string | undefined, fallback: string) {
+  return value && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value) ? value : fallback;
+}
+
+function documentPrintStyles(accentPrimary?: string, accentSecondary?: string) {
+  const corpPrimary = safeAccentColor(accentPrimary, LETTERHEAD_ACCENT_PRIMARY);
+  const corpSecondary = safeAccentColor(accentSecondary, LETTERHEAD_ACCENT_SECONDARY);
   return `
     * { box-sizing: border-box; }
+    :root {
+      --corp-primary: ${corpPrimary};
+      --corp-secondary: ${corpSecondary};
+      --corp-ink: #1f2937;
+      --corp-muted: #64748b;
+    }
     body {
       margin: 0;
       background: #f1f5f9;
@@ -790,10 +806,10 @@ function documentPrintStyles() {
     }
     .page-inner { padding: 26mm 22mm 22mm; }
     .certificate-page {
-      border: 5px solid #19aee6;
+      border: 5px solid var(--corp-primary);
     }
     .certificate-page .page-inner {
-      padding: 8mm 9mm 10mm;
+      padding: 10mm 12mm 10mm;
       min-height: 297mm;
       display: flex;
       flex-direction: column;
@@ -1165,121 +1181,135 @@ function documentPrintStyles() {
       color: #64748b;
       line-height: 1.55;
     }
-    .brand-shell {
+    /* ── Corporate headed-letter template (shared by letters + certificates) ── */
+    .corp-letter .page-inner {
+      padding: 14mm 20mm 12mm;
+      min-height: 297mm;
+      display: flex;
+      flex-direction: column;
+    }
+    .corp-head {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 18px;
-      margin: -26mm -22mm 22px;
-      padding: 18mm 22mm 14mm;
-      background: linear-gradient(180deg, #f4f9fd 0%, #ffffff 100%);
-      border-bottom: 2px solid #0f2742;
+      gap: 24px;
     }
-    .brand-mark-box {
-      display: flex;
-      align-items: flex-start;
-      gap: 16px;
-      min-width: 0;
-      flex: 1;
+    .corp-logo {
+      max-height: 22mm;
+      max-width: 62mm;
+      object-fit: contain;
+      display: block;
     }
-    .brand-block {
-      min-width: 0;
-      max-width: 118mm;
-    }
-    .brand-kicker {
-      font-family: Arial, sans-serif;
-      font-size: 9.5px;
-      letter-spacing: 0.28em;
+    .corp-wordmark {
+      font-size: 23px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
-      color: #1d5f8b;
-      margin-bottom: 8px;
-      font-weight: 700;
-    }
-    .brand-name {
-      font-size: 25px;
-      line-height: 1.15;
-      margin: 0;
       color: #0f2742;
-      font-weight: 700;
-      letter-spacing: -0.01em;
+      line-height: 1.15;
+      max-width: 96mm;
       overflow-wrap: anywhere;
     }
-    .brand-tagline {
-      margin-top: 6px;
-      font-family: Arial, sans-serif;
+    .corp-head-right {
+      text-align: right;
+      min-width: 0;
+    }
+    .corp-tagline {
       font-size: 10.5px;
-      letter-spacing: 0.16em;
+      font-weight: 800;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
-      color: #64748b;
-      font-weight: 600;
+      color: var(--corp-primary);
+    }
+    .corp-address {
+      margin-top: 7px;
+      font-size: 10.5px;
+      line-height: 1.65;
+      color: #475569;
+    }
+    .corp-rule {
+      display: flex;
+      height: 3.6px;
+      margin-top: 14px;
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .corp-rule span { display: block; height: 100%; }
+    .corp-rule-a { width: 17%; background: var(--corp-secondary); }
+    .corp-rule-b { flex: 1 1 auto; background: var(--corp-primary); }
+    .corp-rule-c { width: 5%; background: #1f2937; }
+    .corp-rule-foot { height: 2.8px; margin: 0 0 9px; }
+    .corp-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-top: 22px;
+      font-size: 12px;
+      color: #475569;
+    }
+    .corp-meta strong { color: #0f172a; font-weight: 600; }
+    .corp-recipient {
+      margin-top: 22px;
+      font-size: 12.5px;
+      line-height: 1.65;
+      color: var(--corp-ink);
+      white-space: pre-line;
+    }
+    .corp-recipient-name { font-weight: 700; color: #0f172a; }
+    .corp-salute { margin: 20px 0 0; font-size: 13px; color: var(--corp-ink); font-family: Georgia, 'Times New Roman', serif; }
+    .corp-subject {
+      margin: 15px 0 0;
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.01em;
       line-height: 1.5;
     }
-    .brand-address {
-      margin-top: 10px;
-      font-family: Arial, sans-serif;
-      font-size: 12px;
-      line-height: 1.7;
-      color: #617284;
+    .corp-body { margin-top: 16px; }
+    .corp-body .doc-paragraph,
+    .corp-body .doc-list {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 12.5px;
+      line-height: 1.8;
+      color: var(--corp-ink);
     }
-    .doc-status-chip {
-      align-self: flex-start;
-      border: 1px solid #d3deea;
-      border-radius: 0;
-      padding: 8px 14px;
-      font-family: Arial, sans-serif;
+    .corp-body .doc-section-label { color: var(--corp-primary); }
+    .corp-close {
+      margin-top: 24px;
+      font-size: 12.5px;
+      line-height: 1.8;
+      font-family: Georgia, 'Times New Roman', serif;
+      color: var(--corp-ink);
+    }
+    .corp-close em { font-style: italic; }
+    .corp-sign { margin-top: 30px; }
+    .corp-sign-image { display: block; max-width: 46mm; max-height: 16mm; object-fit: contain; margin-bottom: 4px; }
+    .corp-sign-line { width: 52mm; border-bottom: 1px solid #64748b; height: 0; margin-bottom: 8px; }
+    .corp-sign-name { font-weight: 800; color: #0f172a; font-size: 13px; }
+    .corp-sign-role { font-size: 11.5px; color: var(--corp-muted); margin-top: 2px; }
+    .corp-foot { margin-top: auto; padding-top: 22px; text-align: center; }
+    .corp-foot-address { font-size: 10px; color: #475569; }
+    .corp-foot-contact {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 7px;
       font-size: 10px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: #3d5a79;
-      font-weight: 700;
-      white-space: nowrap;
+      color: #475569;
+      margin-top: 4px;
     }
-    .doc-divider {
-      height: 1px;
-      background: linear-gradient(90deg, rgba(18,38,63,0.16), rgba(18,38,63,0));
-      margin: 18px 0 22px;
-    }
+    .corp-foot-contact strong { color: var(--corp-primary); font-weight: 700; }
+    .corp-foot-dot { color: #94a3b8; }
     .certificate-shell {
       background: #ffffff;
       color: #071526;
       font-family: Arial, sans-serif;
     }
-    .certificate-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      background: #1f5b89;
-      color: #ffffff;
-      padding: 12px 16px;
-      border-bottom: 10px solid #19aee6;
-    }
-    .certificate-banner-logo {
-      min-width: 92px;
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      text-transform: lowercase;
-    }
-    .certificate-banner-title {
-      font-size: 12px;
-      line-height: 1.35;
-      text-align: right;
-      text-transform: uppercase;
-      font-weight: 800;
-    }
-    .certificate-banner-subtitle {
-      display: block;
-      font-size: 9px;
-      font-style: italic;
-      font-weight: 600;
-      opacity: 0.9;
-      text-transform: none;
-    }
     .certificate-issued {
-      margin-top: 12px;
+      margin-top: 16px;
       text-align: center;
-      color: #0b9bd2;
+      color: var(--corp-primary);
       font-size: 11px;
       letter-spacing: 0.52em;
       text-transform: uppercase;
@@ -1298,7 +1328,7 @@ function documentPrintStyles() {
     .certificate-rule {
       height: 1px;
       margin: 0 12mm 8px;
-      background: #c8942d;
+      background: var(--corp-secondary);
     }
     .certificate-legal,
     .certificate-statement,
@@ -1320,14 +1350,14 @@ function documentPrintStyles() {
       font-size: 20px;
       line-height: 1.1;
       text-transform: uppercase;
-      color: #0f4c93;
+      color: #0f172a;
       font-weight: 900;
     }
     .certificate-project {
       margin: 4px auto 8px;
       max-width: 168mm;
       text-align: center;
-      color: #0b9bd2;
+      color: var(--corp-primary);
       font-size: 12px;
       font-style: italic;
       font-weight: 800;
@@ -1337,19 +1367,19 @@ function documentPrintStyles() {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       margin: 12px 0 0;
-      border: 1.5px solid #19aee6;
+      border: 1.5px solid var(--corp-primary);
       font-family: Arial, sans-serif;
     }
     .certificate-cell {
       min-height: 35px;
       padding: 7px 9px;
-      border-right: 1.5px solid #19aee6;
-      border-bottom: 1.5px solid #19aee6;
+      border-right: 1.5px solid var(--corp-primary);
+      border-bottom: 1.5px solid var(--corp-primary);
     }
     .certificate-cell:nth-child(2n) { border-right: 0; }
     .certificate-cell:nth-last-child(-n+2) { border-bottom: 0; }
     .certificate-cell-label {
-      color: #0e5178;
+      color: var(--corp-primary);
       font-size: 8px;
       line-height: 1.15;
       text-transform: uppercase;
@@ -1388,7 +1418,7 @@ function documentPrintStyles() {
       font-family: Arial, sans-serif;
     }
     .certificate-signature-box {
-      border-top: 3px solid #19aee6;
+      border-top: 3px solid var(--corp-primary);
       padding-top: 8px;
       min-height: 78px;
     }
@@ -1423,8 +1453,8 @@ function documentPrintStyles() {
     }
     .certificate-conditions {
       margin-top: 16px;
-      border: 1.5px solid #19aee6;
-      background: #eef9ff;
+      border: 1.5px solid var(--corp-primary);
+      background: #f8fafc;
       padding: 9px 11px;
       font-family: Arial, sans-serif;
       color: #0f273b;
@@ -1823,6 +1853,12 @@ function documentPrintStyles() {
       .certificate-page .page-inner {
         min-height: 297mm;
       }
+      /* Headed letters: @page margins take over; keep the flex column so the
+         footer strip stays pinned to the bottom of the printed sheet. */
+      .corp-letter .page-inner {
+        padding: 0;
+        min-height: 262mm;
+      }
       .report-table { font-size: 10.5px; }
       /* Hide the in-content page-number stamp when printing — @page footer takes over. */
       .page-number { display: none; }
@@ -1858,6 +1894,93 @@ function resolveSavedSignature(
 function signatureImageHtml(dataUrl: string, className = "signature-image") {
   if (!dataUrl) return "";
   return `<img class="${className}" src="${escapeHtml(dataUrl)}" alt="Saved signature" />`;
+}
+
+/** "2 July 2026" — the headed-letter date format. Falls back to the raw string. */
+function formatLetterDate(input?: string | null) {
+  if (!input) return "";
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return input;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** Two-tone accent rule: orange lead segment + primary bar (+ ink cap on the header variant). */
+function letterheadRuleHtml(variant: "head" | "foot") {
+  if (variant === "foot") {
+    return `<div class="corp-rule corp-rule-foot"><span class="corp-rule-b"></span><span class="corp-rule-a"></span></div>`;
+  }
+  return `<div class="corp-rule"><span class="corp-rule-a"></span><span class="corp-rule-b"></span><span class="corp-rule-c"></span></div>`;
+}
+
+/**
+ * Shared corporate letterhead header: logo (or wordmark) left, tagline +
+ * address right, two-tone rule underneath. Used by every headed document
+ * (letters, commencement order, completion certificate).
+ */
+function letterheadHeadHtml(mergedDoc: GeneratedDocument, branding: ResolvedBrandingProfile) {
+  const logo = mergedDoc.brandLogoDataUrl || branding.clientLogoDataUrl;
+  const companyName = mergedDoc.letterheadTitle || branding.issuerDisplayName;
+  const mark = logo
+    ? `<img class="corp-logo" src="${escapeHtml(logo)}" alt="${escapeHtml(companyName)}" />`
+    : `<div class="corp-wordmark">${escapeHtml(companyName)}</div>`;
+  return `
+    <header class="corp-head">
+      <div class="corp-head-left">${mark}</div>
+      <div class="corp-head-right">
+        <div class="corp-tagline">${escapeHtml(mergedDoc.letterheadSubtitle || branding.headerTagline)}</div>
+        <div class="corp-address">${escapeHtmlMultiline(
+          mergedDoc.letterheadAddress || branding.issuerAddress,
+        )}</div>
+      </div>
+    </header>
+    ${letterheadRuleHtml("head")}
+  `;
+}
+
+/** Shared letterhead footer: accent rule + centred address + Tel/Email/Web contact strip. */
+function letterheadFootHtml(branding: ResolvedBrandingProfile) {
+  const addressLine = (branding.issuerAddress || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(", ");
+  const contactBits = [
+    branding.issuerPhone ? `<span><strong>Tel</strong> ${escapeHtml(branding.issuerPhone)}</span>` : "",
+    branding.issuerEmail ? `<span><strong>Email</strong> ${escapeHtml(branding.issuerEmail)}</span>` : "",
+    branding.issuerWebsite ? `<span><strong>Web</strong> ${escapeHtml(branding.issuerWebsite)}</span>` : "",
+  ]
+    .filter(Boolean)
+    .join(`<span class="corp-foot-dot">&middot;</span>`);
+  return `
+    <footer class="corp-foot">
+      ${letterheadRuleHtml("foot")}
+      ${addressLine ? `<div class="corp-foot-address">${escapeHtml(addressLine)}</div>` : ""}
+      ${contactBits ? `<div class="corp-foot-contact">${contactBits}</div>` : ""}
+    </footer>
+  `;
+}
+
+/** "Yours faithfully / For and on behalf of …" sign-off block for headed letters. */
+function letterheadSignoffHtml(
+  mergedDoc: GeneratedDocument,
+  branding: ResolvedBrandingProfile,
+  signatureProfile?: UserSignatureProfile | null,
+) {
+  const companyName = mergedDoc.letterheadTitle || branding.issuerDisplayName;
+  const signatoryName = mergedDoc.signatoryName || signatureProfile?.displayName || "";
+  const signatoryRole = mergedDoc.signatoryRole || signatureProfile?.roleTitle || "";
+  const signatureUrl = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
+  return `
+    <div class="corp-close">
+      Yours faithfully,${companyName ? `<br />For and on behalf of <em>${escapeHtml(companyName)}</em>` : ""}
+    </div>
+    <div class="corp-sign">
+      ${signatureUrl ? `<img class="corp-sign-image" src="${escapeHtml(signatureUrl)}" alt="Signature" />` : ""}
+      <div class="corp-sign-line"></div>
+      ${signatoryName ? `<div class="corp-sign-name">${escapeHtml(signatoryName)}</div>` : ""}
+      ${signatoryRole ? `<div class="corp-sign-role">${escapeHtml(signatoryRole)}</div>` : ""}
+    </div>
+  `;
 }
 
 function progressItemTableHtml(progressReport: ProgressReport, currencyCode: string) {
@@ -2969,31 +3092,29 @@ function buildCommencementLetterPrintHtml(
   signatureProfile?: UserSignatureProfile | null,
 ) {
   const branding = resolveProjectBranding(project);
-  const firmName = mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.consultantName || "Engineer's Consultancy";
-  const firmTagline = mergedDoc.letterheadSubtitle || branding.headerTagline || "Civil Engineering · Contract Administration · Project Supervision";
-  const firmAddress = mergedDoc.letterheadAddress || branding.issuerAddress || project?.location || "Project office";
-  const sealLetters = documentInitials(mergedDoc).slice(0, 3);
+  const firmName = mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.consultantName || "";
 
   const refNo = mergedDoc.referenceNo || "—";
   const letterDate = formatCommencementDate(mergedDoc.date) || mergedDoc.date || "—";
 
-  const contractor = mergedDoc.recipientName || project?.contractorName || "The Contractor";
-  const contractorRole = mergedDoc.recipientRole || "Project Director";
+  // Real project data or blank — blank fields print as fill-in gaps.
+  const contractor = mergedDoc.recipientName || project?.contractorName || "";
+  const contractorRole = mergedDoc.recipientRole || "";
   const contractorAddress = project?.location || "";
 
-  const projectName = project?.contractTitle || project?.name || "the Project";
-  const contractNumber = project?.contractNumber || mergedDoc.referenceNo || "—";
+  const projectName = project?.contractTitle || project?.name || "";
+  const contractNumber = project?.contractNumber || mergedDoc.referenceNo || "";
 
-  const employer = project?.clientName || branding.clientDisplayName || "the Employer";
-  const contractDateField = project?.start_date || mergedDoc.date || "—";
+  const employer = project?.clientName || branding.clientDisplayName || "";
+  const contractDateField = project?.start_date || mergedDoc.date || "";
 
-  const commencementDate = formatCommencementDateWithWeekday(project?.start_date) || project?.start_date || "Not set";
-  const scheduledCompletion = formatCommencementDate(project?.end_date) || project?.end_date || "Not set";
+  const commencementDate = formatCommencementDateWithWeekday(project?.start_date) || project?.start_date || "";
+  const scheduledCompletion = formatCommencementDate(project?.end_date) || project?.end_date || "";
   const days = commencementDaysBetween(project?.start_date, project?.end_date);
   const timeForCompletion = days ? `${days} calendar days from the Commencement Date` : "As stipulated in the Contract";
 
-  const engineerName = mergedDoc.signatoryName || branding.issuerDisplayName || "The Engineer";
-  const engineerRole = mergedDoc.signatoryRole || `The Engineer · ${firmName}`;
+  const engineerName = mergedDoc.signatoryName || branding.issuerDisplayName || "";
+  const engineerRole = mergedDoc.signatoryRole || (firmName ? `The Engineer · ${firmName}` : "");
   const engineerSignature = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
 
   const ccList = [
@@ -3007,115 +3128,26 @@ function buildCommencementLetterPrintHtml(
     .map((item) => escapeHtml(item as string))
     .join(" &middot; ");
 
-  const cornerSvg = `
-    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-      <rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45 0 0)" fill="#1a1c20" />
-      <rect x="18.4" y="18.4" width="3.2" height="3.2" transform="rotate(45 20 20)" fill="#1a1c20" />
-    </svg>
-  `;
-
+  // Commencement-specific chrome on top of the shared corporate letterhead styles.
   const styles = `
-    :root {
-      --ink: #1a1c20;
-      --ink-soft: #2c2f35;
-      --muted: #5e636d;
-      --rule: #1a1c20;
-      --paper: #fbf9f4;
-      --accent: #6b2a1f;
-      --head-band: #eaf0f3;
-      --head-band-2: #dde6ec;
-      --head-rule: #b9c6cf;
-    }
-    @page { size: A4; margin: 0; }
-    html, body { margin: 0; padding: 0; background: #d9d4c8; font-family: 'Source Serif 4', Georgia, serif; color: var(--ink); }
-    * { box-sizing: border-box; }
-    .stage { min-height: 100vh; display: flex; justify-content: center; padding: 24px 16px 40px; }
-    .sheet {
-      width: 210mm;
-      min-height: 297mm;
-      background: var(--paper);
-      background-image:
-        radial-gradient(circle at 20% 10%, rgba(0,0,0,0.015) 0, transparent 40%),
-        radial-gradient(circle at 80% 90%, rgba(0,0,0,0.02) 0, transparent 40%);
-      box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 20px 60px -20px rgba(20,18,12,0.35);
-      position: relative;
-      padding: 16mm;
-      color: var(--ink);
-    }
-    .sheet::before { content: ""; position: absolute; inset: 10mm; border: 1.6px solid var(--rule); pointer-events: none; }
-    .sheet::after  { content: ""; position: absolute; inset: 15mm; border: 0.4px solid var(--rule); pointer-events: none; }
-    .fleur { position: absolute; color: var(--ink); font-family: 'Cormorant Garamond', serif; font-size: 14px; line-height: 1; pointer-events: none; background: var(--paper); padding: 0 4px; }
-    .fleur.top    { top: 9.2mm;    left: 50%; transform: translateX(-50%); }
-    .fleur.bottom { bottom: 9.2mm; left: 50%; transform: translateX(-50%); }
-    .fleur.left   { left: 9.2mm;   top: 50%;  transform: translate(-50%, -50%) rotate(-90deg); }
-    .fleur.right  { right: 9.2mm;  top: 50%;  transform: translate(50%, -50%) rotate(90deg); }
-    .corner { position: absolute; width: 5mm; height: 5mm; pointer-events: none; }
-    .corner svg { width: 100%; height: 100%; display: block; overflow: visible; }
-    .corner.tl { top: 10mm; left: 10mm; }
-    .corner.tr { top: 10mm; right: 10mm; transform: scaleX(-1); }
-    .corner.bl { bottom: 10mm; left: 10mm; transform: scaleY(-1); }
-    .corner.br { bottom: 10mm; right: 10mm; transform: scale(-1, -1); }
-    .inner { position: relative; padding: 12mm 14mm 14mm; }
-    .letterhead {
-      display: grid;
-      grid-template-columns: 56px 1fr auto;
-      column-gap: 18px;
-      align-items: center;
-      margin: -12mm -14mm 0;
-      padding: 14mm 14mm 14px;
-      background: linear-gradient(180deg, var(--head-band) 0%, var(--head-band-2) 100%);
-      border-bottom: 0.6px solid var(--head-rule);
-      position: relative;
-    }
-    .letterhead::after { content: ""; position: absolute; left: 14mm; right: 14mm; bottom: -4px; height: 1.2px; background: var(--rule); }
-    .seal { width: 56px; height: 56px; border: 1.2px solid var(--ink); border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
-    .seal-diamond { width: 34px; height: 34px; border: 0.6px solid var(--ink); transform: rotate(45deg); display: flex; align-items: center; justify-content: center; }
-    .seal-letters { transform: rotate(-45deg); font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 15px; letter-spacing: 1px; color: var(--ink); }
-    .firm { display: flex; flex-direction: column; line-height: 1.15; }
-    .firm-name { font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 26px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink); }
-    .firm-tag { font-family: 'Source Sans 3', sans-serif; font-size: 9px; letter-spacing: 3.2px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
-    .firm-contact { font-family: 'Source Sans 3', sans-serif; font-size: 9px; line-height: 1.55; text-align: right; color: var(--ink-soft); letter-spacing: 0.2px; max-width: 56mm; }
-    .firm-contact .label { color: var(--muted); letter-spacing: 2px; text-transform: uppercase; font-size: 7.5px; display: block; margin-bottom: 2px; }
-    .meta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 26px; font-family: 'Source Sans 3', sans-serif; font-size: 10px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); }
-    .meta .ref strong, .meta .date strong { color: var(--ink); font-weight: 500; margin-left: 4px; letter-spacing: 1.2px; }
-    .title-block { text-align: center; margin: 26px 0 22px; }
-    .title-eyebrow { font-family: 'Source Sans 3', sans-serif; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-    .title { font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 30px; letter-spacing: 4px; text-transform: uppercase; color: var(--ink); line-height: 1; margin: 0; }
-    .title-flourish { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
-    .title-flourish .line { width: 56px; height: 1px; background: var(--ink); }
-    .title-flourish .dot { width: 5px; height: 5px; background: var(--ink); transform: rotate(45deg); }
-    .addr { font-size: 11.5px; line-height: 1.55; margin: 4px 0 18px; }
-    .addr .role { font-family: 'Source Sans 3', sans-serif; font-size: 8.5px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
-    .addr .name { font-weight: 600; }
-    .salute { font-size: 12px; margin: 16px 0 6px; }
-    .subject { font-size: 12px; text-decoration: underline; text-underline-offset: 4px; font-weight: 600; margin: 14px 0 14px; text-align: center; line-height: 1.45; }
-    .body p { font-size: 11.5px; line-height: 1.7; margin: 0 0 11px; text-align: justify; text-justify: inter-word; hyphens: auto; color: var(--ink-soft); }
-    .body p .field { border-bottom: 0.5px dotted var(--muted); padding: 0 4px; color: var(--ink); font-weight: 500; }
-    .clause { font-style: italic; color: var(--accent); }
-    .particulars { margin: 12px 0 14px; padding: 10px 14px; border-top: 0.5px solid var(--rule); border-bottom: 0.5px solid var(--rule); display: grid; grid-template-columns: 170px 1fr; row-gap: 6px; column-gap: 12px; font-size: 11px; }
-    .particulars dt { font-family: 'Source Sans 3', sans-serif; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); align-self: center; margin: 0; }
-    .particulars dd { margin: 0; color: var(--ink); font-weight: 500; letter-spacing: 0.2px; }
-    .closing { font-size: 11.5px; margin: 18px 0 4px; color: var(--ink-soft); }
-    .sign-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 36px; margin-top: 30px; }
-    .sign-col .role { font-family: 'Source Sans 3', sans-serif; font-size: 8.5px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); margin-bottom: 28px; }
-    .sign-col .sign-image { display: block; max-height: 38px; max-width: 70%; margin: -22px 0 4px; }
-    .sign-line { border-bottom: 0.6px solid var(--ink); height: 0; margin-bottom: 6px; }
-    .sign-meta { font-size: 10px; line-height: 1.55; }
-    .sign-meta .nm { font-weight: 600; }
-    .sign-meta .ti { color: var(--muted); }
-    .stamp { position: absolute; right: 28mm; bottom: 60mm; width: 78px; height: 78px; border: 1.4px solid var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); opacity: 0.62; color: var(--accent); text-align: center; pointer-events: none; }
-    .stamp .inner-ring { position: absolute; inset: 5px; border: 0.5px solid var(--accent); border-radius: 50%; }
-    .stamp .stamp-text { font-family: 'Source Sans 3', sans-serif; font-size: 7px; letter-spacing: 1.8px; text-transform: uppercase; line-height: 1.25; font-weight: 600; }
-    .stamp .stamp-mark { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 15px; display: block; margin: 3px 0 2px; letter-spacing: 0.5px; }
-    .cc { margin-top: 22px; padding-top: 10px; border-top: 0.5px solid var(--rule); font-size: 9.5px; color: var(--muted); font-family: 'Source Sans 3', sans-serif; letter-spacing: 0.4px; line-height: 1.6; }
-    .cc .label { text-transform: uppercase; letter-spacing: 2.6px; color: var(--ink); font-weight: 500; margin-right: 8px; }
-    .foot { margin-top: 14px; padding-top: 8px; border-top: 0.5px solid var(--rule); display: flex; justify-content: space-between; align-items: center; font-family: 'Source Sans 3', sans-serif; font-size: 8px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--muted); }
-    .foot .center { letter-spacing: 3.5px; }
-    @media print {
-      html, body { background: #fff; }
-      .stage { padding: 0; }
-      .sheet { box-shadow: none; width: 210mm; height: 297mm; min-height: 297mm; }
-    }
+    .corp-title { margin: 20px 0 0; text-align: center; font-size: 17px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; color: #0f172a; }
+    .corp-title-rule { width: 64px; height: 2.5px; background: var(--corp-secondary); margin: 8px auto 0; }
+    .corp-recipient-kicker { font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--corp-muted); margin-bottom: 4px; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+    .corp-body p { font-family: Georgia, 'Times New Roman', serif; font-size: 12.5px; line-height: 1.8; margin: 0 0 12px; text-align: justify; text-justify: inter-word; color: var(--corp-ink); }
+    .corp-body .field { font-weight: 600; color: #0f172a; }
+    .corp-body .clause { font-style: italic; color: var(--corp-primary); }
+    .particulars { margin: 14px 0 16px; padding: 12px 16px; border-top: 1.5px solid var(--corp-primary); border-bottom: 1.5px solid var(--corp-primary); display: grid; grid-template-columns: 175px 1fr; row-gap: 7px; column-gap: 12px; font-size: 11.5px; }
+    .particulars dt { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--corp-muted); align-self: center; margin: 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+    .particulars dd { margin: 0; color: #0f172a; font-weight: 600; font-family: Georgia, 'Times New Roman', serif; }
+    .sign-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 36px; margin-top: 26px; }
+    .sign-col .role { font-size: 8.5px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--corp-muted); margin-bottom: 30px; font-weight: 700; }
+    .sign-col .sign-image { display: block; max-height: 38px; max-width: 70%; margin: -24px 0 4px; }
+    .sign-line { border-bottom: 1px solid #64748b; height: 0; margin-bottom: 6px; width: 90%; }
+    .sign-meta { font-size: 10.5px; line-height: 1.55; }
+    .sign-meta .nm { font-weight: 700; color: #0f172a; }
+    .sign-meta .ti { color: var(--corp-muted); }
+    .cc { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9.5px; color: var(--corp-muted); letter-spacing: 0.02em; line-height: 1.6; }
+    .cc .label { text-transform: uppercase; letter-spacing: 0.2em; color: #0f172a; font-weight: 700; margin-right: 8px; }
   `;
 
   return `
@@ -3124,69 +3156,38 @@ function buildCommencementLetterPrintHtml(
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(mergedDoc.title || "Commencement Order")}</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Source+Sans+3:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+        <style>${documentPrintStyles(branding.accentPrimary, branding.accentSecondary)}</style>
         <style>${styles}</style>
       </head>
       <body>
-        <div class="stage">
-          <article class="sheet" role="document" aria-label="Commencement Order Letter">
-            <div class="corner tl">${cornerSvg}</div>
-            <div class="corner tr">${cornerSvg}</div>
-            <div class="corner bl">${cornerSvg}</div>
-            <div class="corner br">${cornerSvg}</div>
-            <div class="fleur top" aria-hidden="true">&#10070;</div>
-            <div class="fleur bottom" aria-hidden="true">&#10070;</div>
-            <div class="fleur left" aria-hidden="true">&#10070;</div>
-            <div class="fleur right" aria-hidden="true">&#10070;</div>
+        <div class="print-root">
+          <section class="page corp-letter" role="document" aria-label="Commencement Order Letter">
+            <div class="page-inner">
+              ${letterheadHeadHtml(mergedDoc, branding)}
 
-            <div class="inner">
-              <header class="letterhead">
-                <div class="seal" aria-hidden="true">
-                  <div class="seal-diamond">
-                    <span class="seal-letters">${escapeHtml(sealLetters)}</span>
-                  </div>
-                </div>
-                <div class="firm">
-                  <div class="firm-name">${escapeHtml(firmName)}</div>
-                  <div class="firm-tag">${escapeHtml(firmTagline)}</div>
-                </div>
-                <div class="firm-contact">
-                  <span class="label">Office</span>
-                  ${escapeHtmlMultiline(firmAddress)}
-                </div>
-              </header>
-
-              <div class="meta">
-                <div class="ref">Our Ref. <strong>${escapeHtml(refNo)}</strong></div>
-                <div class="date">Date <strong>${escapeHtml(letterDate)}</strong></div>
+              <div class="corp-meta">
+                <div>Our Ref: <strong>${escapeHtml(refNo)}</strong></div>
+                <div>${escapeHtml(letterDate)}</div>
               </div>
 
-              <div class="title-block">
-                <h1 class="title">Commencement Order</h1>
-                <div class="title-flourish" aria-hidden="true">
-                  <span class="line"></span>
-                  <span class="dot"></span>
-                  <span class="line"></span>
-                </div>
-              </div>
+              <div class="corp-title">Commencement Order</div>
+              <div class="corp-title-rule"></div>
 
-              <div class="addr">
-                <div class="role">To &mdash; The Contractor</div>
-                <div class="name">${escapeHtml(contractor)}</div>
+              <div class="corp-recipient">
+                <div class="corp-recipient-kicker">To &mdash; The Contractor</div>
+                <div class="corp-recipient-name">${escapeHtml(contractor)}</div>
                 ${contractorRole ? `<div>Attn: ${escapeHtml(contractorRole)}</div>` : ""}
                 ${contractorAddress ? `<div>${escapeHtml(contractorAddress)}</div>` : ""}
               </div>
 
-              <p class="salute">Dear Sir,</p>
-              <p class="subject">
-                Project: ${escapeHtml(projectName)}<br />
-                Contract No.: <span style="font-weight:500">${escapeHtml(contractNumber)}</span>
+              <p class="corp-salute">Dear Sir,</p>
+              <div class="corp-subject">
+                RE: ${escapeHtml(projectName)}<br />
+                Contract No.: ${escapeHtml(contractNumber)}
                 &nbsp;&middot;&nbsp; Notice to Commence the Works
-              </p>
+              </div>
 
-              <div class="body">
+              <div class="corp-body">
                 <p>
                   With reference to the Contract Agreement executed between the Employer,
                   <span class="field">${escapeHtml(employer)}</span>, and the Contractor,
@@ -3242,13 +3243,15 @@ function buildCommencementLetterPrintHtml(
                   of the Works and look forward to a safe, timely, and quality delivery of the
                   Project.
                 </p>
+              </div>
 
-                <p class="closing">Yours faithfully,</p>
+              <div class="corp-close">
+                Yours faithfully,${firmName ? `<br />For and on behalf of <em>${escapeHtml(firmName)}</em>` : ""}
               </div>
 
               <div class="sign-grid">
                 <div class="sign-col">
-                  <div class="role">For and on behalf of the Engineer</div>
+                  <div class="role">The Engineer</div>
                   ${engineerSignature ? `<img class="sign-image" src="${escapeHtml(engineerSignature)}" alt="" />` : ""}
                   <div class="sign-line"></div>
                   <div class="sign-meta">
@@ -3266,27 +3269,14 @@ function buildCommencementLetterPrintHtml(
                 </div>
               </div>
 
-              <div class="stamp" aria-hidden="true">
-                <div class="inner-ring"></div>
-                <div>
-                  <div class="stamp-text">The Engineer</div>
-                  <span class="stamp-mark">&#10070;</span>
-                  <div class="stamp-text">Official Seal</div>
-                </div>
-              </div>
-
               <div class="cc">
                 <span class="label">Copies to</span>
                 ${ccList}
               </div>
 
-              <footer class="foot">
-                <div>${escapeHtml(firmName)}</div>
-                <div class="center">Commencement Order &middot; FIDIC Red Book 2017</div>
-                <div>Page 1 of 1</div>
-              </footer>
+              ${letterheadFootHtml(branding)}
             </div>
-          </article>
+          </section>
         </div>
       </body>
     </html>
@@ -3919,10 +3909,12 @@ function buildDocumentPrintHtml(
       : mergedDoc.reportPeriodStart || mergedDoc.reportPeriodEnd || "";
   const branding = resolveProjectBranding(project);
   const consultant = mergedDoc.signatoryName || branding.issuerDisplayName || "Authorized Representative";
-  const recipient = mergedDoc.recipientName || project?.contractorName || "Recipient";
+  const recipient = mergedDoc.recipientName || project?.contractorName || "";
   const signatorySignature = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
   const recipientSignature = resolveSavedSignature(mergedDoc.recipientSignatureSource, signatureProfile);
   const hasCoverImage = Boolean(mergedDoc.coverImageDataUrl);
+  // Plain letters (instruction letters, correspondence, …) render on the corporate letterhead.
+  const isLetterLayout = mergedDoc.layoutStyle !== "certificate" && mergedDoc.layoutStyle !== "report";
   const certificateTitle = mergedDoc.title.toLowerCase().includes("completion")
     ? "Substantial Completion"
     : mergedDoc.title;
@@ -3936,7 +3928,7 @@ function buildDocumentPrintHtml(
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(mergedDoc.title)}</title>
-        <style>${documentPrintStyles()}</style>
+        <style>${documentPrintStyles(branding.accentPrimary, branding.accentSecondary)}</style>
       </head>
       <body>
         <div class="print-root">
@@ -3998,27 +3990,19 @@ function buildDocumentPrintHtml(
               `
               : ""
           }
-          <section class="page${mergedDoc.layoutStyle === "certificate" ? " certificate-page" : ""}">
+          <section class="page${mergedDoc.layoutStyle === "certificate" ? " certificate-page" : ""}${isLetterLayout ? " corp-letter" : ""}">
             <div class="page-inner">
               ${
                 mergedDoc.layoutStyle === "certificate"
                   ? `
                     <div class="certificate-shell">
-                      <div class="certificate-banner">
-                        <div class="certificate-banner-logo">${escapeHtml(documentInitials(mergedDoc))}</div>
-                        <div class="certificate-banner-title">
-                          ${escapeHtml(mergedDoc.letterheadTitle || branding.clientDisplayName || "Project Authority")}
-                          <span class="certificate-banner-subtitle">${escapeHtml(
-                            mergedDoc.letterheadSubtitle || branding.headerTagline || project?.contractTitle || "Construction project controls"
-                          )}</span>
-                        </div>
-                      </div>
+                      ${letterheadHeadHtml(mergedDoc, branding)}
                       <div class="certificate-issued">Certificate of</div>
                       <h1 class="certificate-main-title">${escapeHtml(certificateTitle)}</h1>
                       <div class="certificate-rule"></div>
                       <p class="certificate-legal">Issued pursuant to the conditions of contract and the project completion records.</p>
                       <p class="certificate-statement">This is to certify that the works executed by the Contractor</p>
-                      <div class="certificate-contractor">${escapeHtml(recipient)}</div>
+                      <div class="certificate-contractor">${escapeHtml(project?.contractorName || recipient)}</div>
                       <div class="certificate-project">${escapeHtml(project?.contractTitle || project?.name || "Project works")}</div>
                       <p class="certificate-narrative">
                         have, on the basis of the Engineer's technical inspection and project records, achieved substantial completion for the stated scope, subject to outstanding defects and obligations recorded under the defects liability period.
@@ -4068,33 +4052,25 @@ function buildDocumentPrintHtml(
                     ${renderBodyHtml(mergedDoc, project, progressReport, certificate, workPlans, allCertificates, meetingMinutes, risks, siteNotes, correspondenceRecords, qualityControlRecords)}
                   `
                   : `
-                    <div class="brand-shell">
-                      <div class="brand-mark-box">
-                        ${documentMarkHtml(mergedDoc)}
-                        <div class="brand-block">
-                          <div class="brand-kicker">Official project correspondence</div>
-                          <h2 class="brand-name">${escapeHtml(
-                            mergedDoc.letterheadTitle || branding.issuerDisplayName || project?.name || "Project Office"
-                          )}</h2>
-                          <div class="brand-tagline">${escapeHtml(
-                            mergedDoc.letterheadSubtitle || branding.headerTagline || project?.contractTitle || mergedDoc.title
-                          )}</div>
-                          <div class="brand-address">${escapeHtmlMultiline(
-                            mergedDoc.letterheadAddress || branding.issuerAddress || project?.location || "Project Location"
-                          )}</div>
-                        </div>
-                      </div>
-                      <div class="doc-status-chip">${escapeHtml(mergedDoc.status.toUpperCase())}</div>
+                    ${letterheadHeadHtml(mergedDoc, branding)}
+                    <div class="corp-meta">
+                      <div>Our Ref: <strong>${escapeHtml(mergedDoc.referenceNo)}</strong></div>
+                      <div>${escapeHtml(formatLetterDate(mergedDoc.date))}</div>
                     </div>
-                    <h1 class="document-title">${escapeHtml(mergedDoc.title)}</h1>
-                    <div class="meta-grid">
-                      <div class="meta-item"><div class="meta-label">Reference</div><div class="meta-value">${escapeHtml(mergedDoc.referenceNo)}</div></div>
-                      <div class="meta-item"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(mergedDoc.date)}</div></div>
-                      <div class="meta-item"><div class="meta-label">To</div><div class="meta-value">${escapeHtml(recipient)}</div></div>
-                      <div class="meta-item"><div class="meta-label">Project</div><div class="meta-value">${escapeHtml(project?.name || "Project")}</div></div>
+                    <div class="corp-recipient">
+                      ${recipient ? `<div class="corp-recipient-name">${escapeHtml(recipient)}</div>` : ""}
+                      ${mergedDoc.recipientRole ? `<div>${escapeHtml(mergedDoc.recipientRole)}</div>` : ""}
+                      ${project?.location ? `<div>${escapeHtml(project.location)}</div>` : ""}
                     </div>
-                    <div class="doc-divider"></div>
-                    ${renderBodyHtml(mergedDoc, project, progressReport, certificate)}
+                    <p class="corp-salute">Dear Sir/Madam,</p>
+                    <div class="corp-subject">RE: ${escapeHtml(mergedDoc.title)}${
+                      project?.contractTitle && project.contractTitle !== mergedDoc.title
+                        ? ` &mdash; ${escapeHtml(project.contractTitle)}`
+                        : ""
+                    }</div>
+                    <div class="corp-body">
+                      ${renderBodyHtml(mergedDoc, project, progressReport, certificate)}
+                    </div>
                   `
               }
 
@@ -4106,7 +4082,9 @@ function buildDocumentPrintHtml(
 
               ${
                 signoffNeeded
-                  ? `
+                  ? isLetterLayout
+                    ? letterheadSignoffHtml(mergedDoc, branding, signatureProfile)
+                    : `
                     <div class="signature-grid">
                       <div class="signature-box">
                         ${signatureImageHtml(recipientSignature)}
@@ -4122,6 +4100,8 @@ function buildDocumentPrintHtml(
                   `
                   : ""
               }
+
+              ${isLetterLayout || mergedDoc.layoutStyle === "certificate" ? letterheadFootHtml(branding) : ""}
 
               <div class="page-number">${coverNeeded ? "Page 2" : "Page 1"}</div>
             </div>
@@ -4171,27 +4151,292 @@ function openDocumentPdf(
   }, 350);
 }
 
+/**
+ * Click-to-type field on the document canvas. Renders the value in the
+ * document's own typography; empty fields show a faint placeholder so users
+ * can see what belongs there and fill it in. Commits on blur.
+ */
+function InlineEdit({
+  value,
+  placeholder,
+  onCommit,
+  className = "",
+  style,
+  multiline = false,
+}: {
+  value: string;
+  placeholder: string;
+  onCommit?: (value: string) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  multiline?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    // Sync external changes (AI fill, edit panel) without clobbering typing.
+    if (el && document.activeElement !== el && el.innerText.replace(/\n$/, "") !== value) {
+      el.innerText = value;
+    }
+  }, [value]);
+  if (!onCommit) {
+    return value ? (
+      <div className={`whitespace-pre-wrap ${className}`} style={style}>
+        {value}
+      </div>
+    ) : null;
+  }
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      data-placeholder={placeholder}
+      className={`-mx-0.5 cursor-text whitespace-pre-wrap rounded-sm px-0.5 outline-none transition-colors hover:bg-sky-50 focus:bg-sky-50 empty:before:content-[attr(data-placeholder)] empty:before:font-normal empty:before:not-italic empty:before:text-slate-300 ${className}`}
+      style={style}
+      onKeyDown={(e) => {
+        if (!multiline && e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      onBlur={(e) => {
+        const raw = e.currentTarget.innerText.replace(/\u00a0/g, " ");
+        const next = multiline
+          ? raw.replace(/\n{3,}/g, "\n\n").trim()
+          : raw.replace(/\s*\n\s*/g, " ").trim();
+        if (next !== value) onCommit(next);
+      }}
+    />
+  );
+}
+
+/**
+ * Letter body on the canvas: shows the styled parsed blocks; clicking swaps in
+ * a plain-text editor (same convention the templates use — blank line between
+ * paragraphs, "- " bullets, short label lines become section titles).
+ */
+function EditableBody({
+  content,
+  onCommit,
+  children,
+}: {
+  content: string;
+  onCommit?: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+  if (!onCommit) return <>{children}</>;
+  if (!editing) {
+    return (
+      <div
+        className="-mx-1 cursor-text rounded-sm px-1 transition-colors hover:bg-sky-50/60"
+        title="Click to edit the body"
+        onClick={() => {
+          setDraft(content);
+          setEditing(true);
+        }}
+      >
+        {children}
+        {!content.trim() ? (
+          <p className="text-[15px] leading-8 text-slate-300">Click to write the body…</p>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <textarea
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        if (draft !== content) onCommit(draft);
+      }}
+      rows={Math.max(10, draft.split("\n").length + 2)}
+      className="w-full resize-y rounded-sm bg-sky-50/50 font-serif text-[15px] leading-8 text-slate-700 outline-none ring-1 ring-sky-200"
+    />
+  );
+}
+
 function DocumentPreview({
   doc,
   project,
   progressReport,
   certificate,
   signatureProfile,
+  onUpdateDoc,
+  onUpdateProjectBranding,
 }: {
   doc: GeneratedDocument;
   project: Project | null;
   progressReport?: ProgressReport | null;
   certificate?: PaymentCertificate | null;
   signatureProfile?: UserSignatureProfile | null;
+  /** Wire canvas edits back to the document (undefined = read-only canvas). */
+  onUpdateDoc?: (updates: Partial<GeneratedDocument>) => void;
+  /** Footer contact strip edits persist to the project's branding. */
+  onUpdateProjectBranding?: (updates: Partial<ProjectDocumentBranding>) => void;
 }) {
   const mergedDoc = hydrateGeneratedDocument(doc, project, progressReport, certificate);
   const branding = resolveProjectBranding(project);
   const metrics = progressReport ? progressMetrics(progressReport) : null;
   const certValue = certificate ? certificateNet(certificate) : null;
   const coverNeeded = mergedDoc.layoutStyle === "report";
-  const recipient = mergedDoc.recipientName || project?.contractorName || "Recipient";
-  const signatory = mergedDoc.signatoryName || project?.consultantName || "Authorized Signatory";
+  const recipient = mergedDoc.recipientName || project?.contractorName || "";
+  const signatory = mergedDoc.signatoryName || project?.consultantName || "";
   const isCertificate = mergedDoc.layoutStyle === "certificate";
+  const isLetter = !isCertificate && mergedDoc.layoutStyle !== "report";
+  // Corporate letterhead bits (mirrors the print output).
+  const letterLogo = mergedDoc.brandLogoDataUrl || branding.clientLogoDataUrl;
+  const letterCompany = mergedDoc.letterheadTitle || branding.issuerDisplayName;
+  const letterTagline = mergedDoc.letterheadSubtitle || branding.headerTagline;
+  const letterAddress = mergedDoc.letterheadAddress || branding.issuerAddress;
+  const accentPrimary = safeAccentColor(branding.accentPrimary, LETTERHEAD_ACCENT_PRIMARY);
+  const accentSecondary = safeAccentColor(branding.accentSecondary, LETTERHEAD_ACCENT_SECONDARY);
+  const footAddress = (branding.issuerAddress || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(", ");
+  const footContacts = [
+    branding.issuerPhone ? { label: "Tel", value: branding.issuerPhone } : null,
+    branding.issuerEmail ? { label: "Email", value: branding.issuerEmail } : null,
+    branding.issuerWebsite ? { label: "Web", value: branding.issuerWebsite } : null,
+  ].filter((c): c is { label: string; value: string } => c !== null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const handleLogoFile = async (file: File) => {
+    if (!onUpdateDoc) return;
+    const dataUrl = await readFileAsDataUrl(file); // compresses on the way in
+    onUpdateDoc({ brandingMode: "custom", brandLogoDataUrl: dataUrl });
+  };
+  const letterheadHeader = (
+    <>
+      {onUpdateDoc ? (
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleLogoFile(file);
+            e.target.value = "";
+          }}
+        />
+      ) : null}
+      <div className="flex items-start justify-between gap-6 text-left">
+        <div className="min-w-0">
+          {letterLogo ? (
+            <div className="group relative inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={letterLogo}
+                alt={letterCompany || "Logo"}
+                title={onUpdateDoc ? "Click to replace the logo" : undefined}
+                className={`max-h-20 max-w-[240px] object-contain ${onUpdateDoc ? "cursor-pointer" : ""}`}
+                onClick={() => onUpdateDoc && logoInputRef.current?.click()}
+              />
+              {onUpdateDoc ? (
+                <button
+                  type="button"
+                  title="Remove logo"
+                  onClick={() => onUpdateDoc({ brandingMode: "custom", brandLogoDataUrl: "" })}
+                  className="absolute -right-2 -top-2 hidden h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[10px] leading-none text-white group-hover:flex"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <InlineEdit
+                value={letterCompany}
+                placeholder="Company name"
+                onCommit={onUpdateDoc ? (v) => onUpdateDoc({ brandingMode: "custom", letterheadTitle: v }) : undefined}
+                className="max-w-[360px] break-words text-[23px] font-extrabold uppercase leading-tight tracking-wide text-[#0f2742]"
+              />
+              {onUpdateDoc ? (
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:text-sky-600"
+                >
+                  + Upload logo
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+        <div className="min-w-0 flex-1 text-right">
+          <InlineEdit
+            value={letterTagline}
+            placeholder="Tagline — e.g. Civil Engineering Consultancy"
+            onCommit={onUpdateDoc ? (v) => onUpdateDoc({ brandingMode: "custom", letterheadSubtitle: v }) : undefined}
+            className="text-[11px] font-extrabold uppercase tracking-[0.22em]"
+            style={{ color: accentPrimary }}
+          />
+          <InlineEdit
+            value={letterAddress}
+            placeholder={"Office address"}
+            multiline
+            onCommit={onUpdateDoc ? (v) => onUpdateDoc({ brandingMode: "custom", letterheadAddress: v }) : undefined}
+            className="mt-2 text-[12px] leading-6 text-slate-600"
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex h-[4px] overflow-hidden rounded-[1px]">
+        <span style={{ width: "17%", background: accentSecondary }} />
+        <span className="flex-1" style={{ background: accentPrimary }} />
+        <span style={{ width: "5%", background: "#1f2937" }} />
+      </div>
+    </>
+  );
+  const letterheadFooter = (
+    <div className="mt-12">
+      <div className="flex h-[3px] overflow-hidden rounded-[1px]">
+        <span className="flex-1" style={{ background: accentPrimary }} />
+        <span style={{ width: "17%", background: accentSecondary }} />
+      </div>
+      {footAddress ? <div className="mt-2 text-center text-[11px] text-slate-600">{footAddress}</div> : null}
+      {onUpdateProjectBranding ? (
+        <div className="mt-1 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+          {(
+            [
+              ["Tel", "issuerPhone", branding.issuerPhone, "phone"],
+              ["Email", "issuerEmail", branding.issuerEmail, "email"],
+              ["Web", "issuerWebsite", branding.issuerWebsite, "website"],
+            ] as const
+          ).map(([label, key, val, ph]) => (
+            <span key={key} className="inline-flex items-baseline gap-1">
+              <span className="font-bold" style={{ color: accentPrimary }}>
+                {label}
+              </span>
+              <InlineEdit
+                value={val}
+                placeholder={ph}
+                onCommit={(v) => onUpdateProjectBranding({ [key]: v })}
+                className="inline-block min-w-[40px]"
+              />
+            </span>
+          ))}
+        </div>
+      ) : footContacts.length > 0 ? (
+        <div className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+          {footContacts.map((c) => (
+            <span key={c.label}>
+              <span className="font-bold" style={{ color: accentPrimary }}>
+                {c.label}
+              </span>{" "}
+              {c.value}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
   const signatorySignature = resolveSavedSignature(mergedDoc.signatorySignatureSource, signatureProfile);
   const recipientSignature = resolveSavedSignature(mergedDoc.recipientSignatureSource, signatureProfile);
   const certificateTitle = mergedDoc.title.toLowerCase().includes("completion")
@@ -4267,35 +4512,78 @@ function DocumentPreview({
         </div>
       )}
 
-      <div className={`mx-auto w-full max-w-[860px] overflow-hidden border bg-white shadow-[0_24px_80px_rgba(0,0,0,0.28)] ${isCertificate ? "border-sky-400 border-[5px]" : "border-border"}`}>
+      <div className={`mx-auto w-full max-w-[860px] overflow-hidden border bg-white shadow-[0_24px_80px_rgba(0,0,0,0.28)] ${isCertificate ? "border-[5px]" : "border-border"}`} style={isCertificate ? { borderColor: accentPrimary } : undefined}>
         <div className={isCertificate ? "bg-white px-8 py-8" : "px-10 py-10"}>
           {isCertificate ? (
             <div className="bg-white text-center">
-              <div className="flex items-center justify-between gap-5 border-b-[10px] border-sky-400 bg-[#1f5b89] px-6 py-4 text-white">
-                <div className="text-left text-[30px] font-black tracking-[-0.05em]">{documentInitials(mergedDoc)}</div>
-                <div className="text-right">
-                  <div className="text-[13px] font-black uppercase tracking-[0.08em]">
-                    {mergedDoc.letterheadTitle || branding.clientDisplayName || "Project Authority"}
-                  </div>
-                  <div className="mt-1 max-w-[560px] text-[10px] italic leading-5 text-white/90">
-                    {mergedDoc.letterheadSubtitle || branding.headerTagline || project?.contractTitle || "Construction project controls"}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 text-[12px] font-bold uppercase tracking-[0.48em] text-sky-600">Certificate of</div>
+              {letterheadHeader}
+              <div className="mt-5 text-[12px] font-bold uppercase tracking-[0.48em]" style={{ color: accentPrimary }}>Certificate of</div>
               <h1 className="mt-2 text-[32px] font-black uppercase tracking-[0.04em] text-slate-950">
                 {certificateTitle}
               </h1>
-              <div className="mx-auto mt-3 h-px max-w-[620px] bg-amber-500" />
+              <div className="mx-auto mt-3 h-px max-w-[620px]" style={{ background: accentSecondary }} />
               <p className="mx-auto mt-3 max-w-[650px] text-[12px] font-semibold italic text-slate-700">
                 Issued pursuant to the conditions of contract and the project completion records.
               </p>
               <p className="mt-4 text-sm text-slate-800">This is to certify that the works executed by the Contractor</p>
-              <div className="mt-2 text-[24px] font-black uppercase tracking-[0.04em] text-blue-700">{recipient}</div>
-              <div className="mx-auto mt-2 max-w-[640px] text-sm font-bold italic text-sky-600">
+              <div className="mt-2 text-[24px] font-black uppercase tracking-[0.04em] text-slate-950">{project?.contractorName || recipient}</div>
+              <div className="mx-auto mt-2 max-w-[640px] text-sm font-bold italic" style={{ color: accentPrimary }}>
                 {project?.contractTitle || project?.name || "Project works"}
               </div>
             </div>
+          ) : isLetter ? (
+            <>
+              <div className="flex items-start justify-end pb-2">
+                <Badge color={mergedDoc.status === "approved" ? "ok" : mergedDoc.status === "issued" ? "accent" : "warn"}>
+                  {mergedDoc.status.toUpperCase()}
+                </Badge>
+              </div>
+              {letterheadHeader}
+              <div className="mt-7 flex items-baseline justify-between gap-4 text-[13px] text-slate-600">
+                <div className="flex items-baseline gap-1">
+                  <span>Our Ref:</span>
+                  <InlineEdit
+                    value={mergedDoc.referenceNo || ""}
+                    placeholder="reference no."
+                    onCommit={onUpdateDoc ? (v) => onUpdateDoc({ referenceNo: v }) : undefined}
+                    className="inline-block min-w-[60px] font-semibold text-slate-900"
+                  />
+                </div>
+                <InlineEdit
+                  value={formatLetterDate(mergedDoc.date) || ""}
+                  placeholder="date"
+                  onCommit={onUpdateDoc ? (v) => onUpdateDoc({ date: v }) : undefined}
+                  className="inline-block min-w-[60px] text-right"
+                />
+              </div>
+              <div className="mt-7 text-[14px] leading-7 text-slate-800">
+                <InlineEdit
+                  value={recipient}
+                  placeholder="Recipient name"
+                  onCommit={onUpdateDoc ? (v) => onUpdateDoc({ recipientName: v }) : undefined}
+                  className="font-bold text-slate-900"
+                />
+                <InlineEdit
+                  value={mergedDoc.recipientRole || ""}
+                  placeholder="Position / title"
+                  onCommit={onUpdateDoc ? (v) => onUpdateDoc({ recipientRole: v }) : undefined}
+                />
+                {project?.location ? <div>{project.location}</div> : null}
+              </div>
+              <p className="mt-6 font-serif text-[14px] text-slate-800">Dear Sir/Madam,</p>
+              <div className="mt-4 flex flex-wrap items-baseline gap-x-1.5 text-[14px] font-extrabold uppercase leading-6 text-slate-900">
+                <span>RE:</span>
+                <InlineEdit
+                  value={mergedDoc.title}
+                  placeholder="Subject of the letter"
+                  onCommit={onUpdateDoc ? (v) => onUpdateDoc({ title: v }) : undefined}
+                  className="inline-block min-w-[120px]"
+                />
+                {project?.contractTitle && project.contractTitle !== mergedDoc.title ? (
+                  <span>— {project.contractTitle}</span>
+                ) : null}
+              </div>
+            </>
           ) : (
             <>
               <div className="-mx-10 -mt-10 mb-9 border-b-2 border-[#0f2742] bg-gradient-to-b from-[#f4f9fd] to-white px-10 pb-7 pt-9">
@@ -4338,19 +4626,21 @@ function DocumentPreview({
             </>
           )}
 
-          <div className={isCertificate ? "mt-7 grid grid-cols-2 border border-sky-400 text-sm" : "mt-7 grid grid-cols-2 gap-4 text-sm"}>
-            {[
-              { label: "Reference", value: mergedDoc.referenceNo },
-              { label: "Date", value: mergedDoc.date },
-              { label: "To", value: recipient },
-              { label: "Project", value: project?.name || "Project" },
-            ].map((item) => (
-              <div key={item.label} className={isCertificate ? "border-r border-b border-sky-400 p-3 even:border-r-0 [&:nth-last-child(-n+2)]:border-b-0" : "border-t border-slate-200 pt-3"}>
-                <div className={isCertificate ? "mb-1 text-[9px] font-black uppercase tracking-[0.12em] text-sky-800" : "text-[10px] uppercase tracking-[0.2em] text-slate-500 mb-1"}>{item.label}</div>
-                <div className="font-semibold text-slate-900">{item.value}</div>
-              </div>
-            ))}
-          </div>
+          {!isLetter && (
+            <div className={isCertificate ? "mt-7 grid grid-cols-2 border text-sm" : "mt-7 grid grid-cols-2 gap-4 text-sm"} style={isCertificate ? { borderColor: accentPrimary } : undefined}>
+              {[
+                { label: "Reference", value: mergedDoc.referenceNo },
+                { label: "Date", value: mergedDoc.date },
+                { label: "To", value: recipient },
+                { label: "Project", value: project?.name || "Project" },
+              ].map((item) => (
+                <div key={item.label} className={isCertificate ? "border-r border-b p-3 even:border-r-0 [&:nth-last-child(-n+2)]:border-b-0" : "border-t border-slate-200 pt-3"} style={isCertificate ? { borderColor: accentPrimary } : undefined}>
+                  <div className={isCertificate ? "mb-1 text-[9px] font-black uppercase tracking-[0.12em]" : "text-[10px] uppercase tracking-[0.2em] text-slate-500 mb-1"} style={isCertificate ? { color: accentPrimary } : undefined}>{item.label}</div>
+                  <div className="font-semibold text-slate-900">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {mergedDoc.layoutStyle === "report" && (
             <div className="mt-8 grid grid-cols-4 gap-3">
@@ -4386,7 +4676,7 @@ function DocumentPreview({
           )}
 
           {mergedDoc.layoutStyle === "certificate" && (
-            <div className="mt-6 border border-sky-400 bg-sky-50/70">
+            <div className="mt-6 border bg-slate-50/70" style={{ borderColor: accentPrimary }}>
               <div className="grid grid-cols-2 text-sm">
                 {[
                   ["Date of substantial completion", mergedDoc.date],
@@ -4396,8 +4686,8 @@ function DocumentPreview({
                   ["Beneficiary", project?.clientName || branding.clientDisplayName || "Client / Employer"],
                   ["Engineer", branding.issuerDisplayName || project?.consultantName || signatory],
                 ].map(([label, value]) => (
-                  <div key={label} className="min-h-[50px] border-r border-b border-sky-400 p-3 even:border-r-0 [&:nth-last-child(-n+2)]:border-b-0">
-                    <div className="text-[9px] font-black uppercase tracking-[0.12em] text-sky-800">{label}</div>
+                  <div key={label} className="min-h-[50px] border-r border-b p-3 even:border-r-0 [&:nth-last-child(-n+2)]:border-b-0" style={{ borderColor: accentPrimary }}>
+                    <div className="text-[9px] font-black uppercase tracking-[0.12em]" style={{ color: accentPrimary }}>{label}</div>
                     <div className="mt-1 font-bold text-slate-950">{value}</div>
                   </div>
                 ))}
@@ -4405,8 +4695,13 @@ function DocumentPreview({
             </div>
           )}
 
-          <div className="mt-8 border-t border-slate-200 pt-7 space-y-5">
-            {parseContentBlocks(mergedDoc.content).map((block, index) => {
+          <div className={isLetter ? "mt-6 font-serif" : "mt-8 border-t border-slate-200 pt-7"}>
+            <EditableBody
+              content={mergedDoc.content}
+              onCommit={onUpdateDoc ? (v) => onUpdateDoc({ content: v }) : undefined}
+            >
+              <div className="space-y-5">
+                {parseContentBlocks(mergedDoc.content).map((block, index) => {
               if (block.type === "heading") {
                 return (
                   <h3 key={index} className="text-[13px] uppercase tracking-[0.18em] text-sky-700 font-bold font-sans">
@@ -4457,6 +4752,8 @@ function DocumentPreview({
                 </p>
               );
             })}
+              </div>
+            </EditableBody>
           </div>
 
           {mergedDoc.templateType === "site-visit-report" ? (
@@ -4467,35 +4764,78 @@ function DocumentPreview({
           ) : null}
 
           {(mergedDoc.footerNote || isCertificate) && (
-            <div className={isCertificate ? "mt-8 border border-sky-400 bg-sky-50 p-4 text-[12px] leading-6 text-slate-700" : "mt-10 pt-4 border-t border-slate-200 text-[12px] leading-6 text-slate-500"}>
+            <div className={isCertificate ? "mt-8 border bg-slate-50 p-4 text-[12px] leading-6 text-slate-700" : "mt-10 pt-4 border-t border-slate-200 text-[12px] leading-6 text-slate-500"} style={isCertificate ? { borderColor: accentPrimary } : undefined}>
               {isCertificate ? certificateConditions : mergedDoc.footerNote}
             </div>
           )}
 
-          <div className={`mt-12 grid gap-8 ${isCertificate ? "grid-cols-3" : "grid-cols-2"}`}>
-            <div className="border-t border-slate-300 pt-3">
-              {recipientSignature ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={recipientSignature} alt="Recipient saved signature" className="-mt-9 mb-2 h-12 max-w-[170px] object-contain" />
-              ) : null}
-              <div className="font-bold text-slate-900">{recipient}</div>
-              <div className="text-sm text-slate-500">{mergedDoc.recipientRole || "Recipient"}</div>
-            </div>
-            <div className="border-t border-slate-300 pt-3">
-              {signatorySignature ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={signatorySignature} alt="Signatory saved signature" className="-mt-9 mb-2 h-12 max-w-[170px] object-contain" />
-              ) : null}
-              <div className="font-bold text-slate-900">{signatory}</div>
-              <div className="text-sm text-slate-500">{mergedDoc.signatoryRole || "Authorized Signatory"}</div>
-            </div>
-            {isCertificate && (
-              <div className="border-t border-slate-300 pt-3">
-                <div className="font-bold text-slate-900">{project?.contractorName || recipient}</div>
-                <div className="text-sm text-slate-500">Acknowledged by Contractor</div>
+          {isLetter ? (
+            <>
+              <div className="mt-10 font-serif text-[14px] leading-7 text-slate-800">
+                Yours faithfully,
+                <br />
+                <span className="inline-flex flex-wrap items-baseline gap-x-1">
+                  For and on behalf of{" "}
+                  <em>
+                    <InlineEdit
+                      value={letterCompany}
+                      placeholder="Company name"
+                      onCommit={onUpdateDoc ? (v) => onUpdateDoc({ brandingMode: "custom", letterheadTitle: v }) : undefined}
+                      className="inline-block min-w-[80px]"
+                    />
+                  </em>
+                </span>
               </div>
-            )}
-          </div>
+              <div className="mt-8">
+                {signatorySignature ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={signatorySignature} alt="Signatory saved signature" className="mb-1 h-12 max-w-[170px] object-contain" />
+                ) : null}
+                <div className="w-52 border-b border-slate-500" />
+                <InlineEdit
+                  value={signatory}
+                  placeholder="Signatory name"
+                  onCommit={onUpdateDoc ? (v) => onUpdateDoc({ signatoryName: v }) : undefined}
+                  className="mt-2 font-extrabold text-slate-900"
+                />
+                <InlineEdit
+                  value={mergedDoc.signatoryRole || ""}
+                  placeholder="Role / title — e.g. Managing Director"
+                  onCommit={onUpdateDoc ? (v) => onUpdateDoc({ signatoryRole: v }) : undefined}
+                  className="text-sm text-slate-500"
+                />
+              </div>
+              {letterheadFooter}
+            </>
+          ) : (
+            <>
+              <div className={`mt-12 grid gap-8 ${isCertificate ? "grid-cols-3" : "grid-cols-2"}`}>
+                <div className="border-t border-slate-300 pt-3">
+                  {recipientSignature ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={recipientSignature} alt="Recipient saved signature" className="-mt-9 mb-2 h-12 max-w-[170px] object-contain" />
+                  ) : null}
+                  <div className="font-bold text-slate-900">{recipient}</div>
+                  <div className="text-sm text-slate-500">{mergedDoc.recipientRole || "Recipient"}</div>
+                </div>
+                <div className="border-t border-slate-300 pt-3">
+                  {signatorySignature ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={signatorySignature} alt="Signatory saved signature" className="-mt-9 mb-2 h-12 max-w-[170px] object-contain" />
+                  ) : null}
+                  <div className="font-bold text-slate-900">{signatory}</div>
+                  <div className="text-sm text-slate-500">{mergedDoc.signatoryRole || "Authorized Signatory"}</div>
+                </div>
+                {isCertificate && (
+                  <div className="border-t border-slate-300 pt-3">
+                    <div className="font-bold text-slate-900">{project?.contractorName || recipient}</div>
+                    <div className="text-sm text-slate-500">Acknowledged by Contractor</div>
+                  </div>
+                )}
+              </div>
+              {isCertificate ? letterheadFooter : null}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -4521,6 +4861,7 @@ export default function DocumentsModule() {
     updateGeneratedDocument,
     deleteGeneratedDocument,
     setActiveGeneratedDocumentId,
+    updateProject,
   } = useAppStore();
 
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
@@ -6141,6 +6482,15 @@ export default function DocumentsModule() {
           progressReport={linkedProgress}
           certificate={linkedCertificate}
           signatureProfile={userSignatureProfile}
+          onUpdateDoc={(updates) => updateGeneratedDocument(activeDocument.id, updates)}
+          onUpdateProjectBranding={
+            project
+              ? (updates) =>
+                  updateProject(project.id, {
+                    documentBranding: { ...project.documentBranding, ...updates },
+                  })
+              : undefined
+          }
         />
       </div>
     </div>

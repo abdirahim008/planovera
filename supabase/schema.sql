@@ -243,6 +243,11 @@ create table if not exists public.projects (
   issuer_display_name text,
   issuer_address text,
   header_tagline text,
+  issuer_phone text,
+  issuer_email text,
+  issuer_website text,
+  brand_accent_primary text,
+  brand_accent_secondary text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
