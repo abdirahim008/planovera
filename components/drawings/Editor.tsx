@@ -800,9 +800,17 @@ export default function Editor({
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
-      void syncUserState(nextSession?.user ?? null);
+      // Only react to real auth transitions. A transient null session — which
+      // supabase surfaces during token refresh / tab-focus changes (e.g. while
+      // importing a drawing across tabs) — must NOT reset the studio; a genuine
+      // sign-out always arrives as SIGNED_OUT.
+      if (event === "SIGNED_OUT") {
+        void syncUserState(null);
+        return;
+      }
+      if (nextSession?.user) void syncUserState(nextSession.user);
     });
 
     return () => {

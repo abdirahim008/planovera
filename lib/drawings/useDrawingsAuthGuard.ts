@@ -22,6 +22,14 @@ export function useDrawingsAuthGuard() {
     if (!supabase) return;
 
     let active = true;
+    // getUser() validates against the server, so a null here is a genuine
+    // unauthenticated state — safe to redirect. We do NOT redirect on a
+    // transient null `session` from onAuthStateChange: supabase fires
+    // INITIAL_SESSION / TOKEN_REFRESHED / focus-driven events during normal use
+    // (and a token refresh can momentarily surface a null session), which would
+    // otherwise bounce the tab to /login mid-session — e.g. while importing a
+    // drawing, which switches tab focus. Only an explicit SIGNED_OUT should log
+    // the tab out.
     const toLogin = () => {
       if (active) router.replace("/login");
     };
@@ -33,8 +41,8 @@ export function useDrawingsAuthGuard() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT" || !session?.user) toLogin();
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") toLogin();
     });
 
     return () => {
