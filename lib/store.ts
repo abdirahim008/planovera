@@ -50,6 +50,7 @@ import { FINAL_CERTIFICATE_IMPORT_ID, FINAL_CERTIFICATE_ID_PREFIX } from "./fina
 import type { AdoptableWorkspace } from "./sampleData";
 import { buildSeedLibraryItems } from "./boqLibrary";
 import { calculateBOQLineAmount, isPercentageUnit } from "./boq-calculations";
+import { cascadeSchedule } from "./workplan-scheduling";
 import {
   inverseBOQLineAmount,
   parsePaymentNumber,
@@ -403,6 +404,18 @@ const recalcWorkPlanSections = (activities: WorkPlanActivity[]): WorkPlanActivit
 
   return next;
 };
+
+// Remove links that point at deleted activities so the dependency graph never
+// carries dangling references.
+const stripPredecessorRefs = (
+  activities: WorkPlanActivity[],
+  removedIds: string[],
+): WorkPlanActivity[] =>
+  activities.map((a) =>
+    a.predecessorIds?.some((p) => removedIds.includes(p))
+      ? { ...a, predecessorIds: a.predecessorIds.filter((p) => !removedIds.includes(p)) }
+      : a,
+  );
 
 // ─── Helper: map activities on a specific sheet ──────────────────
 const mapActiveWPSheet = (
@@ -2108,6 +2121,8 @@ interface AppState {
   renameWorkPlanSheet: (idx: number, name: string) => void;
   addActivity: () => void;
   updateActivity: (id: string, key: string, value: string) => void;
+  /** Set an activity's finish-to-start predecessors (UUIDs) and reflow the schedule. */
+  setActivityPredecessors: (id: string, predecessorIds: string[]) => void;
   toggleActivityMilestone: (id: string) => void;
   deleteActivity: (id: string) => void;
   deleteActivities: (ids: string[]) => void;
@@ -4111,19 +4126,32 @@ export const useAppStore = create<AppState>()(
       loadWorkPlanFromDraft: (sheets) =>
         set((s) => {
           const projectId = s.project?.id || "";
-          const next = sheets.map((sheet, i) => ({
-            ...sheet,
-            id: uuid(),
-            sort_order: i,
-            activities: recalcWorkPlanSections(
-              sheet.activities.map((a) => ({
-                ...a,
-                id: uuid(),
-                project_id: projectId,
-                rowType: a.rowType || "activity",
-              }))
-            ),
-          }));
+          const next = sheets.map((sheet, i) => {
+            // Fresh UUIDs per activity, with predecessor links remapped to the
+            // new ids so drafted dependencies survive the import.
+            const idMap = new Map<string, string>();
+            sheet.activities.forEach((a) => {
+              if (a.id) idMap.set(a.id, uuid());
+            });
+            return {
+              ...sheet,
+              id: uuid(),
+              sort_order: i,
+              activities: recalcWorkPlanSections(
+                cascadeSchedule(
+                  sheet.activities.map((a) => ({
+                    ...a,
+                    id: (a.id && idMap.get(a.id)) || uuid(),
+                    project_id: projectId,
+                    rowType: a.rowType || "activity",
+                    predecessorIds: (a.predecessorIds ?? [])
+                      .map((p) => idMap.get(p))
+                      .filter((p): p is string => Boolean(p)),
+                  })),
+                ),
+              ),
+            };
+          });
           return {
             workPlanSheets: next.length ? next : s.workPlanSheets,
             activeWorkPlanSheetIndex: 0,
@@ -4162,8 +4190,25 @@ export const useAppStore = create<AppState>()(
               }
               return upd;
             });
-            return recalcWorkPlanSections(mapped);
+            // Date/duration edits ripple through the dependency graph so linked
+            // activities (predecessors column) reschedule automatically.
+            const rippled =
+              key === "startDate" || key === "duration" || key === "endDate" || key === "rowType"
+                ? cascadeSchedule(mapped)
+                : mapped;
+            return recalcWorkPlanSections(rippled);
           }),
+        })),
+
+      setActivityPredecessors: (id, predecessorIds) =>
+        set((s) => ({
+          workPlanSheets: mapActiveWPSheet(s.workPlanSheets, s.activeWorkPlanSheetIndex, (acts) =>
+            recalcWorkPlanSections(
+              cascadeSchedule(
+                acts.map((a) => (a.id === id ? { ...a, predecessorIds } : a)),
+              ),
+            ),
+          ),
         })),
 
       toggleActivityMilestone: (id) =>
@@ -4176,14 +4221,18 @@ export const useAppStore = create<AppState>()(
       deleteActivity: (id) =>
         set((s) => ({
           workPlanSheets: mapActiveWPSheet(s.workPlanSheets, s.activeWorkPlanSheetIndex, (acts) =>
-            recalcWorkPlanSections(acts.filter((a) => a.id !== id))
+            recalcWorkPlanSections(
+              cascadeSchedule(stripPredecessorRefs(acts.filter((a) => a.id !== id), [id])),
+            )
           ),
         })),
 
       deleteActivities: (ids) =>
         set((s) => ({
           workPlanSheets: mapActiveWPSheet(s.workPlanSheets, s.activeWorkPlanSheetIndex, (acts) =>
-            recalcWorkPlanSections(acts.filter((a) => !ids.includes(a.id)))
+            recalcWorkPlanSections(
+              cascadeSchedule(stripPredecessorRefs(acts.filter((a) => !ids.includes(a.id)), ids)),
+            )
           ),
         })),
 

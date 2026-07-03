@@ -65,8 +65,18 @@ export type AgentAction =
   | { type: "select_project"; name: string }
   /** Draft a BOQ for the active project from a works brief. */
   | { type: "draft_boq"; brief: string; boqName?: string }
-  /** Generate a work plan from the active project's current BOQ. */
-  | { type: "generate_work_plan"; startDate?: string; planName?: string }
+  /** Generate a work plan from the active project's current BOQ. When the user
+   *  asks for a realistic timeline, startDate + endDate/durationDays calibrate
+   *  it (gathered from the project record or by asking the user). mode
+   *  "update" reschedules the currently open plan instead of creating one. */
+  | {
+      type: "generate_work_plan";
+      startDate?: string;
+      endDate?: string;
+      durationDays?: number;
+      planName?: string;
+      mode?: "new" | "update";
+    }
   /** Create a progress report shell from the project's BOQ/items for the user to fill. */
   | { type: "create_progress_report"; name?: string; inputMode?: "quantity" | "percent" }
   /** Draft a project document (letter / report / certificate summary) with AI-written body text. */
@@ -126,6 +136,13 @@ export interface DraftWorkPlanActivity {
   description: string;
   /** Whole days; only meaningful for activity rows. */
   duration?: string;
+  /**
+   * Finish-to-start predecessors as 1-based row positions within the same
+   * sheet's activities array (must point at EARLIER activity rows). The client
+   * maps these to activity UUIDs and lets the scheduling engine compute dates —
+   * this is how the AI expresses overlapping/parallel trades realistically.
+   */
+  predecessors?: number[];
 }
 export interface DraftWorkPlanSheet {
   name: string;

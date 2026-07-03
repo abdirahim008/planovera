@@ -251,7 +251,13 @@ export default function AgentChatPanel() {
     );
   }
 
-  async function generateWorkPlan(startDate?: string, planName?: string) {
+  async function generateWorkPlan(
+    startDate?: string,
+    planName?: string,
+    endDate?: string,
+    durationDays?: number,
+    mode?: "new" | "update",
+  ) {
     const st = useAppStore.getState();
     if (!st.project) {
       push("assistant", "Open or create a project first, then I can build its work plan.", "status");
@@ -275,24 +281,40 @@ export default function AgentChatPanel() {
       return;
     }
 
+    // Timeline calibration: explicit params win, then the project record's own
+    // dates, then today. The window (if known) lets the AI fit the critical
+    // path into the real contract period.
+    const anchorStart = startDate?.trim() || st.project.start_date || todayISO();
+    const anchorEnd = endDate?.trim() || st.project.end_date || "";
     push("assistant", "Building the work plan…", "status");
     const res = await fetch("/api/ai/workplan", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({
+        items,
+        startDate: anchorStart,
+        endDate: anchorEnd || undefined,
+        durationDays: durationDays || undefined,
+      }),
     });
     const data = (await res.json()) as WorkPlanDraftResponse & { error?: string };
     if (!res.ok || !data.sheets?.length) {
       throw new Error(data.error || "The work plan came back empty.");
     }
 
-    // Schedule activities sequentially; sections keep blank dates (store derives spans).
-    let cursor = startDate?.trim() || todayISO();
+    // Build activities with real ids and MS Project-style finish-to-start
+    // links. The AI references predecessors by 1-based row position; map those
+    // to activity ids — the store's dependency scheduler computes all dates.
+    // Activities without predecessors anchor at the start date; any
+    // non-first activity the AI left unlinked chains to the previous activity
+    // so the network stays connected.
     const planSheets: WorkPlanSheet[] = data.sheets.map((sheet, idx) => {
-      const activities: WorkPlanActivity[] = sheet.activities.map((a) => {
+      const rowIds = sheet.activities.map(() => uuid());
+      let previousActivityRow = -1;
+      const activities: WorkPlanActivity[] = sheet.activities.map((a, rowIdx) => {
         if (a.rowType === "section") {
           return {
-            id: uuid(),
+            id: rowIds[rowIdx],
             project_id: st.project!.id,
             rowType: "section",
             description: a.description,
@@ -303,25 +325,41 @@ export default function AgentChatPanel() {
           };
         }
         const days = Math.max(1, parseInt(a.duration || "1", 10) || 1);
-        const start = cursor;
-        const end = addDaysISO(start, days);
-        cursor = end;
+        const predecessorRows = (a.predecessors ?? [])
+          .map((p) => p - 1)
+          .filter(
+            (p) =>
+              p >= 0 &&
+              p < rowIdx &&
+              sheet.activities[p]?.rowType !== "section",
+          );
+        if (predecessorRows.length === 0 && previousActivityRow >= 0) {
+          predecessorRows.push(previousActivityRow);
+        }
+        previousActivityRow = rowIdx;
+        const isRoot = predecessorRows.length === 0;
         return {
-          id: uuid(),
+          id: rowIds[rowIdx],
           project_id: st.project!.id,
           rowType: "activity",
           description: a.description,
           duration: String(days),
-          startDate: start,
-          endDate: end,
+          // Roots anchor at the project start; linked rows are computed by the
+          // dependency scheduler inside loadWorkPlanFromDraft.
+          startDate: isRoot ? anchorStart : "",
+          endDate: isRoot ? addDaysISO(anchorStart, days - 1) : "",
           status: "pending",
+          predecessorIds: predecessorRows.map((p) => rowIds[p]),
         };
       });
       return { id: uuid(), name: sheet.name, sort_order: idx, activities };
     });
 
-    const name = planName?.trim() || "AI work plan";
-    st.createWorkPlan(name);
+    const updating = mode === "update" && Boolean(st.activeWorkPlanId);
+    const name = updating
+      ? st.savedWorkPlans.find((p) => p.id === st.activeWorkPlanId)?.name || "work plan"
+      : planName?.trim() || "AI work plan";
+    if (!updating) st.createWorkPlan(name);
     st.loadWorkPlanFromDraft(planSheets);
     st.saveWorkPlan();
     st.setActiveModule("workplan");
@@ -331,7 +369,7 @@ export default function AgentChatPanel() {
     );
     push(
       "assistant",
-      `✅ Built "${name}" — ${activityCount} scheduled activities. Opened the Work Plan. Adjust dates and durations as needed.`,
+      `✅ ${updating ? `Updated "${name}"` : `Built "${name}"`} — ${activityCount} activities scheduled with linked dependencies from ${anchorStart}. Opened the Work Plan; shift any activity and its successors reflow automatically.`,
       "status",
     );
   }
@@ -527,7 +565,13 @@ export default function AgentChatPanel() {
         await draftBoq(action.brief, action.boqName);
         break;
       case "generate_work_plan":
-        await generateWorkPlan(action.startDate, action.planName);
+        await generateWorkPlan(
+          action.startDate,
+          action.planName,
+          action.endDate,
+          action.durationDays,
+          action.mode,
+        );
         break;
       case "create_progress_report":
         await createProgressReport(action.name, action.inputMode);
