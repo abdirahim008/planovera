@@ -287,19 +287,30 @@ export default function AgentChatPanel() {
     const anchorStart = startDate?.trim() || st.project.start_date || todayISO();
     const anchorEnd = endDate?.trim() || st.project.end_date || "";
     push("assistant", "Building the work plan…", "status");
-    const res = await fetch("/api/ai/workplan", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        items,
-        startDate: anchorStart,
-        endDate: anchorEnd || undefined,
-        durationDays: durationDays || undefined,
-      }),
-    });
-    const data = (await res.json()) as WorkPlanDraftResponse & { error?: string };
-    if (!res.ok || !data.sheets?.length) {
-      throw new Error(data.error || "The work plan came back empty.");
+
+    // Try the AI planner; if it's unavailable or returns nothing, fall back to a
+    // sequential plan built straight from the BOQ so the user always gets a
+    // usable, linked timeline they can refine — never a dead end.
+    let draftSheets: WorkPlanDraftResponse["sheets"] | null = null;
+    try {
+      const res = await fetch("/api/ai/workplan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          items,
+          startDate: anchorStart,
+          endDate: anchorEnd || undefined,
+          durationDays: durationDays || undefined,
+        }),
+      });
+      const data = (await res.json()) as WorkPlanDraftResponse & { error?: string };
+      if (res.ok && data.sheets?.length) draftSheets = data.sheets;
+    } catch {
+      /* network/transport error — fall through to the local fallback */
+    }
+    const usedFallback = !draftSheets;
+    if (!draftSheets) {
+      draftSheets = buildSequentialDraftFromItems(items, anchorStart, anchorEnd);
     }
 
     // Build activities with real ids and MS Project-style finish-to-start
@@ -308,7 +319,7 @@ export default function AgentChatPanel() {
     // Activities without predecessors anchor at the start date; any
     // non-first activity the AI left unlinked chains to the previous activity
     // so the network stays connected.
-    const planSheets: WorkPlanSheet[] = data.sheets.map((sheet, idx) => {
+    const planSheets: WorkPlanSheet[] = draftSheets.map((sheet, idx) => {
       const rowIds = sheet.activities.map(() => uuid());
       let previousActivityRow = -1;
       const activities: WorkPlanActivity[] = sheet.activities.map((a, rowIdx) => {
@@ -369,9 +380,45 @@ export default function AgentChatPanel() {
     );
     push(
       "assistant",
-      `✅ ${updating ? `Updated "${name}"` : `Built "${name}"`} — ${activityCount} activities scheduled with linked dependencies from ${anchorStart}. Opened the Work Plan; shift any activity and its successors reflow automatically.`,
+      usedFallback
+        ? `✅ ${updating ? `Updated "${name}"` : `Built "${name}"`} — ${activityCount} activities scheduled sequentially from ${anchorStart}. (The AI planner was busy, so I laid them out from your BOQ; edit any duration or the Predecessors column and the rest reflow automatically.)`
+        : `✅ ${updating ? `Updated "${name}"` : `Built "${name}"`} — ${activityCount} activities scheduled with linked dependencies from ${anchorStart}. Opened the Work Plan; shift any activity and its successors reflow automatically.`,
       "status",
     );
+  }
+
+  // Fallback plan when the AI planner is unavailable: parse the BOQ lines
+  // (SECTION: / - item) into a single sheet, distributing the project window
+  // evenly across activities. Predecessors are left blank — the executor chains
+  // each activity to the previous one, so the timeline still cascades on edit.
+  function buildSequentialDraftFromItems(
+    items: string[],
+    startIso: string,
+    endIso: string,
+  ): WorkPlanDraftResponse["sheets"] {
+    const rows = items.map((line) =>
+      line.startsWith("SECTION: ")
+        ? { rowType: "section" as const, description: line.slice("SECTION: ".length).trim() }
+        : { rowType: "activity" as const, description: line.replace(/^-\s*/, "").trim() },
+    );
+    const activityCount = Math.max(1, rows.filter((r) => r.rowType === "activity").length);
+    let perActivity = 7;
+    if (endIso) {
+      const start = new Date(`${startIso}T00:00:00`);
+      const end = new Date(`${endIso}T00:00:00`);
+      const span = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+      if (span > 0) perActivity = Math.max(1, Math.round(span / activityCount));
+    }
+    return [
+      {
+        name: "Schedule 1",
+        activities: rows.map((r) =>
+          r.rowType === "activity"
+            ? { rowType: "activity", description: r.description, duration: String(perActivity) }
+            : { rowType: "section", description: r.description, duration: "" },
+        ),
+      },
+    ];
   }
 
   // Most recent saved BOQ (with items) for the active project — the source for
