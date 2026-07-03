@@ -76,6 +76,8 @@ export type AgentAction =
       durationDays?: number;
       planName?: string;
       mode?: "new" | "update";
+      /** Works description used when the project has no BOQ to plan from. */
+      brief?: string;
     }
   /** Create a progress report shell from the project's BOQ/items for the user to fill. */
   | { type: "create_progress_report"; name?: string; inputMode?: "quantity" | "percent" }

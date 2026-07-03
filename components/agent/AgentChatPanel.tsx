@@ -257,6 +257,7 @@ export default function AgentChatPanel() {
     endDate?: string,
     durationDays?: number,
     mode?: "new" | "update",
+    brief?: string,
   ) {
     const st = useAppStore.getState();
     if (!st.project) {
@@ -276,8 +277,15 @@ export default function AgentChatPanel() {
         .filter((r) => (r.type === "header" || r.type === "item") && r.description.trim())
         .map((r) => (r.type === "header" ? `SECTION: ${r.description}` : `- ${r.description}`)),
     );
-    if (items.length === 0) {
-      push("assistant", "There's no BOQ to plan from yet. Want me to draft a BOQ first?", "status");
+    // With a BOQ we plan from its items; without one we plan from a works
+    // description (the agent supplies a brief, or infers it from the project).
+    const briefText = brief?.trim() || "";
+    if (items.length === 0 && !briefText) {
+      push(
+        "assistant",
+        "There's no BOQ to plan from yet. Tell me what the works involve (e.g. \"a 2 km gravel road with drainage and culverts\") and I'll build a timeline — or I can draft a BOQ first.",
+        "status",
+      );
       return;
     }
 
@@ -297,7 +305,11 @@ export default function AgentChatPanel() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          // The route uses items when present, else the brief. We send both so
+          // a BOQ-backed project plans from its items and a BOQ-less one plans
+          // from the works description.
           items,
+          brief: briefText || undefined,
           startDate: anchorStart,
           endDate: anchorEnd || undefined,
           durationDays: durationDays || undefined,
@@ -310,6 +322,17 @@ export default function AgentChatPanel() {
     }
     const usedFallback = !draftSheets;
     if (!draftSheets) {
+      // The sequential fallback needs BOQ lines to lay out. For a BOQ-less
+      // (brief-only) project there's nothing to fall back to, so ask the user
+      // to retry rather than building an empty plan.
+      if (items.length === 0) {
+        push(
+          "assistant",
+          "I couldn't build the timeline just now — please try again, or add a bit more detail about the works.",
+          "status",
+        );
+        return;
+      }
       draftSheets = buildSequentialDraftFromItems(items, anchorStart, anchorEnd);
     }
 
@@ -618,6 +641,7 @@ export default function AgentChatPanel() {
           action.endDate,
           action.durationDays,
           action.mode,
+          action.brief,
         );
         break;
       case "create_progress_report":
