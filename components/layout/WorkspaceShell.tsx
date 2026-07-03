@@ -822,7 +822,7 @@ export default function WorkspaceShell() {
       if (!active) return;
 
       // A genuine sign-out: tear down and bounce to /login.
-      if (event === "SIGNED_OUT" || !session?.user) {
+      if (event === "SIGNED_OUT") {
         syncedUserIdRef.current = null;
         setActiveUserId(null);
         setCollaborators([]);
@@ -835,6 +835,12 @@ export default function WorkspaceShell() {
         router.refresh();
         return;
       }
+
+      // Any other event arriving without a session is transient — supabase
+      // surfaces a momentarily-null session during token refresh / focus
+      // changes (e.g. while importing a drawing across tabs). Ignore it rather
+      // than tearing down the workspace; a real logout always fires SIGNED_OUT.
+      if (!session?.user) return;
 
       // Benign events that fire when a backgrounded tab regains focus
       // (TOKEN_REFRESHED, INITIAL_SESSION) or repeat SIGNED_IN for the same
