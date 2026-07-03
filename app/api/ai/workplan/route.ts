@@ -5,6 +5,9 @@ import { guardAiRequest } from "@/lib/ai/access";
 import type { WorkPlanDraftResponse } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
+// deepseek-v4-flash reasons before emitting JSON and is slow (~25s+ on a large
+// BOQ); give the function headroom so it isn't killed mid-generation.
+export const maxDuration = 60;
 
 // Generates a work plan (sections + activities with durations and MS Project-
 // style finish-to-start predecessors) from a list of BOQ section/item
@@ -115,8 +118,10 @@ export async function POST(req: Request) {
       endDate?: unknown;
       durationDays?: unknown;
     };
+    // Bound the input: a very long BOQ makes this slow model reason for longer
+    // and risks an empty completion. 150 lines is already a large programme.
     const items = Array.isArray(body?.items)
-      ? body.items.map((x) => str(x)).filter(Boolean).slice(0, 300)
+      ? body.items.map((x) => str(x)).filter(Boolean).slice(0, 150)
       : [];
     const brief = str(body?.brief);
     if (items.length > 0) {
@@ -152,7 +157,9 @@ export async function POST(req: Request) {
     const raw = await aiChatJSON<RawResponse>({
       system: buildSystemPrompt(windowDays),
       user: userContent,
-      maxTokens: 3000,
+      // Generous cap: this model spends tokens on reasoning before the JSON, so
+      // a tight budget (was 3000) can leave the content empty on large plans.
+      maxTokens: 8000,
     });
     const result = normalize(raw);
     if (result.sheets.length === 0) {
