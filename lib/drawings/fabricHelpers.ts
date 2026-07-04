@@ -286,6 +286,66 @@ export async function addSvgToCanvas(
   return group;
 }
 
+// Fit + centre a set of freshly-enlivened objects on the paper. Structured
+// library payloads store objects at the coordinates they had on the ADMIN's
+// sheet when saved — often entirely outside this paper — so inserting them
+// as-is leaves the user staring at a blank canvas ("import doesn't show").
+// Mapping every origin x → pivot + fit·(x − pivot) while multiplying each
+// object's own scale by the same factor is a uniform affine scale of the whole
+// arrangement, so multi-object layouts shrink and move as one.
+export function fitAndCenterObjectsOnPaper(
+  canvas: FabricCanvas,
+  objects: FabricObject[],
+  maxFitRatio = 0.8,
+): void {
+  if (objects.length === 0) return;
+  objects.forEach((object) => object.setCoords());
+
+  const cw = canvas.getWidth() / (canvas.getZoom() || 1);
+  const ch = canvas.getHeight() / (canvas.getZoom() || 1);
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  objects.forEach((object) => {
+    const rect = object.getBoundingRect();
+    minX = Math.min(minX, rect.left);
+    minY = Math.min(minY, rect.top);
+    maxX = Math.max(maxX, rect.left + rect.width);
+    maxY = Math.max(maxY, rect.top + rect.height);
+  });
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return;
+
+  const bw = Math.max(maxX - minX, 1e-6);
+  const bh = Math.max(maxY - minY, 1e-6);
+  const fit = Math.min((cw * maxFitRatio) / bw, (ch * maxFitRatio) / bh, 1);
+
+  if (fit < 1) {
+    // Scaling about the bounds' corner keeps the collective top-left fixed at
+    // (minX, minY), so the centring translation below stays a simple shift.
+    objects.forEach((object) => {
+      object.set({
+        left: minX + ((object.left ?? 0) - minX) * fit,
+        top: minY + ((object.top ?? 0) - minY) * fit,
+        scaleX: (object.scaleX ?? 1) * fit,
+        scaleY: (object.scaleY ?? 1) * fit,
+      });
+      object.setCoords();
+    });
+  }
+
+  const dx = (cw - bw * fit) / 2 - minX;
+  const dy = (ch - bh * fit) / 2 - minY;
+  objects.forEach((object) => {
+    object.set({
+      left: (object.left ?? 0) + dx,
+      top: (object.top ?? 0) + dy,
+    });
+    object.setCoords();
+  });
+}
+
 // Dissolve a freshly-imported, already-positioned group into individual
 // top-level objects, so a rubber-band drag selects exactly the portion the user
 // dragged over (instead of grabbing the whole drawing), each label is directly
