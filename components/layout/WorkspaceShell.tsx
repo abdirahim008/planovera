@@ -495,7 +495,13 @@ export default function WorkspaceShell() {
         lastNormalizedSyncRef.current = "";
         syncedUserIdRef.current = null;
 
-        if (redirectIfLoggedOut || !user) {
+        // Only bounce to /login when the caller explicitly asked for it (the
+        // auth listener's user-change path). On mount, a transient getUser()
+        // failure — e.g. a token-refresh race while the drawing tabs are open —
+        // must not tear the tab down with a redirect + router.refresh(); the
+        // middleware already guards /workspace against genuinely signed-out
+        // visitors server-side.
+        if (redirectIfLoggedOut) {
           router.replace("/login");
           router.refresh();
         }

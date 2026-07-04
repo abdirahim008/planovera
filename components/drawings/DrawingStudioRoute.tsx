@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import Editor from "@/components/drawings/Editor";
 import type { Project } from "@/lib/supabase";
 import { useAppStore } from "@/lib/store";
+import { isSupabaseConfigured } from "@/lib/supabase-browser";
 
 function toLinkedProject(project: Project) {
   return {
@@ -29,13 +30,21 @@ export default function DrawingStudioRoute() {
   const selectedProject = useAppStore((state) => state.project);
   const selectProject = useAppStore((state) => state.selectProject);
   const loadDemoWorkspace = useAppStore((state) => state.loadDemoWorkspace);
+  const activeModule = useAppStore((state) => state.activeModule);
   const setActiveModule = useAppStore((state) => state.setActiveModule);
 
   useEffect(() => {
-    setActiveModule("drawings");
+    // Every store write re-serializes the whole persisted workspace to
+    // localStorage (shared with the main app tab) — skip it when already set.
+    if (activeModule !== "drawings") setActiveModule("drawings");
 
     if (projects.length === 0) {
-      loadDemoWorkspace();
+      // Demo mode only: seed the sample workspace so the studio has a project
+      // to link to. With real auth this must never run — loadDemoWorkspace()
+      // REPLACES the store (and its localStorage persistence, shared with the
+      // main app tab) with demo data; a signed-in user with no local projects
+      // just gets the unlinked editor instead.
+      if (!isSupabaseConfigured()) loadDemoWorkspace();
       return;
     }
 
@@ -46,7 +55,7 @@ export default function DrawingStudioRoute() {
     if (targetProject && selectedProject?.id !== targetProject.id) {
       selectProject(targetProject.id);
     }
-  }, [loadDemoWorkspace, projectId, projects, selectProject, selectedProject, setActiveModule]);
+  }, [activeModule, loadDemoWorkspace, projectId, projects, selectProject, selectedProject, setActiveModule]);
 
   const activeProject = useMemo(() => {
     if (projectId) return projects.find((item) => item.id === projectId) ?? null;
