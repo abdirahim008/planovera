@@ -731,9 +731,15 @@ export default function Editor({
     [linkedProject],
   );
 
+  // Last auth user this tab fully synced for — lets the auth listener skip
+  // benign repeat events (token refresh, tab focus, cross-tab activity)
+  // instead of re-downloading the studio workspace on every one.
+  const syncedAuthUserIdRef = useRef<string | null>(null);
+
   const syncUserState = useCallback(
     async (user: User | null) => {
       if (!user) {
+        syncedAuthUserIdRef.current = null;
         setSession(null);
         setUserId(null);
         resetWorkspaceState();
@@ -743,6 +749,7 @@ export default function Editor({
         return;
       }
 
+      syncedAuthUserIdRef.current = user.id;
       try {
         const profile = await ensureProfile(user);
         setSession(mapProfileToSession(profile));
@@ -810,7 +817,12 @@ export default function Editor({
         void syncUserState(null);
         return;
       }
-      if (nextSession?.user) void syncUserState(nextSession.user);
+      // Re-sync only when the signed-in user actually changed; token
+      // refreshes and focus-driven repeats for the same user are ignored so
+      // the studio doesn't re-download its workspace on every tab switch.
+      if (nextSession?.user && nextSession.user.id !== syncedAuthUserIdRef.current) {
+        void syncUserState(nextSession.user);
+      }
     });
 
     return () => {
