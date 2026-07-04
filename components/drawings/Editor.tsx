@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 
 import Toolbar from "./Toolbar";
 import LeftPanel, { type DrawingPanelTab } from "./LeftPanel";
-import { subscribeLibraryActions } from "@/lib/drawings/libraryBridge";
+import { subscribeLibraryActions, type LibraryAction } from "@/lib/drawings/libraryBridge";
 import { FileText, Plus } from "lucide-react";
 import ContextMenu from "./ContextMenu";
 import { getPaperDimensions } from "@/lib/drawings/paper";
@@ -24,6 +24,7 @@ import {
   createOrUpdateTitleBlock,
   createSvgObject,
   exportPagesToPDF,
+  fitAndCenterObjectsOnPaper,
   splitSvgSubpaths,
   ungroupSvgObjects,
 } from "@/lib/drawings/fabricHelpers";
@@ -1943,6 +1944,9 @@ export default function Editor({
               makeStrokeNonScaling(object);
               canvas.add(object);
             });
+            // Saved coordinates may not match this sheet — refit so the
+            // drawing opens visible instead of off-paper.
+            fitAndCenterObjectsOnPaper(canvas, objects);
             canvas.requestRenderAll();
             commitHistory();
           })
@@ -2151,6 +2155,9 @@ export default function Editor({
           makeStrokeNonScaling(object);
           canvas.add(object);
         });
+        // Stored coordinates come from the admin's sheet, which can sit
+        // entirely off this paper — refit so the import is actually visible.
+        fitAndCenterObjectsOnPaper(canvas, objects);
         canvas.setActiveObject(objects[objects.length - 1]);
         canvas.requestRenderAll();
         return true;
@@ -2324,8 +2331,17 @@ export default function Editor({
   // Receive actions raised from the standalone library tab. Import drops the
   // drawing on the canvas; edit opens it for an admin clean-up. The browser tab
   // only sends an id, so the canvas tab stays light while browsing.
+  //
+  // The bridge clears its cross-tab queue as soon as entries are handed over,
+  // and an import can arrive BEFORE the canvas exists (queued while the studio
+  // tab was still booting, or before it was even open) — handleInsertLibraryItem
+  // would silently no-op and the import would be lost. Actions that arrive too
+  // early are parked in a ref and replayed when this effect re-runs after
+  // Fabric loads (its deps change with fabricMod), by which point the canvas
+  // -init effect above has populated fabricRef.
+  const pendingLibraryActionsRef = useRef<Array<{ libraryId: string; action: LibraryAction }>>([]);
   useEffect(() => {
-    return subscribeLibraryActions((libraryId, action) => {
+    const dispatch = (libraryId: string, action: LibraryAction) => {
       if (action === "edit") {
         void handleEditLibraryItem(libraryId);
         return;
@@ -2340,8 +2356,32 @@ export default function Editor({
       void fetchLibrarySvg(libraryId).then((svg) => {
         if (svg) handleAddSvg(svg);
       });
+    };
+
+    const canvasReady = () => Boolean(fabricRef.current && fabricMod);
+
+    if (canvasReady() && pendingLibraryActionsRef.current.length > 0) {
+      const parked = pendingLibraryActionsRef.current;
+      pendingLibraryActionsRef.current = [];
+      parked.forEach(({ libraryId, action }) => dispatch(libraryId, action));
+    }
+
+    return subscribeLibraryActions((libraryId, action) => {
+      if (!canvasReady()) {
+        pendingLibraryActionsRef.current.push({ libraryId, action });
+        return;
+      }
+      dispatch(libraryId, action);
     });
-  }, [fetchLibrarySvg, handleAddSvg, handleEditLibraryItem, handleInsertLibraryItem, libraryItems, recordLibraryUse]);
+  }, [
+    fabricMod,
+    fetchLibrarySvg,
+    handleAddSvg,
+    handleEditLibraryItem,
+    handleInsertLibraryItem,
+    libraryItems,
+    recordLibraryUse,
+  ]);
 
   // Admin "Edit in canvas" deep-link: once the studio has finished booting (so the
   // DB library items + the admin session are loaded), open the requested drawing
