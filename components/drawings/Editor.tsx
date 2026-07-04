@@ -961,6 +961,17 @@ export default function Editor({
       backgroundColor: "#ffffff",
       preserveObjectStacking: true,
       selection: true,
+      // Rubber-band selects only objects FULLY inside the band (CAD "window
+      // selection"). The default box-intersect test grabs unrelated objects
+      // whose bounding box merely crosses the band — e.g. a group or merged
+      // path whose box spans the sheet while its ink is in another section.
+      selectionFullyContained: true,
+      // Click-selection hits actual ink, not the bounding box. Sheet-spanning
+      // boxes (same offenders as above) otherwise steal clicks on empty paper
+      // — selecting or dragging an object whose ink is in another section.
+      // Tolerance keeps thin CAD linework easy to pick at low zoom.
+      perPixelTargetFind: true,
+      targetFindTolerance: 8,
       // Render at 1x instead of devicePixelRatio. On hi-dpi screens this is ~4x
       // less pixel work per frame, which keeps pan/zoom/drag smooth on large
       // drawings — at the cost of slightly softer lines on retina displays.
@@ -1889,10 +1900,18 @@ export default function Editor({
           const cy1 = box.top + box.height;
           const hits = canvas.getObjects().filter((obj) => {
             if (obj.selectable === false || obj === rect) return false;
+            // At least half of the object's extent, per axis, must sit inside
+            // the box. A bbox-CENTRE test wrongly grabs objects whose bounding
+            // box spans the sheet (groups with far-flung members, paths merged
+            // across sections, long dimension lines) — their centre can land in
+            // the box while all their ink is elsewhere. The half-overlap rule
+            // keeps the forgiving feel for labels sticking partly out while
+            // rejecting far-away objects with huge bounding boxes.
             const b = obj.getBoundingRect();
-            const cx = b.left + b.width / 2;
-            const cy = b.top + b.height / 2;
-            return cx >= cx0 && cx <= cx1 && cy >= cy0 && cy <= cy1;
+            const ox = Math.min(cx1, b.left + b.width) - Math.max(cx0, b.left);
+            const oy = Math.min(cy1, b.top + b.height) - Math.max(cy0, b.top);
+            if (ox < 0 || oy < 0) return false;
+            return ox >= b.width * 0.5 && oy >= b.height * 0.5;
           });
           canvas.discardActiveObject();
           if (hits.length === 1) {
