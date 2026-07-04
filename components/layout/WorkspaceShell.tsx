@@ -357,6 +357,9 @@ export default function WorkspaceShell() {
   // (TOKEN_REFRESHED / INITIAL_SESSION fired when a backgrounded tab regains
   // focus) don't trigger a full "Loading workspace" re-sync for the same user.
   const syncedUserIdRef = useRef<string | null>(null);
+  // Collapses overlapping full re-syncs: cross-tab auth activity can emit
+  // several events in quick succession, and each full sync is ~17 fetches.
+  const syncInFlightRef = useRef(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [projectsReady, setProjectsReady] = useState(() => !authConfigured);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
@@ -471,7 +474,7 @@ export default function WorkspaceShell() {
 
     let active = true;
 
-    const syncProjects = async (redirectIfLoggedOut = false) => {
+    const syncProjectsInner = async (redirectIfLoggedOut = false) => {
       setProjectsReady(false);
 
       const {
@@ -482,29 +485,31 @@ export default function WorkspaceShell() {
       if (!active) return;
 
       if (userError || !user) {
-        setActiveUserId(null);
-        setCollaborators([]);
-        setSubscriptionBlock(null);
-        setPrograms([]);
-        setCategories([]);
-        setProjects([]);
-        clearWorkspaceData();
-        setProjectsReady(true);
-        setWorkspaceNotice(null);
-        lastSavedWorkspaceRef.current = "";
-        lastNormalizedSyncRef.current = "";
-        syncedUserIdRef.current = null;
-
-        // Only bounce to /login when the caller explicitly asked for it (the
-        // auth listener's user-change path). On mount, a transient getUser()
-        // failure — e.g. a token-refresh race while the drawing tabs are open —
-        // must not tear the tab down with a redirect + router.refresh(); the
-        // middleware already guards /workspace against genuinely signed-out
-        // visitors server-side.
+        // Transient failure (token-refresh race while the drawing tabs are
+        // open, network blip): keep whatever workspace is already on screen —
+        // clearing it here wiped the dashboard and made the next benign auth
+        // event look like a user change, triggering a full ~17-fetch re-sync
+        // that read as "the tab reloaded". A genuine sign-out arrives as a
+        // SIGNED_OUT event (handled below), and the middleware blocks genuinely
+        // signed-out visitors from /workspace server-side.
         if (redirectIfLoggedOut) {
+          // Explicit re-sync (user-change path) that found no user at all:
+          // treat as signed out.
+          setActiveUserId(null);
+          setCollaborators([]);
+          setSubscriptionBlock(null);
+          setPrograms([]);
+          setCategories([]);
+          setProjects([]);
+          clearWorkspaceData();
+          setWorkspaceNotice(null);
+          lastSavedWorkspaceRef.current = "";
+          lastNormalizedSyncRef.current = "";
+          syncedUserIdRef.current = null;
           router.replace("/login");
           router.refresh();
         }
+        setProjectsReady(true);
         return;
       }
 
@@ -820,6 +825,19 @@ export default function WorkspaceShell() {
       setProjectsReady(true);
     };
 
+    // Serialize full syncs: cross-tab auth activity can emit several events in
+    // quick succession; without this, each one launched its own ~17-fetch
+    // sweep concurrently (the observed "double reload").
+    const syncProjects = async (redirectIfLoggedOut = false) => {
+      if (syncInFlightRef.current) return;
+      syncInFlightRef.current = true;
+      try {
+        await syncProjectsInner(redirectIfLoggedOut);
+      } finally {
+        syncInFlightRef.current = false;
+      }
+    };
+
     void syncProjects();
 
     const {
@@ -848,11 +866,12 @@ export default function WorkspaceShell() {
       // than tearing down the workspace; a real logout always fires SIGNED_OUT.
       if (!session?.user) return;
 
-      // Benign events that fire when a backgrounded tab regains focus
-      // (TOKEN_REFRESHED, INITIAL_SESSION) or repeat SIGNED_IN for the same
-      // user must NOT flip the shell back to "Loading workspace". Only do a
-      // full re-sync when the signed-in user actually changes.
-      if (session.user.id === syncedUserIdRef.current) {
+      // Benign events that fire when a backgrounded tab regains focus or when
+      // another tab refreshes the token (TOKEN_REFRESHED, INITIAL_SESSION,
+      // USER_UPDATED, repeat SIGNED_IN for the same user) must NOT flip the
+      // shell back to "Loading workspace" or re-download the workspace. Only a
+      // genuine SIGNED_IN for a DIFFERENT user warrants a full re-sync.
+      if (event !== "SIGNED_IN" || session.user.id === syncedUserIdRef.current) {
         // Defensive: we've already loaded this user's workspace, so make sure
         // the shell is never left stranded on the loading screen by a benign
         // event. (No-op when projectsReady is already true.)
