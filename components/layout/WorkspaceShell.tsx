@@ -229,7 +229,7 @@ function Workspace({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const hasProject = Boolean(project);
   const isConstruction = project?.type === "construction";
-  const routeSafeModule = pathname === "/workspace" && activeModule === "drawings" ? "dashboard" : activeModule;
+  const routeSafeModule = activeModule;
   // Modules disabled for the MVP fall back to the dashboard even if a persisted
   // activeModule still points at them.
   const enabledModule = HIDDEN_MODULES.has(routeSafeModule) ? "dashboard" : routeSafeModule;
@@ -245,14 +245,6 @@ function Workspace({
         : "Portfolio Dashboard"
       : moduleLabels[module] || "Workspace";
   const visibleCollaborators = hasProject ? collaborators : [];
-  const isDrawingWorkspace = module === "drawings";
-
-  useEffect(() => {
-    if (pathname === "/workspace" && activeModule === "drawings") {
-      setActiveModule("dashboard");
-    }
-  }, [activeModule, pathname, setActiveModule]);
-
   // Non-construction projects don't surface Site Notes or Drawings in the sidebar.
   // If a stale activeModule (e.g. from before the project type was changed) points at
   // a hidden module, bounce the user back to the Overview so they don't see a blank canvas.
@@ -266,7 +258,7 @@ function Workspace({
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       <StorageWarningBanner />
-      <Sidebar forceCollapsed={isDrawingWorkspace} />
+      <Sidebar />
       <Sidebar
         isMobile
         mobileOpen={mobileSidebarOpen}
@@ -295,7 +287,7 @@ function Workspace({
 
         {/* Extra bottom padding so content can scroll clear of the fixed
             Assistant button in the bottom-right corner (hidden on the drawing canvas). */}
-        <main className={`flex-1 overflow-auto bg-bg ${isDrawingWorkspace ? "p-2 lg:p-3" : "p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24"}`}>
+        <main className="flex-1 overflow-auto bg-bg p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
           {hasProject && visibleCollaborators.length > 0 ? (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {visibleCollaborators.map((collaborator) => {
@@ -397,6 +389,7 @@ export default function WorkspaceShell() {
     qualityControlRecords: state.qualityControlRecords,
     checklistItems: state.checklistItems,
     siteNotes: state.siteNotes,
+    drawingPackages: state.drawingPackages,
     attendeeGroups: state.attendeeGroups,
     meetingMinutes: state.meetingMinutes,
     meetingSeries: state.meetingSeries,

@@ -32,6 +32,8 @@ import type {
   SiteNotePhoto,
   Risk,
   Stakeholder,
+  DrawingPackage,
+  DrawingPackageItem,
   ApprovalStep,
   MeetingAttendee,
   MeetingAttendeeGroup,
@@ -2079,6 +2081,22 @@ interface AppState {
   deleteSiteNotePhoto: (noteId: string, photoId: string) => void;
   createSiteVisitReportFromNote: (noteId: string, options?: Partial<SiteVisitReportOptions>) => void;
 
+  drawingPackages: DrawingPackage[];
+  addDrawingPackage: (name?: string) => string | null;
+  renameDrawingPackage: (id: string, name: string) => void;
+  deleteDrawingPackage: (id: string) => void;
+  addDrawingPackageItems: (
+    packageId: string,
+    items: Array<Omit<DrawingPackageItem, "id"> & Partial<Pick<DrawingPackageItem, "id">>>,
+  ) => void;
+  updateDrawingPackageItem: (
+    packageId: string,
+    itemId: string,
+    updates: Partial<DrawingPackageItem>,
+  ) => void;
+  removeDrawingPackageItem: (packageId: string, itemId: string) => void;
+  moveDrawingPackageItem: (packageId: string, itemId: string, direction: -1 | 1) => void;
+
   risks: Risk[];
   addRisk: (risk?: Partial<Risk>) => void;
   updateRisk: (id: string, updates: Partial<Risk>) => void;
@@ -2270,6 +2288,7 @@ export const useAppStore = create<AppState>()(
           siteNotes: deepClone(next.siteNotes),
           risks: deepClone(next.risks),
           stakeholders: deepClone(next.stakeholders),
+          drawingPackages: deepClone(next.drawingPackages),
           attendeeGroups: deepClone(next.attendeeGroups),
           meetingMinutes: deepClone(next.meetingMinutes),
           meetingSeries: deepClone(next.meetingSeries),
@@ -2301,6 +2320,7 @@ export const useAppStore = create<AppState>()(
           siteNotes: next.siteNotes,
           risks: next.risks,
           stakeholders: next.stakeholders,
+          drawingPackages: next.drawingPackages,
           attendeeGroups: next.attendeeGroups,
           meetingMinutes: next.meetingMinutes,
           meetingSeries: next.meetingSeries,
@@ -2359,6 +2379,7 @@ export const useAppStore = create<AppState>()(
             siteNotes: keep(s.siteNotes),
             risks: keep(s.risks),
             stakeholders: keep(s.stakeholders),
+            drawingPackages: keep(s.drawingPackages),
             // If the deleted project was the one currently open, clear the
             // selection and reset the per-project working state.
             ...(wasActive ? { project: null, ...resetProjectWorkspace() } : {}),
@@ -3702,6 +3723,96 @@ export const useAppStore = create<AppState>()(
               verifiedBy: status === "verified" ? item.verifiedBy : "",
               updatedAt: now,
             };
+          }),
+        })),
+
+      // ═══════════════════════════════════════════════════════════════
+      // ─── Drawing packages ─────────────────────────────────────────
+      // ═══════════════════════════════════════════════════════════════
+      drawingPackages: [],
+      addDrawingPackage: (name) => {
+        const projectId = get().project?.id;
+        if (!projectId) return null;
+        const now = new Date().toISOString();
+        const id = uuid();
+        set((s) => ({
+          drawingPackages: [
+            {
+              id,
+              project_id: projectId,
+              name: name?.trim() || "Drawing package",
+              items: [],
+              createdAt: now,
+              updatedAt: now,
+            },
+            ...s.drawingPackages,
+          ],
+        }));
+        return id;
+      },
+      renameDrawingPackage: (id, name) =>
+        set((s) => ({
+          drawingPackages: s.drawingPackages.map((pkg) =>
+            pkg.id === id
+              ? { ...pkg, name: name.trim() || pkg.name, updatedAt: new Date().toISOString() }
+              : pkg,
+          ),
+        })),
+      deleteDrawingPackage: (id) =>
+        set((s) => ({
+          drawingPackages: s.drawingPackages.filter((pkg) => pkg.id !== id),
+        })),
+      addDrawingPackageItems: (packageId, items) =>
+        set((s) => ({
+          drawingPackages: s.drawingPackages.map((pkg) =>
+            pkg.id === packageId
+              ? {
+                  ...pkg,
+                  items: [
+                    ...pkg.items,
+                    ...items.map((item) => ({ ...item, id: item.id || uuid() })),
+                  ],
+                  updatedAt: new Date().toISOString(),
+                }
+              : pkg,
+          ),
+        })),
+      updateDrawingPackageItem: (packageId, itemId, updates) =>
+        set((s) => ({
+          drawingPackages: s.drawingPackages.map((pkg) =>
+            pkg.id === packageId
+              ? {
+                  ...pkg,
+                  items: pkg.items.map((item) =>
+                    item.id === itemId ? { ...item, ...updates, id: item.id } : item,
+                  ),
+                  updatedAt: new Date().toISOString(),
+                }
+              : pkg,
+          ),
+        })),
+      removeDrawingPackageItem: (packageId, itemId) =>
+        set((s) => ({
+          drawingPackages: s.drawingPackages.map((pkg) =>
+            pkg.id === packageId
+              ? {
+                  ...pkg,
+                  items: pkg.items.filter((item) => item.id !== itemId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : pkg,
+          ),
+        })),
+      moveDrawingPackageItem: (packageId, itemId, direction) =>
+        set((s) => ({
+          drawingPackages: s.drawingPackages.map((pkg) => {
+            if (pkg.id !== packageId) return pkg;
+            const index = pkg.items.findIndex((item) => item.id === itemId);
+            const target = index + direction;
+            if (index < 0 || target < 0 || target >= pkg.items.length) return pkg;
+            const items = [...pkg.items];
+            [items[index], items[target]] = [items[target], items[index]];
+            return { ...pkg, items, updatedAt: new Date().toISOString() };
           }),
         })),
 

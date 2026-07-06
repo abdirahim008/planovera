@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import AdminGate from "@/components/drawings/AdminGate";
 import LibraryWarehouse from "@/components/drawings/LibraryWarehouse";
 import {
   loadFavoriteIds,
@@ -76,15 +77,17 @@ export default function DrawingLibraryPage() {
   }
 
   return (
-    <LibraryWarehouse
-      libraryItems={items}
-      favoriteIds={favoriteIds}
-      recentIds={recentIds}
-      onToggleFavorite={handleToggleFavorite}
-      onImport={handleImport}
-      onEdit={isAdmin ? handleEditInCanvas : undefined}
-      onResolveSvg={fetchLibraryItemSvg}
-      onClose={() => window.close()}
-    />
+    <AdminGate>
+      <LibraryWarehouse
+        libraryItems={items}
+        favoriteIds={favoriteIds}
+        recentIds={recentIds}
+        onToggleFavorite={handleToggleFavorite}
+        onImport={handleImport}
+        onEdit={isAdmin ? handleEditInCanvas : undefined}
+        onResolveSvg={fetchLibraryItemSvg}
+        onClose={() => window.close()}
+      />
+    </AdminGate>
   );
 }
