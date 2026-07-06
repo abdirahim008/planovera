@@ -111,20 +111,8 @@ export default function Sidebar({
   };
 
   const handleNavClick = (moduleId: string) => {
-    if (moduleId === "drawings" && project?.id) {
-      if (isMobile) onCloseMobile?.();
-      const studioUrl = `/drawings/studio?projectId=${encodeURIComponent(project.id)}`;
-      const opened = window.open(studioUrl, "_blank");
-
-      if (opened) {
-        opened.opener = null;
-        opened.focus();
-      } else {
-        router.push(studioUrl);
-      }
-      return;
-    }
-
+    // Drawings is a normal in-workspace module now (the package builder);
+    // the full-canvas studio survives only as an admin curation tool.
     setActiveModule(moduleId);
     if (isMobile) onCloseMobile?.();
   };

@@ -735,6 +735,60 @@ export interface BOQLibraryItemRecord {
   author_name?: string | null;
 }
 
+/**
+ * Drawing packages: the lightweight, user-facing face of the drawings module.
+ * A package is a set of REFERENCES to curated warehouse drawings plus the
+ * title-block text the engineer fills in — never the drawing geometry itself
+ * (SVGs are fetched from the shared library at render/export time), so the
+ * workspace snapshot stays small.
+ */
+export interface DrawingPackageTitleBlock {
+  projectTitle: string;
+  client: string;
+  consultant: string;
+  drawingTitle: string;
+  drawingNo: string;
+  scale: string;
+  date: string;
+  drawnBy: string;
+  checkedBy: string;
+  approvedBy: string;
+  revision: string;
+  status: string;
+}
+
+export interface DrawingPackageItem {
+  id: string;
+  /** Reference into the shared drawing library (warehouse). */
+  libraryItemId: string;
+  name: string;
+  titleBlock: DrawingPackageTitleBlock;
+}
+
+export interface DrawingPackage {
+  id: string;
+  project_id: string;
+  name: string;
+  items: DrawingPackageItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const emptyDrawingPackageTitleBlock = (): DrawingPackageTitleBlock => ({
+  projectTitle: "",
+  client: "",
+  consultant: "",
+  drawingTitle: "",
+  drawingNo: "",
+  scale: "",
+  date: "",
+  drawnBy: "",
+  checkedBy: "",
+  approvedBy: "",
+  revision: "",
+  status: "",
+});
+
 export interface ConstructionWorkspacePayload {
   savedBOQs: SavedBOQ[];
   activeBOQId: string | null;
@@ -756,6 +810,7 @@ export interface ConstructionWorkspacePayload {
   siteNotes: SiteNote[];
   risks: Risk[];
   stakeholders: Stakeholder[];
+  drawingPackages: DrawingPackage[];
   attendeeGroups: MeetingAttendeeGroup[];
   meetingMinutes: MeetingMinute[];
   meetingSeries: MeetingSeries[];
@@ -1122,6 +1177,7 @@ export const emptyConstructionWorkspacePayload =
     siteNotes: [],
     risks: [],
     stakeholders: [],
+    drawingPackages: [],
     attendeeGroups: [],
     meetingSeries: [],
     meetingMinutes: [],
@@ -1210,6 +1266,7 @@ export const normalizeConstructionWorkspacePayload = (
   siteNotes: payload?.siteNotes ?? [],
   risks: payload?.risks ?? [],
   stakeholders: payload?.stakeholders ?? [],
+  drawingPackages: payload?.drawingPackages ?? [],
   attendeeGroups: payload?.attendeeGroups ?? [],
   meetingMinutes: payload?.meetingMinutes ?? [],
   meetingSeries: payload?.meetingSeries ?? [],

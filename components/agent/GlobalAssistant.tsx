@@ -3,8 +3,6 @@
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 
-import { useAppStore } from "@/lib/store";
-
 // Lazy + client-only: the assistant is non-critical chrome, kept out of every
 // page's initial bundle. It loads when first shown.
 const AgentChatPanel = dynamic(() => import("@/components/agent/AgentChatPanel"), {
@@ -30,15 +28,7 @@ export default function GlobalAssistant() {
     pathname.startsWith("/admin");
 
   if (!onAccountPage) return null;
-  return <AccountAssistant />;
-}
-
-// Store subscription isolated here so only account pages ever hydrate it.
-function AccountAssistant() {
-  const activeModule = useAppStore((s) => s.activeModule);
-
-  // Keep the embedded drawing canvas (drawings module inside /workspace)
-  // uncluttered.
-  if (activeModule === "drawings") return null;
+  // The drawings module is a normal lightweight view now (package builder,
+  // no full-screen canvas), so the assistant stays available everywhere.
   return <AgentChatPanel />;
 }

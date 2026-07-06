@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import AdminGate from "@/components/drawings/AdminGate";
 import Editor from "@/components/drawings/Editor";
 import type { Project } from "@/lib/supabase";
 import { useAppStore } from "@/lib/store";
@@ -85,5 +86,9 @@ export default function DrawingStudioRoute() {
     );
   }
 
-  return <Editor linkedProject={toLinkedProject(activeProject)} editLibraryId={editLibraryId} />;
+  return (
+    <AdminGate>
+      <Editor linkedProject={toLinkedProject(activeProject)} editLibraryId={editLibraryId} />
+    </AdminGate>
+  );
 }
