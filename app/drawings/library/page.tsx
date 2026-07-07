@@ -14,6 +14,7 @@ import {
   fetchDrawingLibrary,
   fetchLibraryItemSvg,
   postLibraryImport,
+  subscribeLibraryChanges,
 } from "@/lib/drawings/libraryBridge";
 
 // Standalone library browser — opened in its own tab from the studio so the
@@ -43,6 +44,28 @@ export default function DrawingLibraryPage() {
       active = false;
     };
   }, []);
+
+  const refreshLibrary = useCallback(async () => {
+    const list = await fetchDrawingLibrary();
+    setItems(list);
+  }, []);
+
+  useEffect(() => {
+    // The studio saves admin edits in a separate tab; without a refresh here the
+    // grid keeps showing pre-edit thumbnails until a manual reload. Refetch when
+    // the studio broadcasts a change, and when this tab regains focus.
+    const onFocus = () => {
+      void refreshLibrary();
+    };
+    window.addEventListener("focus", onFocus);
+    const unsubscribe = subscribeLibraryChanges(() => {
+      void refreshLibrary();
+    });
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      unsubscribe();
+    };
+  }, [refreshLibrary]);
 
   const handleToggleFavorite = useCallback((libraryId: string) => {
     setFavoriteIds((current) => {

@@ -8,7 +8,11 @@ import { useRouter } from "next/navigation";
 
 import Toolbar from "./Toolbar";
 import LeftPanel, { type DrawingPanelTab } from "./LeftPanel";
-import { subscribeLibraryActions, type LibraryAction } from "@/lib/drawings/libraryBridge";
+import {
+  broadcastLibraryChanged,
+  subscribeLibraryActions,
+  type LibraryAction,
+} from "@/lib/drawings/libraryBridge";
 import { FileText, Plus } from "lucide-react";
 import ContextMenu from "./ContextMenu";
 import { getPaperDimensions } from "@/lib/drawings/paper";
@@ -3045,6 +3049,7 @@ export default function Editor({
         } satisfies LibraryItem;
         setLibraryItems((previous) => mergeLibraryItems([item, ...previous.filter((entry) => entry.id !== item.id)]));
         setLibrarySaveDraft(null);
+        broadcastLibraryChanged();
         setMessage(`Published ${draft.mode} "${item.name}" to the shared library.`);
         return;
       }
@@ -3297,6 +3302,7 @@ export default function Editor({
           return;
         }
         setLibraryItems((previous) => previous.filter((entry) => entry.id !== item.id));
+        broadcastLibraryChanged();
         setMessage(`Removed "${item.name}" from the shared library.`);
         return;
       }
@@ -3349,6 +3355,7 @@ export default function Editor({
         assetType: "drawing" as const,
       };
       setLibraryItems((previous) => mergeLibraryItems([item, ...previous.filter((entry) => entry.id !== item.id)]));
+      broadcastLibraryChanged();
       setMessage(`Published canvas content as "${item.name}".`);
     },
     [projectName, session, setMessage, userId],
@@ -3441,12 +3448,22 @@ export default function Editor({
         ]),
       );
     } else {
-      const { error } = await supabase
+      // Confirm the write landed: an update that matches zero rows (RLS blocked
+      // it, or the row is gone) resolves with no error, so without .select() the
+      // UI would report a phantom success while nothing persisted.
+      const { data: updated, error } = await supabase
         .from("drawing_library_items")
         .update({ svg: canvasSvg, fabric_json: fabricJson, thumbnail, updated_at: updatedAt })
-        .eq("id", editingLibraryItem.id);
+        .eq("id", editingLibraryItem.id)
+        .select("id");
       if (error) {
         setMessage(`Library update failed: ${error.message}`);
+        return;
+      }
+      if (!updated || updated.length === 0) {
+        setMessage(
+          "Library update didn't save — you may not have permission, or the drawing no longer exists.",
+        );
         return;
       }
       setLibraryItems((previous) =>
@@ -3457,6 +3474,7 @@ export default function Editor({
         ),
       );
     }
+    broadcastLibraryChanged();
     setMessage(`Updated "${editingLibraryItem.name}" in the library.`);
     setEditingLibraryItem(null);
   }, [authConfigured, editingLibraryItem, libraryItems, session, setMessage, svgToThumbnail, userId]);
