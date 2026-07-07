@@ -19,6 +19,7 @@ import {
   fetchCurrentUserRole,
   fetchDrawingLibrary,
   fetchLibraryItemSvg,
+  subscribeLibraryChanges,
 } from "@/lib/drawings/libraryBridge";
 import {
   PACKAGE_SHEET_CSS,
@@ -114,6 +115,32 @@ export default function DrawingPackagesModule() {
   useEffect(() => {
     if (pickerOpen) void ensureLibrary();
   }, [pickerOpen, ensureLibrary]);
+
+  // Re-pull the warehouse after an admin curates it in the studio (another tab),
+  // so this module doesn't keep serving the memoized pre-edit list. Skip when the
+  // library was never loaded — nothing to refresh, and no need to fetch for users
+  // who never open the picker. `clearSvgCache` drops cached drawing SVGs so an
+  // edited drawing re-renders; focus (a cheap fallback) only re-syncs metadata.
+  const refreshLibrary = useCallback((clearSvgCache: boolean) => {
+    if (!libraryPromiseRef.current) return;
+    const promise = fetchDrawingLibrary().then((items) => {
+      setLibrary(items);
+      return items;
+    });
+    libraryPromiseRef.current = promise;
+    if (clearSvgCache) setSvgCache({});
+    void promise;
+  }, []);
+
+  useEffect(() => {
+    const onFocus = () => refreshLibrary(false);
+    window.addEventListener("focus", onFocus);
+    const unsubscribe = subscribeLibraryChanges(() => refreshLibrary(true));
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      unsubscribe();
+    };
+  }, [refreshLibrary]);
 
   const makeTitleBlock = useCallback(
     (item: LibraryItem, sequence: number): DrawingPackageTitleBlock => ({
