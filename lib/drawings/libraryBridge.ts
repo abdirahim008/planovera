@@ -18,6 +18,7 @@ import {
 } from "./appModel";
 
 const QUEUE_KEY = "drawflow-library-import-queue";
+const LIBRARY_CHANGED_KEY = "drawflow-library-changed";
 
 export type LibraryAction = "import" | "edit";
 
@@ -97,6 +98,32 @@ export function subscribeLibraryActions(
     window.removeEventListener("storage", onStorage);
     window.removeEventListener("focus", drain);
   };
+}
+
+// Studio tab → tell the library/warehouse tabs that shared library items changed
+// (an admin edited, published, or removed a drawing) so they refetch instead of
+// showing stale thumbnails until a manual reload.
+export function broadcastLibraryChanged() {
+  try {
+    window.localStorage.setItem(
+      LIBRARY_CHANGED_KEY,
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
+// Library/warehouse tab → run `handler` whenever another tab reports a library
+// change. Fires on the cross-tab `storage` event (which only fires in tabs other
+// than the one that wrote the key). Returns an unsubscribe function.
+export function subscribeLibraryChanges(handler: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === LIBRARY_CHANGED_KEY) handler();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
 }
 
 // Current user's role for the standalone library page (admin gating). Returns
