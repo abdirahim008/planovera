@@ -195,23 +195,37 @@ export async function fetchSharedLibraryItems(): Promise<{ items: LibraryItem[];
   }
 }
 
-// Deferred bulk thumbnail fetch for the admin grid: one query, id → thumbnail.
-// Kept separate from the list so a slow/large thumbnail payload never blocks (or
-// breaks) the drawings from appearing.
-export async function fetchSharedLibraryThumbnails(): Promise<Record<string, string>> {
-  if (!isSupabaseConfigured()) return {};
+// Thumbnails are base64 PNGs (tens of KB each), so fetching the whole
+// warehouse's worth in one query is a multi-megabyte response — on a slow
+// field connection it crawls or times out and every preview sits on
+// "loading" forever. Stream them in small batches instead: each batch is a
+// modest response the caller merges in as it lands, so previews appear
+// progressively. A failed batch is skipped, never fatal.
+const THUMBNAIL_BATCH_SIZE = 12;
+
+export async function streamLibraryThumbnails(
+  ids: string[],
+  onBatch: (thumbnails: Record<string, string>) => void,
+): Promise<void> {
+  if (!isSupabaseConfigured() || ids.length === 0) return;
   const supabase = getSupabaseBrowserClient();
-  if (!supabase) return {};
-  try {
-    const { data, error } = await supabase.from("drawing_library_items").select("id,thumbnail");
-    if (error || !data) return {};
-    const map: Record<string, string> = {};
-    for (const row of data as Array<{ id: string; thumbnail: string | null }>) {
-      if (row.thumbnail) map[row.id] = row.thumbnail;
+  if (!supabase) return;
+  for (let start = 0; start < ids.length; start += THUMBNAIL_BATCH_SIZE) {
+    const chunk = ids.slice(start, start + THUMBNAIL_BATCH_SIZE);
+    try {
+      const { data, error } = await supabase
+        .from("drawing_library_items")
+        .select("id,thumbnail")
+        .in("id", chunk);
+      if (error || !data) continue;
+      const map: Record<string, string> = {};
+      for (const row of data as Array<{ id: string; thumbnail: string | null }>) {
+        if (row.thumbnail) map[row.id] = row.thumbnail;
+      }
+      if (Object.keys(map).length > 0) onBatch(map);
+    } catch {
+      /* keep streaming the remaining batches */
     }
-    return map;
-  } catch {
-    return {};
   }
 }
 
@@ -226,8 +240,15 @@ function mergeWithSeed(remoteItems: LibraryItem[]): LibraryItem[] {
  * when Supabase is configured, the shared DB items (metadata only — the heavy
  * svg is fetched lazily on insert) merged with the seed set; otherwise the
  * local seed + personal items.
+ *
+ * The list itself excludes thumbnails so it arrives fast even on a slow
+ * connection. Pass `onThumbnails` to stream them in batches afterwards —
+ * the callback fires once per landed batch with an id → data-URL map for
+ * the caller to merge into its state.
  */
-export async function fetchDrawingLibrary(): Promise<LibraryItem[]> {
+export async function fetchDrawingLibrary(
+  onThumbnails?: (thumbnails: Record<string, string>) => void,
+): Promise<LibraryItem[]> {
   if (!isSupabaseConfigured()) return loadLibraryItems();
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return loadLibraryItems();
@@ -238,10 +259,17 @@ export async function fetchDrawingLibrary(): Promise<LibraryItem[]> {
     await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("drawing_library_items")
-      .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+      .select("id,name,category,description,tags,author_id,author_name,updated_at")
       .order("updated_at", { ascending: false });
     if (error || !data) return loadLibraryItems();
-    return mergeWithSeed((data as LibraryItemRecord[]).map(mapLibraryRecord));
+    const remote = (data as LibraryItemRecord[]).map(mapLibraryRecord);
+    if (onThumbnails) {
+      void streamLibraryThumbnails(
+        remote.map((item) => item.id),
+        onThumbnails,
+      );
+    }
+    return mergeWithSeed(remote);
   } catch {
     // Network/transport error — fall back to the local seed set rather than
     // throwing (which would leave callers stuck on their loading state).

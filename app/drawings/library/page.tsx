@@ -27,15 +27,37 @@ export default function DrawingLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Thumbnails stream in per-batch after the metadata list lands, so the grid
+  // is browsable immediately instead of waiting on one multi-MB response.
+  const mergeThumbnails = useCallback((batch: Record<string, string>) => {
+    setItems((current) =>
+      current.map((item) => (batch[item.id] ? { ...item, thumbnail: batch[item.id] } : item)),
+    );
+  }, []);
+
+  // A refreshed list arrives without thumbnails (metadata-only) — keep the
+  // ones already on screen so focus-driven refreshes don't blank the grid;
+  // changed thumbnails are replaced when their stream batch lands.
+  const applyList = useCallback((list: LibraryItem[]) => {
+    setItems((current) => {
+      const known = new Map(current.map((item) => [item.id, item.thumbnail]));
+      return list.map((item) =>
+        item.thumbnail ? item : { ...item, thumbnail: known.get(item.id) },
+      );
+    });
+  }, []);
+
   useEffect(() => {
     document.title = "Drawing library · Planovera";
     setFavoriteIds(loadFavoriteIds());
     setRecentIds(loadRecentIds());
     void fetchCurrentUserRole().then((role) => setIsAdmin(role === "admin"));
     let active = true;
-    fetchDrawingLibrary()
+    fetchDrawingLibrary((batch) => {
+      if (active) mergeThumbnails(batch);
+    })
       .then((list) => {
-        if (active) setItems(list);
+        if (active) applyList(list);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -43,12 +65,12 @@ export default function DrawingLibraryPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [applyList, mergeThumbnails]);
 
   const refreshLibrary = useCallback(async () => {
-    const list = await fetchDrawingLibrary();
-    setItems(list);
-  }, []);
+    const list = await fetchDrawingLibrary(mergeThumbnails);
+    applyList(list);
+  }, [applyList, mergeThumbnails]);
 
   useEffect(() => {
     // The studio saves admin edits in a separate tab; without a refresh here the

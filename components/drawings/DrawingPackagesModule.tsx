@@ -64,18 +64,38 @@ export default function DrawingPackagesModule() {
     selectedPackage?.items[0] ??
     null;
 
-  // ── Shared library (metadata only) — loaded on demand, once. ──
+  // ── Shared library (metadata only) — loaded on demand, once. Thumbnails
+  // stream in per-batch afterwards so the picker list is usable immediately. ──
   const [library, setLibrary] = useState<LibraryItem[] | null>(null);
   const libraryPromiseRef = useRef<Promise<LibraryItem[]> | null>(null);
+  const mergeThumbnails = useCallback((batch: Record<string, string>) => {
+    setLibrary((current) =>
+      current
+        ? current.map((item) => (batch[item.id] ? { ...item, thumbnail: batch[item.id] } : item))
+        : current,
+    );
+  }, []);
+  // A (re)fetched list arrives without thumbnails — keep any already loaded so
+  // focus-driven refreshes don't blank the picker; changed thumbnails are
+  // replaced when their stream batch lands.
+  const applyLibrary = useCallback((list: LibraryItem[]) => {
+    setLibrary((current) => {
+      if (!current) return list;
+      const known = new Map(current.map((item) => [item.id, item.thumbnail]));
+      return list.map((item) =>
+        item.thumbnail ? item : { ...item, thumbnail: known.get(item.id) },
+      );
+    });
+  }, []);
   const ensureLibrary = useCallback((): Promise<LibraryItem[]> => {
     if (!libraryPromiseRef.current) {
-      libraryPromiseRef.current = fetchDrawingLibrary().then((items) => {
-        setLibrary(items);
+      libraryPromiseRef.current = fetchDrawingLibrary(mergeThumbnails).then((items) => {
+        applyLibrary(items);
         return items;
       });
     }
     return libraryPromiseRef.current;
-  }, []);
+  }, [applyLibrary, mergeThumbnails]);
 
   // ── Full SVGs, fetched lazily per drawing and cached for the session. ──
   const [svgCache, setSvgCache] = useState<Record<string, string | null>>({});
@@ -139,16 +159,19 @@ export default function DrawingPackagesModule() {
   // library was never loaded — nothing to refresh, and no need to fetch for users
   // who never open the picker. `clearSvgCache` drops cached drawing SVGs so an
   // edited drawing re-renders; focus (a cheap fallback) only re-syncs metadata.
-  const refreshLibrary = useCallback((clearSvgCache: boolean) => {
-    if (!libraryPromiseRef.current) return;
-    const promise = fetchDrawingLibrary().then((items) => {
-      setLibrary(items);
-      return items;
-    });
-    libraryPromiseRef.current = promise;
-    if (clearSvgCache) setSvgCache({});
-    void promise;
-  }, []);
+  const refreshLibrary = useCallback(
+    (clearSvgCache: boolean) => {
+      if (!libraryPromiseRef.current) return;
+      const promise = fetchDrawingLibrary(mergeThumbnails).then((items) => {
+        applyLibrary(items);
+        return items;
+      });
+      libraryPromiseRef.current = promise;
+      if (clearSvgCache) setSvgCache({});
+      void promise;
+    },
+    [applyLibrary, mergeThumbnails],
+  );
 
   useEffect(() => {
     const onFocus = () => refreshLibrary(false);
