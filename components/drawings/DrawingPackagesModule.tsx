@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { v4 as uuid } from "uuid";
 
 import Modal from "@/components/ui/Modal";
 import { LIBRARY_CATEGORIES, type LibraryItem } from "@/lib/drawings/appModel";
@@ -24,12 +25,14 @@ import {
 import {
   PACKAGE_SHEET_CSS,
   buildPackagePrintHtml,
+  packageSheetLibraryIds,
   renderPackageSheetHtml,
 } from "@/lib/drawings/packageSheet";
 import {
   emptyDrawingPackageTitleBlock,
   type DrawingPackage,
   type DrawingPackageItem,
+  type DrawingPackageOverlay,
   type DrawingPackageTitleBlock,
 } from "@/lib/supabase";
 import { isSupabaseConfigured } from "@/lib/supabase-browser";
@@ -133,7 +136,9 @@ export default function DrawingPackagesModule() {
     void ensureLibrary();
   }, [ensureLibrary]);
   useEffect(() => {
-    selectedPackage?.items.forEach((item) => void ensureSvg(item.libraryItemId));
+    selectedPackage?.items.forEach((item) =>
+      packageSheetLibraryIds(item).forEach((libraryId) => void ensureSvg(libraryId)),
+    );
   }, [ensureSvg, selectedPackage]);
 
   // ── Admin: the studio survives as a curation tool only. ──
@@ -204,17 +209,51 @@ export default function DrawingPackagesModule() {
     }
   };
 
-  const handleAddDrawings = (items: LibraryItem[]) => {
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Picker confirm: full drawings become sheets; parts land as overlays on
+  // the currently selected sheet (staggered so several don't stack exactly).
+  const handleAddFromPicker = (items: LibraryItem[]) => {
     if (!selectedPackage || items.length === 0) return;
-    const base = selectedPackage.items.length;
-    addDrawingPackageItems(
-      selectedPackage.id,
-      items.map((item, index) => ({
-        libraryItemId: item.id,
-        name: item.name,
-        titleBlock: makeTitleBlock(item, base + index + 1),
-      })),
-    );
+    const drawings = items.filter((item) => item.assetType !== "object");
+    const parts = items.filter((item) => item.assetType === "object");
+
+    if (drawings.length > 0) {
+      const base = selectedPackage.items.length;
+      addDrawingPackageItems(
+        selectedPackage.id,
+        drawings.map((item, index) => ({
+          libraryItemId: item.id,
+          name: item.name,
+          titleBlock: makeTitleBlock(item, base + index + 1),
+        })),
+      );
+    }
+
+    if (parts.length > 0) {
+      const targetSheet = selectedItem ?? selectedPackage.items[0] ?? null;
+      if (!targetSheet) {
+        setNotice("Add a drawing sheet first — parts are placed on top of a sheet.");
+      } else {
+        const existing = targetSheet.overlays ?? [];
+        const overlays: DrawingPackageOverlay[] = [
+          ...existing,
+          ...parts.map((part, index) => ({
+            id: uuid(),
+            libraryItemId: part.id,
+            name: part.name,
+            x: 34 + ((existing.length + index) % 4) * 7,
+            y: 30 + ((existing.length + index) % 4) * 7,
+            width: 25,
+          })),
+        ];
+        updateDrawingPackageItem(selectedPackage.id, targetSheet.id, { overlays });
+        setNotice(
+          `Placed ${parts.length} part${parts.length === 1 ? "" : "s"} on “${targetSheet.name}” — drag to position, use the size control while selected.`,
+        );
+      }
+    }
+
     setPickerOpen(false);
   };
 
@@ -222,16 +261,17 @@ export default function DrawingPackagesModule() {
     if (!selectedPackage || selectedPackage.items.length === 0 || exporting) return;
     setExporting(true);
     try {
-      const svgByItemId: Record<string, string | null> = Object.fromEntries(
+      const libraryIds = Array.from(
+        new Set(selectedPackage.items.flatMap((item) => packageSheetLibraryIds(item))),
+      );
+      const svgByLibraryId: Record<string, string | null> = Object.fromEntries(
         await Promise.all(
-          selectedPackage.items.map(
-            async (item) => [item.id, await ensureSvg(item.libraryItemId)] as const,
-          ),
+          libraryIds.map(async (libraryId) => [libraryId, await ensureSvg(libraryId)] as const),
         ),
       );
       const printWindow = window.open("", "_blank");
       if (!printWindow) return;
-      printWindow.document.write(buildPackagePrintHtml(selectedPackage, svgByItemId));
+      printWindow.document.write(buildPackagePrintHtml(selectedPackage, svgByLibraryId));
       printWindow.document.close();
       setTimeout(() => {
         printWindow.focus();
@@ -347,7 +387,7 @@ export default function DrawingPackagesModule() {
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
                   >
                     <Plus size={13} />
-                    Add drawings
+                    Add drawings / parts
                   </button>
                   <button
                     type="button"
@@ -360,6 +400,15 @@ export default function DrawingPackagesModule() {
                   </button>
                 </div>
               </div>
+
+              {notice ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent">
+                  <span>{notice}</span>
+                  <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss notice">
+                    ✕
+                  </button>
+                </div>
+              ) : null}
 
               {selectedPackage.items.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border bg-bg-surface p-8 text-center text-sm text-txt-muted">
@@ -422,11 +471,25 @@ export default function DrawingPackagesModule() {
                     {selectedItem && (
                       <SheetPreview
                         item={selectedItem}
-                        svg={svgCache[selectedItem.libraryItemId]}
+                        svgByLibraryId={svgCache}
                         index={selectedPackage.items.findIndex((i) => i.id === selectedItem.id)}
                         count={selectedPackage.items.length}
                         onAdjust={(updates) =>
                           updateDrawingPackageItem(selectedPackage.id, selectedItem.id, updates)
+                        }
+                        onUpdateOverlay={(overlayId, updates) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            overlays: (selectedItem.overlays ?? []).map((overlay) =>
+                              overlay.id === overlayId ? { ...overlay, ...updates } : overlay,
+                            ),
+                          })
+                        }
+                        onRemoveOverlay={(overlayId) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            overlays: (selectedItem.overlays ?? []).filter(
+                              (overlay) => overlay.id !== overlayId,
+                            ),
+                          })
                         }
                       />
                     )}
@@ -442,7 +505,7 @@ export default function DrawingPackagesModule() {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         library={library}
-        onConfirm={handleAddDrawings}
+        onConfirm={handleAddFromPicker}
       />
     </section>
   );
@@ -643,22 +706,60 @@ const PAN_LIMIT = 80;
 
 const clampPan = (value: number) => Math.min(Math.max(value, -PAN_LIMIT), PAN_LIMIT);
 
+const OVERLAY_WIDTH_STEP = 5;
+const OVERLAY_WIDTH_MIN = 5;
+const OVERLAY_WIDTH_MAX = 100;
+
+type SheetDrag =
+  | {
+      kind: "pan";
+      startX: number;
+      startY: number;
+      baseX: number;
+      baseY: number;
+      lastX: number;
+      lastY: number;
+    }
+  | {
+      kind: "overlay";
+      overlayId: string;
+      startX: number;
+      startY: number;
+      baseX: number;
+      baseY: number;
+      lastX: number;
+      lastY: number;
+      moved: boolean;
+    };
+
 function SheetPreview({
   item,
-  svg,
+  svgByLibraryId,
   index,
   count,
   onAdjust,
+  onUpdateOverlay,
+  onRemoveOverlay,
 }: {
   item: DrawingPackageItem;
-  svg: string | null | undefined;
+  svgByLibraryId: Record<string, string | null>;
   index: number;
   count: number;
   onAdjust: (updates: Partial<Pick<DrawingPackageItem, "zoom" | "panX" | "panY">>) => void;
+  onUpdateOverlay: (overlayId: string, updates: Partial<DrawingPackageOverlay>) => void;
+  onRemoveOverlay: (overlayId: string) => void;
 }) {
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedOverlayId(null);
+  }, [item.id]);
+  const selectedOverlay =
+    (item.overlays ?? []).find((overlay) => overlay.id === selectedOverlayId) ?? null;
+
+  const baseSvg = svgByLibraryId[item.libraryItemId];
   const html = useMemo(
-    () => renderPackageSheetHtml(item, svg ?? null, index, count),
-    [item, svg, index, count],
+    () => renderPackageSheetHtml(item, svgByLibraryId, index, count, { selectedOverlayId }),
+    [item, svgByLibraryId, index, count, selectedOverlayId],
   );
 
   const zoom = Math.min(Math.max(item.zoom ?? 1, ZOOM_MIN), ZOOM_MAX);
@@ -669,22 +770,42 @@ function SheetPreview({
     if (next !== zoom) onAdjust({ zoom: Number(next.toFixed(2)) });
   };
 
-  // Drag-to-pan: while dragging, write the transform straight onto the DOM
-  // node (re-rendering the whole sheet HTML per pointer-move would re-parse
-  // the SVG each frame); commit to the store once, on release.
+  // Drag mechanics: pointer-down on a part drags the part; on empty sheet it
+  // pans the base drawing. While dragging, the position is written straight
+  // onto the DOM node (re-rendering the sheet HTML per pointer-move would
+  // re-parse the SVG each frame); the store commit happens once, on release.
+  // A press-without-movement on a part selects it.
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; lastX: number; lastY: number } | null>(null);
+  const dragRef = useRef<SheetDrag | null>(null);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!svg || event.button !== 0) return;
-    dragRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      baseX: panX,
-      baseY: panY,
-      lastX: panX,
-      lastY: panY,
-    };
+    if (!baseSvg || event.button !== 0) return;
+    const overlayEl = (event.target as Element).closest<HTMLElement>(".dp-overlay");
+    const overlayId = overlayEl?.dataset.overlayId;
+    const overlay = overlayId
+      ? (item.overlays ?? []).find((entry) => entry.id === overlayId)
+      : undefined;
+    dragRef.current = overlay
+      ? {
+          kind: "overlay",
+          overlayId: overlay.id,
+          startX: event.clientX,
+          startY: event.clientY,
+          baseX: overlay.x,
+          baseY: overlay.y,
+          lastX: overlay.x,
+          lastY: overlay.y,
+          moved: false,
+        }
+      : {
+          kind: "pan",
+          startX: event.clientX,
+          startY: event.clientY,
+          baseX: panX,
+          baseY: panY,
+          lastX: panX,
+          lastY: panY,
+        };
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -697,21 +818,63 @@ function SheetPreview({
     const container = containerRef.current;
     if (!drag || !container) return;
     const area = container.querySelector<HTMLElement>(".dp-drawing");
-    const zoomEl = container.querySelector<HTMLElement>(".dp-zoom");
-    if (!area || !zoomEl) return;
+    if (!area) return;
     const rect = area.getBoundingClientRect();
-    drag.lastX = clampPan(drag.baseX + ((event.clientX - drag.startX) / rect.width) * 100);
-    drag.lastY = clampPan(drag.baseY + ((event.clientY - drag.startY) / rect.height) * 100);
-    zoomEl.style.transform = `translate(${drag.lastX.toFixed(1)}%, ${drag.lastY.toFixed(1)}%) scale(${zoom.toFixed(2)})`;
+    const dxPct = ((event.clientX - drag.startX) / rect.width) * 100;
+    const dyPct = ((event.clientY - drag.startY) / rect.height) * 100;
+
+    if (drag.kind === "pan") {
+      const zoomEl = container.querySelector<HTMLElement>(".dp-zoom");
+      if (!zoomEl) return;
+      drag.lastX = clampPan(drag.baseX + dxPct);
+      drag.lastY = clampPan(drag.baseY + dyPct);
+      zoomEl.style.transform = `translate(${drag.lastX.toFixed(1)}%, ${drag.lastY.toFixed(1)}%) scale(${zoom.toFixed(2)})`;
+      return;
+    }
+
+    if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 3) {
+      drag.moved = true;
+    }
+    const overlayEl = container.querySelector<HTMLElement>(
+      `[data-overlay-id="${drag.overlayId}"]`,
+    );
+    if (!overlayEl) return;
+    drag.lastX = Math.min(Math.max(drag.baseX + dxPct, -20), 95);
+    drag.lastY = Math.min(Math.max(drag.baseY + dyPct, -20), 95);
+    overlayEl.style.left = `${drag.lastX.toFixed(1)}%`;
+    overlayEl.style.top = `${drag.lastY.toFixed(1)}%`;
   };
 
   const handlePointerUp = () => {
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
-    if (drag.lastX !== drag.baseX || drag.lastY !== drag.baseY) {
-      onAdjust({ panX: Number(drag.lastX.toFixed(1)), panY: Number(drag.lastY.toFixed(1)) });
+    if (drag.kind === "pan") {
+      if (drag.lastX !== drag.baseX || drag.lastY !== drag.baseY) {
+        onAdjust({ panX: Number(drag.lastX.toFixed(1)), panY: Number(drag.lastY.toFixed(1)) });
+      } else {
+        setSelectedOverlayId(null);
+      }
+      return;
     }
+    if (drag.moved) {
+      setSelectedOverlayId(drag.overlayId);
+      onUpdateOverlay(drag.overlayId, {
+        x: Number(drag.lastX.toFixed(1)),
+        y: Number(drag.lastY.toFixed(1)),
+      });
+    } else {
+      setSelectedOverlayId((current) => (current === drag.overlayId ? null : drag.overlayId));
+    }
+  };
+
+  const stepOverlayWidth = (direction: -1 | 1) => {
+    if (!selectedOverlay) return;
+    const next = Math.min(
+      Math.max(selectedOverlay.width + direction * OVERLAY_WIDTH_STEP, OVERLAY_WIDTH_MIN),
+      OVERLAY_WIDTH_MAX,
+    );
+    if (next !== selectedOverlay.width) onUpdateOverlay(selectedOverlay.id, { width: next });
   };
 
   const adjusted = zoom !== 1 || panX !== 0 || panY !== 0;
@@ -719,7 +882,9 @@ function SheetPreview({
   return (
     <div className="rounded-2xl border border-border bg-bg-surface p-3">
       <div className="mb-2 flex items-center justify-end gap-1.5">
-        <span className="mr-auto text-[10px] text-txt-muted">Drag the sheet to pan the drawing</span>
+        <span className="mr-auto text-[10px] text-txt-muted">
+          Drag the sheet to pan · click a part to select it
+        </span>
         <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
           Drawing size
         </span>
@@ -754,6 +919,47 @@ function SheetPreview({
           </button>
         )}
       </div>
+      {selectedOverlay && (
+        <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5">
+          <span className="mr-auto truncate text-[11px] font-semibold text-accent">
+            Part: {selectedOverlay.name}
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
+            Part size
+          </span>
+          <button
+            type="button"
+            onClick={() => stepOverlayWidth(-1)}
+            disabled={selectedOverlay.width <= OVERLAY_WIDTH_MIN}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Reduce part"
+          >
+            −
+          </button>
+          <span className="w-11 text-center text-xs font-semibold tabular-nums text-txt">
+            {Math.round(selectedOverlay.width)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => stepOverlayWidth(1)}
+            disabled={selectedOverlay.width >= OVERLAY_WIDTH_MAX}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Enlarge part"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onRemoveOverlay(selectedOverlay.id);
+              setSelectedOverlayId(null);
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-danger/40 px-1.5 py-0.5 text-[10px] font-semibold text-danger transition hover:bg-danger/10"
+          >
+            <Trash2 size={11} /> Remove
+          </button>
+        </div>
+      )}
       <style>{PACKAGE_SHEET_CSS}</style>
       <div
         ref={containerRef}
@@ -764,7 +970,7 @@ function SheetPreview({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        {svg === undefined ? (
+        {baseSvg === undefined ? (
           <div className="flex h-full items-center justify-center bg-white text-xs text-slate-400">
             <Loader2 size={16} className="mr-2 animate-spin" /> Loading drawing…
           </div>
@@ -789,16 +995,24 @@ function DrawingPicker({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
+  const [tab, setTab] = useState<"drawings" | "parts">("drawings");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) setSelectedIds(new Set());
   }, [open]);
 
+  const counts = useMemo(() => {
+    const parts = (library ?? []).filter((item) => item.assetType === "object").length;
+    return { parts, drawings: (library?.length ?? 0) - parts };
+  }, [library]);
+
   const filtered = useMemo(() => {
     if (!library) return [];
     const q = query.trim().toLowerCase();
     return library.filter((item) => {
+      const isPart = item.assetType === "object";
+      if (tab === "parts" ? !isPart : isPart) return false;
       if (category !== "all" && item.category !== category) return false;
       if (!q) return true;
       return (
@@ -807,7 +1021,7 @@ function DrawingPicker({
         item.tags.some((tag) => tag.toLowerCase().includes(q))
       );
     });
-  }, [library, query, category]);
+  }, [library, query, category, tab]);
 
   const toggle = (id: string) =>
     setSelectedIds((current) => {
@@ -818,7 +1032,33 @@ function DrawingPicker({
     });
 
   return (
-    <Modal open={open} onClose={onClose} title="Add drawings from the warehouse" width={720}>
+    <Modal open={open} onClose={onClose} title="Add from the warehouse" width={720}>
+      <div className="mb-3 flex gap-1 rounded-lg border border-border p-1">
+        <button
+          type="button"
+          onClick={() => setTab("drawings")}
+          className={`flex-1 rounded-md px-3 py-1.5 text-xs font-bold transition ${
+            tab === "drawings" ? "bg-accent text-white" : "text-txt-muted hover:text-txt"
+          }`}
+        >
+          Drawings ({counts.drawings})
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("parts")}
+          className={`flex-1 rounded-md px-3 py-1.5 text-xs font-bold transition ${
+            tab === "parts" ? "bg-accent text-white" : "text-txt-muted hover:text-txt"
+          }`}
+        >
+          Parts ({counts.parts})
+        </button>
+      </div>
+      {tab === "parts" ? (
+        <p className="mb-2 text-[11px] leading-5 text-txt-muted">
+          Parts are reusable details (beams, columns, footings, manholes…) placed on top of the
+          selected sheet — drag to position, resize while selected.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-txt-muted" />
@@ -849,7 +1089,12 @@ function DrawingPicker({
             <Loader2 size={14} className="animate-spin" /> Loading the warehouse…
           </p>
         ) : filtered.length === 0 ? (
-          <p className="py-10 text-center text-xs text-txt-muted">No drawings match.</p>
+          <p className="py-10 text-center text-xs text-txt-muted">
+            No {tab === "parts" ? "parts" : "drawings"} match.
+            {tab === "parts" && counts.parts === 0
+              ? " Admins create parts in the studio: select a detail, right-click, “Publish selection as part”."
+              : ""}
+          </p>
         ) : (
           filtered.map((item) => (
             <label
@@ -904,7 +1149,7 @@ function DrawingPicker({
           onClick={() => library && onConfirm(library.filter((item) => selectedIds.has(item.id)))}
           className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition hover:bg-accent-strong disabled:opacity-50"
         >
-          Add {selectedIds.size > 0 ? selectedIds.size : ""} drawing
+          Add {selectedIds.size > 0 ? selectedIds.size : ""} item
           {selectedIds.size === 1 ? "" : "s"}
         </button>
       </div>

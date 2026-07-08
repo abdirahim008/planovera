@@ -23,6 +23,7 @@ type EditState = {
   category: LibraryCategory;
   description: string;
   tags: string;
+  assetType: "object" | "drawing";
 };
 
 // Admin curation for the shared drawing warehouse. New drawings are uploaded via
@@ -118,6 +119,7 @@ export default function AdminDrawings() {
       category: editor.category,
       description: editor.description.trim(),
       tags,
+      assetType: editor.assetType,
     });
     setSaving(false);
     if (error) {
@@ -127,7 +129,14 @@ export default function AdminDrawings() {
     setItems((current) =>
       current.map((entry) =>
         entry.id === editor.id
-          ? { ...entry, name: editor.name.trim(), category: editor.category, description: editor.description.trim(), tags }
+          ? {
+              ...entry,
+              name: editor.name.trim(),
+              category: editor.category,
+              description: editor.description.trim(),
+              tags,
+              assetType: editor.assetType,
+            }
           : entry,
       ),
     );
@@ -208,7 +217,14 @@ export default function AdminDrawings() {
               </div>
               <div className="flex flex-1 flex-col gap-1 p-3">
                 <div className="text-sm font-medium text-txt">{displayLibraryName(item.name)}</div>
-                <div className="text-xs uppercase tracking-[0.1em] text-txt-dim">{item.category}</div>
+                <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.1em] text-txt-dim">
+                  {item.category}
+                  {item.assetType === "object" ? (
+                    <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-bold tracking-normal text-accent">
+                      Part
+                    </span>
+                  ) : null}
+                </div>
                 {item.tags.length ? (
                   <div className="mt-1 line-clamp-2 text-xs text-txt-muted">{item.tags.join(", ")}</div>
                 ) : null}
@@ -229,6 +245,7 @@ export default function AdminDrawings() {
                         category: item.category,
                         description: item.description,
                         tags: item.tags.join(", "),
+                        assetType: item.assetType === "object" ? "object" : "drawing",
                       })
                     }
                     className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-txt transition hover:bg-bg-hover"
@@ -276,6 +293,21 @@ export default function AdminDrawings() {
                     {category.label}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Type</label>
+              <select
+                className="input"
+                value={editor.assetType}
+                onChange={(event) =>
+                  setEditor((current) =>
+                    current ? { ...current, assetType: event.target.value as "object" | "drawing" } : current,
+                  )
+                }
+              >
+                <option value="drawing">Drawing (full sheet)</option>
+                <option value="object">Part (reusable detail placed on sheets)</option>
               </select>
             </div>
             <div>

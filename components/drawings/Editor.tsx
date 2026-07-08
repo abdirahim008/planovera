@@ -712,7 +712,7 @@ export default function Editor({
           // its own thumbnails); the large svg + thumbnail are fetched lazily.
           supabase
             .from("drawing_library_items")
-            .select("id,name,category,description,tags,author_id,author_name,updated_at")
+            .select("id,name,category,description,tags,asset_type,author_id,author_name,updated_at")
             .order("updated_at", { ascending: false }),
         ]);
 
@@ -3031,10 +3031,11 @@ export default function Editor({
             svg: draft.svg,
             fabric_json: draft.fabricJson,
             thumbnail: await svgToThumbnail(draft.svg),
+            asset_type: draft.mode,
             author_id: userId,
             author_name: session.name,
           })
-          .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+          .select("id,name,category,description,tags,thumbnail,asset_type,author_id,author_name,updated_at")
           .single();
 
         if (error) {
@@ -3262,10 +3263,11 @@ export default function Editor({
           tags: payload.tags.length > 0 ? payload.tags : parseTags(payload.name),
           svg: cleanSvg,
           thumbnail: await svgToThumbnail(cleanSvg),
+          asset_type: "object",
           author_id: userId,
           author_name: session.name,
         })
-        .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+        .select("id,name,category,description,tags,thumbnail,asset_type,author_id,author_name,updated_at")
         .single();
 
       if (error) {
@@ -3338,10 +3340,11 @@ export default function Editor({
           svg: canvasSvg,
           fabric_json: fabricJson,
           thumbnail: await svgToThumbnail(canvasSvg),
+          asset_type: "drawing",
           author_id: userId,
           author_name: session.name,
         })
-        .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+        .select("id,name,category,description,tags,thumbnail,asset_type,author_id,author_name,updated_at")
         .single();
 
       if (error) {
@@ -3431,10 +3434,15 @@ export default function Editor({
           svg: canvasSvg,
           fabric_json: fabricJson,
           thumbnail,
+          // Seed override keeps the original's kind (a curated seed part must
+          // stay a part).
+          asset_type:
+            libraryItems.find((entry) => entry.id === editingLibraryItem.id)?.assetType ??
+            "drawing",
           author_id: userId,
           author_name: session.name,
         })
-        .select("id,name,category,description,tags,thumbnail,author_id,author_name,updated_at")
+        .select("id,name,category,description,tags,thumbnail,asset_type,author_id,author_name,updated_at")
         .single();
       if (error) {
         setMessage(`Library update failed: ${error.message}`);
@@ -3545,12 +3553,12 @@ export default function Editor({
   const canRedo = historyVersion >= 0 && historyRef.current.future.length > 0;
   const contextItems = [
     {
-      label: "Save object to my library",
+      label: "Save selection as part (my library)",
       onClick: () => openLibrarySaveDialog("object", "personal"),
       visible: Boolean(activeContextObject),
     },
     {
-      label: "Publish object to shared library",
+      label: "Publish selection as part (shared warehouse)",
       onClick: () => openLibrarySaveDialog("object", "shared"),
       visible: Boolean(activeContextObject && (session?.role === "admin" || !authConfigured)),
     },
@@ -4028,7 +4036,7 @@ function LibrarySaveDialog({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
           <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
-            Type: {draft.mode === "object" ? "Reusable object/block" : "Complete drawing"}
+            Type: {draft.mode === "object" ? "Reusable part (cropped to the selection)" : "Complete drawing"}
           </div>
           <div className="flex items-center gap-2">
             <button className="btn" onClick={onCancel}>

@@ -111,6 +111,8 @@ export interface LibraryItemRecord {
   svg?: string;
   thumbnail?: string | null;
   fabric_json?: LibraryFabricJson | null;
+  /** "object" = reusable part (cropped detail); null/"drawing" = full sheet. */
+  asset_type?: string | null;
   author_id: string | null;
   author_name: string | null;
   updated_at: string;
@@ -678,6 +680,7 @@ export function mapLibraryRecord(record: LibraryItemRecord): LibraryItem {
     thumbnail: record.thumbnail ?? undefined,
     fabricJson: record.fabric_json ?? null,
     source: "admin",
+    assetType: record.asset_type === "object" ? "object" : "drawing",
     author: record.author_name || "Admin",
     updatedAt: record.updated_at,
   };

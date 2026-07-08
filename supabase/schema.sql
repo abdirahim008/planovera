@@ -317,6 +317,9 @@ create table if not exists public.drawing_library_items (
   -- curation survives the save → insert/re-edit round-trip. SVG stays the
   -- render/preview format; this is the editing-fidelity format.
   fabric_json jsonb,
+  -- 'object' = reusable part (cropped detail placed on package sheets);
+  -- null/'drawing' = full drawing sheet.
+  asset_type text,
   author_id uuid references public.profiles(id) on delete set null,
   author_name text,
   created_at timestamptz not null default timezone('utc', now()),
@@ -326,6 +329,7 @@ create table if not exists public.drawing_library_items (
 -- Backfill columns on databases created before they existed.
 alter table public.drawing_library_items add column if not exists thumbnail text;
 alter table public.drawing_library_items add column if not exists fabric_json jsonb;
+alter table public.drawing_library_items add column if not exists asset_type text;
 
 create table if not exists public.boq_library_items (
   id uuid primary key default gen_random_uuid(),
