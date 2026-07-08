@@ -13,7 +13,7 @@ import { displayLibraryName } from "@/components/drawings/LibraryThumbnail";
 import {
   deleteSharedLibraryItem,
   fetchSharedLibraryItems,
-  fetchSharedLibraryThumbnails,
+  streamLibraryThumbnails,
   updateSharedLibraryItem,
 } from "@/lib/drawings/libraryBridge";
 
@@ -40,6 +40,7 @@ export default function AdminDrawings() {
   const [editor, setEditor] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [thumbsStreaming, setThumbsStreaming] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,10 +51,15 @@ export default function AdminDrawings() {
       const { items: list, error } = await fetchSharedLibraryItems();
       setItems(list);
       setNotice(error ? `Could not load warehouse drawings: ${error}` : null);
-      // Stream thumbnails in afterwards so a heavy thumbnail payload never blocks
-      // the drawings from showing up.
+      // Stream thumbnails in small batches afterwards — previews pop in
+      // progressively instead of waiting on one multi-MB response that can
+      // hang forever on a slow connection.
       if (!error && list.length > 0) {
-        void fetchSharedLibraryThumbnails().then(setThumbs);
+        setThumbsStreaming(true);
+        void streamLibraryThumbnails(
+          list.map((item) => item.id),
+          (batch) => setThumbs((current) => ({ ...current, ...batch })),
+        ).finally(() => setThumbsStreaming(false));
       }
     } catch (error) {
       setItems([]);
@@ -197,7 +203,7 @@ export default function AdminDrawings() {
                     className="max-h-full max-w-full object-contain"
                   />
                 ) : (
-                  <span className="text-xs text-txt-dim">{Object.keys(thumbs).length === 0 ? "Loading preview…" : "No preview"}</span>
+                  <span className="text-xs text-txt-dim">{thumbsStreaming ? "Loading preview…" : "No preview"}</span>
                 )}
               </div>
               <div className="flex flex-1 flex-col gap-1 p-3">
