@@ -2,7 +2,8 @@
 // Drawing-package sheet rendering: one HTML generator shared by the
 // on-screen preview and the print/PDF export, so what the engineer
 // sees is exactly what prints. No canvas, no Fabric — a framed sheet
-// with the library SVG and a title-block strip, in plain HTML/CSS.
+// with the library SVG, part overlays, and a title-block strip, in
+// plain HTML/CSS.
 // ------------------------------------------------------------------
 
 import type { DrawingPackage, DrawingPackageItem } from "@/lib/supabase";
@@ -25,9 +26,13 @@ export const PACKAGE_SHEET_CSS = `
 .dp-sheet { position: relative; width: 100%; height: 100%; background: #ffffff; color: #0f172a; font-family: Arial, Helvetica, sans-serif; box-sizing: border-box; overflow: hidden; }
 .dp-sheet * { box-sizing: border-box; }
 .dp-frame { position: absolute; inset: 3.2% 2.4%; border: 2px solid #0f172a; display: flex; flex-direction: column; }
-.dp-drawing { flex: 1 1 auto; min-height: 0; padding: 1.5%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.dp-drawing { position: relative; flex: 1 1 auto; min-height: 0; padding: 1.5%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .dp-zoom { width: 100%; height: 100%; transform-origin: center center; }
 .dp-zoom svg { width: 100%; height: 100%; }
+.dp-overlay { position: absolute; }
+.dp-overlay svg { display: block; width: 100%; height: auto; }
+.dp-overlay-selected { outline: 2px dashed #3b82f6; outline-offset: 2px; }
+.dp-overlay-missing { border: 1px dashed #94a3b8; color: #94a3b8; font-size: 0.7em; padding: 4% 6%; text-align: center; background: rgba(255,255,255,0.85); }
 .dp-missing { font-size: 1.1em; color: #94a3b8; text-align: center; padding: 8%; }
 .dp-tb { flex: 0 0 auto; border-top: 2px solid #0f172a; display: grid; grid-template-columns: repeat(6, 1fr); }
 .dp-tb-cell { border-right: 1px solid #0f172a; border-top: 1px solid #0f172a; padding: 0.45em 0.6em 0.5em; min-width: 0; }
@@ -38,14 +43,20 @@ export const PACKAGE_SHEET_CSS = `
 .dp-tb-cell.dp-wide { grid-column: span 2; }
 `;
 
-/** One framed sheet: drawing area + title block. Values render blank when unset. */
+/**
+ * One framed sheet: drawing area + part overlays + title block. SVGs are
+ * looked up by library item id (base drawing and overlays alike). Values
+ * render blank when unset.
+ */
 export function renderPackageSheetHtml(
   item: DrawingPackageItem,
-  svg: string | null,
+  svgByLibraryId: Record<string, string | null | undefined>,
   sheetIndex: number,
   sheetCount: number,
+  opts?: { selectedOverlayId?: string | null },
 ): string {
   const tb = item.titleBlock;
+  const baseSvg = svgByLibraryId[item.libraryItemId] ?? null;
   // Per-sheet drawing size + offset: zoom >1 fills the frame by cropping the
   // SVG's own baked-in margins; pan (set by dragging the preview) picks which
   // part sits in the frame. Clamped so bad stored values can't blow up the
@@ -54,14 +65,32 @@ export function renderPackageSheetHtml(
   const zoom = Math.min(Math.max(item.zoom ?? 1, 0.5), 3);
   const panX = Math.min(Math.max(item.panX ?? 0, -80), 80);
   const panY = Math.min(Math.max(item.panY ?? 0, -80), 80);
-  const drawing = svg
-    ? `<div class="dp-zoom" style="transform: translate(${panX.toFixed(1)}%, ${panY.toFixed(1)}%) scale(${zoom.toFixed(2)})">${sanitizeSvgMarkup(svg)}</div>`
+  const drawing = baseSvg
+    ? `<div class="dp-zoom" style="transform: translate(${panX.toFixed(1)}%, ${panY.toFixed(1)}%) scale(${zoom.toFixed(2)})">${sanitizeSvgMarkup(baseSvg)}</div>`
     : `<div class="dp-missing">Drawing unavailable — it may have been removed from the library.</div>`;
+
+  // Part overlays: cropped library details stamped on top of the drawing.
+  // Their SVGs carry a tight viewBox, so width alone sizes them (height
+  // follows the part's own aspect ratio).
+  const overlays = (item.overlays ?? [])
+    .map((overlay) => {
+      const x = Math.min(Math.max(overlay.x, -20), 95).toFixed(1);
+      const y = Math.min(Math.max(overlay.y, -20), 95).toFixed(1);
+      const width = Math.min(Math.max(overlay.width, 3), 100).toFixed(1);
+      const svg = svgByLibraryId[overlay.libraryItemId];
+      const selected = opts?.selectedOverlayId === overlay.id ? " dp-overlay-selected" : "";
+      const body = svg
+        ? sanitizeSvgMarkup(svg)
+        : `<div class="dp-overlay-missing">${esc(overlay.name || "Part")}</div>`;
+      return `<div class="dp-overlay${selected}" data-overlay-id="${esc(overlay.id)}" style="left:${x}%;top:${y}%;width:${width}%">${body}</div>`;
+    })
+    .join("");
+
   const cell = (label: string, value: string, wide = false) =>
     `<div class="dp-tb-cell${wide ? " dp-wide" : ""}"><span class="dp-tb-label">${esc(label)}</span><span class="dp-tb-value">${esc(value) || "&nbsp;"}</span></div>`;
 
   return `<div class="dp-sheet"><div class="dp-frame">
-<div class="dp-drawing">${drawing}</div>
+<div class="dp-drawing">${drawing}${overlays}</div>
 <div class="dp-tb">
 ${cell("Project", tb.projectTitle, true)}
 ${cell("Client", tb.client, true)}
@@ -80,15 +109,20 @@ ${cell("Sheet", `${sheetIndex + 1} of ${sheetCount}`)}
 </div></div>`;
 }
 
+/** Every library id a sheet needs rendered: the base drawing + its parts. */
+export function packageSheetLibraryIds(item: DrawingPackageItem): string[] {
+  return [item.libraryItemId, ...(item.overlays ?? []).map((overlay) => overlay.libraryItemId)];
+}
+
 /** Full standalone print document: one A4-landscape page per drawing. */
 export function buildPackagePrintHtml(
   pkg: DrawingPackage,
-  svgByItemId: Record<string, string | null>,
+  svgByLibraryId: Record<string, string | null | undefined>,
 ): string {
   const sheets = pkg.items
     .map(
       (item, index) =>
-        `<div class="dp-page">${renderPackageSheetHtml(item, svgByItemId[item.id] ?? null, index, pkg.items.length)}</div>`,
+        `<div class="dp-page">${renderPackageSheetHtml(item, svgByLibraryId, index, pkg.items.length)}</div>`,
     )
     .join("\n");
 

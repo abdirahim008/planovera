@@ -153,7 +153,14 @@ export async function deleteSharedLibraryItem(id: string): Promise<{ error?: str
 // curates the searchable metadata. RLS restricts writes to platform admins.
 export async function updateSharedLibraryItem(
   id: string,
-  fields: { name: string; category: string; description: string; tags: string[] },
+  fields: {
+    name: string;
+    category: string;
+    description: string;
+    tags: string[];
+    /** "object" = reusable part, "drawing" = full sheet. Omit to leave as is. */
+    assetType?: "object" | "drawing";
+  },
 ): Promise<{ error?: string }> {
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return { error: "Not connected." };
@@ -164,6 +171,7 @@ export async function updateSharedLibraryItem(
       category: fields.category,
       description: fields.description,
       tags: fields.tags,
+      ...(fields.assetType ? { asset_type: fields.assetType } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -186,7 +194,7 @@ export async function fetchSharedLibraryItems(): Promise<{ items: LibraryItem[];
     await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("drawing_library_items")
-      .select("id,name,category,description,tags,author_id,author_name,updated_at")
+      .select("id,name,category,description,tags,asset_type,author_id,author_name,updated_at")
       .order("updated_at", { ascending: false });
     if (error) return { items: [], error: error.message };
     return { items: (data as LibraryItemRecord[]).map(mapLibraryRecord) };
@@ -259,7 +267,7 @@ export async function fetchDrawingLibrary(
     await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("drawing_library_items")
-      .select("id,name,category,description,tags,author_id,author_name,updated_at")
+      .select("id,name,category,description,tags,asset_type,author_id,author_name,updated_at")
       .order("updated_at", { ascending: false });
     if (error || !data) return loadLibraryItems();
     const remote = (data as LibraryItemRecord[]).map(mapLibraryRecord);

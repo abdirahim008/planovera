@@ -757,12 +757,30 @@ export interface DrawingPackageTitleBlock {
   status: string;
 }
 
+/**
+ * A reusable part (beam section, column, footing, manhole…) placed on top of
+ * a sheet's drawing. Position and width are percentages of the sheet's
+ * drawing area; height follows the part's own aspect ratio. Like the sheets
+ * themselves this stores only a reference — the part's SVG comes from the
+ * shared library at render/export time.
+ */
+export interface DrawingPackageOverlay {
+  id: string;
+  libraryItemId: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+}
+
 export interface DrawingPackageItem {
   id: string;
   /** Reference into the shared drawing library (warehouse). */
   libraryItemId: string;
   name: string;
   titleBlock: DrawingPackageTitleBlock;
+  /** Parts stamped on top of the drawing. */
+  overlays?: DrawingPackageOverlay[];
   /**
    * Drawing size on the sheet (1 = fit as stored). Many library SVGs carry
    * baked-in margins, so engineers can enlarge to fill the frame (edges crop)
