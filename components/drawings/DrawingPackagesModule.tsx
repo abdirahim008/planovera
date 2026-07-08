@@ -81,22 +81,40 @@ export default function DrawingPackagesModule() {
   const [svgCache, setSvgCache] = useState<Record<string, string | null>>({});
   const svgCacheRef = useRef(svgCache);
   svgCacheRef.current = svgCache;
+  const svgInFlightRef = useRef(new Map<string, Promise<string | null>>());
   const ensureSvg = useCallback(
-    async (libraryItemId: string): Promise<string | null> => {
-      if (libraryItemId in svgCacheRef.current) return svgCacheRef.current[libraryItemId];
-      const items = await ensureLibrary();
-      const entry = items.find((item) => item.id === libraryItemId);
-      const svg = entry ? (await fetchLibraryItemSvg(entry)) || null : null;
-      setSvgCache((cache) => ({ ...cache, [libraryItemId]: svg }));
-      return svg;
+    (libraryItemId: string): Promise<string | null> => {
+      if (libraryItemId in svgCacheRef.current) {
+        return Promise.resolve(svgCacheRef.current[libraryItemId]);
+      }
+      const inFlight = svgInFlightRef.current.get(libraryItemId);
+      if (inFlight) return inFlight;
+      const request = (async () => {
+        try {
+          const items = await ensureLibrary();
+          const entry = items.find((item) => item.id === libraryItemId);
+          const svg = entry ? (await fetchLibraryItemSvg(entry)) || null : null;
+          setSvgCache((cache) => ({ ...cache, [libraryItemId]: svg }));
+          return svg;
+        } finally {
+          svgInFlightRef.current.delete(libraryItemId);
+        }
+      })();
+      svgInFlightRef.current.set(libraryItemId, request);
+      return request;
     },
     [ensureLibrary],
   );
 
-  // Prefetch the SVG for the page being previewed.
+  // Warm the warehouse metadata as soon as the module opens, and pull every
+  // sheet's SVG in parallel — so switching sheets, opening the picker, and
+  // exporting are instant instead of each paying a fetch on demand.
   useEffect(() => {
-    if (selectedItem) void ensureSvg(selectedItem.libraryItemId);
-  }, [ensureSvg, selectedItem]);
+    void ensureLibrary();
+  }, [ensureLibrary]);
+  useEffect(() => {
+    selectedPackage?.items.forEach((item) => void ensureSvg(item.libraryItemId));
+  }, [ensureSvg, selectedPackage]);
 
   // ── Admin: the studio survives as a curation tool only. ──
   const [isAdmin, setIsAdmin] = useState(false);
@@ -181,10 +199,13 @@ export default function DrawingPackagesModule() {
     if (!selectedPackage || selectedPackage.items.length === 0 || exporting) return;
     setExporting(true);
     try {
-      const svgByItemId: Record<string, string | null> = {};
-      for (const item of selectedPackage.items) {
-        svgByItemId[item.id] = await ensureSvg(item.libraryItemId);
-      }
+      const svgByItemId: Record<string, string | null> = Object.fromEntries(
+        await Promise.all(
+          selectedPackage.items.map(
+            async (item) => [item.id, await ensureSvg(item.libraryItemId)] as const,
+          ),
+        ),
+      );
       const printWindow = window.open("", "_blank");
       if (!printWindow) return;
       printWindow.document.write(buildPackagePrintHtml(selectedPackage, svgByItemId));
@@ -223,7 +244,7 @@ export default function DrawingPackagesModule() {
               href="/drawings/studio"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
             >
               Curate library (studio)
               <ExternalLink size={13} />
@@ -245,7 +266,7 @@ export default function DrawingPackagesModule() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
             <FolderOpen size={20} />
           </div>
-          <h2 className="mt-4 text-lg font-semibold text-white">No drawing package yet</h2>
+          <h2 className="mt-4 text-lg font-semibold text-txt">No drawing package yet</h2>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-txt-muted">
             A package is a set of standard drawings from the shared warehouse with this
             project&apos;s details on the title block — ready to print or attach.
@@ -260,9 +281,10 @@ export default function DrawingPackagesModule() {
           </button>
         </div>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
-          {/* Package list + pages */}
-          <div className="space-y-3">
+        <div className="space-y-4">
+          {/* Packages as a horizontal strip so the sheet preview below gets
+              the full content width — engineers work on one package at a time. */}
+          <div className="flex flex-wrap gap-2">
             {projectPackages.map((pkg) => (
               <PackageCard
                 key={pkg.id}
@@ -285,7 +307,7 @@ export default function DrawingPackagesModule() {
           {selectedPackage && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-bg-surface px-4 py-3">
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-semibold text-txt">
                   {selectedPackage.name}
                   <span className="ml-2 text-xs font-normal text-txt-muted">
                     {selectedPackage.items.length} sheet
@@ -299,7 +321,7 @@ export default function DrawingPackagesModule() {
                       void ensureLibrary();
                       setPickerOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-white"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
                   >
                     <Plus size={13} />
                     Add drawings
@@ -418,7 +440,7 @@ function PackageCard({
 
   return (
     <div
-      className={`cursor-pointer rounded-2xl border px-4 py-3 transition ${
+      className={`w-full cursor-pointer rounded-2xl border px-4 py-3 transition sm:w-[260px] ${
         active ? "border-accent/60 bg-accent/10" : "border-border bg-bg-surface hover:border-accent/30"
       }`}
       onClick={onSelect}
@@ -430,7 +452,7 @@ function PackageCard({
           onBlur={() => name.trim() && name !== pkg.name && onRename(name)}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           onClick={(e) => e.stopPropagation()}
-          className="w-full bg-transparent text-sm font-semibold text-white outline-none"
+          className="w-full bg-transparent text-sm font-semibold text-txt outline-none"
         />
         <button
           type="button"
@@ -481,7 +503,7 @@ function SheetRow({
       <span className="w-6 shrink-0 text-center text-[11px] font-bold text-txt-muted">
         {index + 1}
       </span>
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">{item.name}</span>
+      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">{item.name}</span>
       <button
         type="button"
         onClick={(e) => {
@@ -489,7 +511,7 @@ function SheetRow({
           onMove(-1);
         }}
         disabled={index === 0}
-        className="text-txt-muted transition hover:text-white disabled:opacity-30"
+        className="text-txt-muted transition hover:text-txt disabled:opacity-30"
         aria-label="Move up"
       >
         <ChevronUp size={14} />
@@ -501,7 +523,7 @@ function SheetRow({
           onMove(1);
         }}
         disabled={index === count - 1}
-        className="text-txt-muted transition hover:text-white disabled:opacity-30"
+        className="text-txt-muted transition hover:text-txt disabled:opacity-30"
         aria-label="Move down"
       >
         <ChevronDown size={14} />
@@ -561,7 +583,7 @@ function TitleBlockForm({
         <button
           type="button"
           onClick={() => onApplyToAll(draft)}
-          className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-txt-muted transition hover:text-white"
+          className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-txt-muted transition hover:text-txt"
           title="Copy the shared fields (project, client, consultant, date, signatures, revision, status) to every sheet in the package"
         >
           Apply to all sheets
@@ -579,7 +601,7 @@ function TitleBlockForm({
               onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
               onBlur={(e) => commit({ ...draft, [key]: e.target.value })}
               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-              className="mt-0.5 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs text-white outline-none focus:border-accent/60"
+              className="mt-0.5 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs text-txt outline-none focus:border-accent/60"
             />
           </label>
         ))}
@@ -673,13 +695,13 @@ function DrawingPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search drawings…"
-            className="w-full rounded-lg border border-border bg-transparent py-2 pl-8 pr-3 text-xs text-white outline-none focus:border-accent/60"
+            className="w-full rounded-lg border border-border bg-transparent py-2 pl-8 pr-3 text-xs text-txt outline-none focus:border-accent/60"
           />
         </div>
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="rounded-lg border border-border bg-bg-surface px-2 py-2 text-xs text-white outline-none"
+          className="rounded-lg border border-border bg-bg-surface px-2 py-2 text-xs text-txt outline-none"
         >
           <option value="all">All categories</option>
           {LIBRARY_CATEGORIES.map((cat) => (
@@ -726,7 +748,7 @@ function DrawingPicker({
                 </span>
               )}
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold text-white">{item.name}</span>
+                <span className="block truncate text-xs font-semibold text-txt">{item.name}</span>
                 <span className="block truncate text-[10px] text-txt-muted">
                   {LIBRARY_CATEGORIES.find((cat) => cat.id === item.category)?.label ?? item.category}
                   {item.tags.length > 0 ? ` · ${item.tags.slice(0, 4).join(", ")}` : ""}
@@ -741,7 +763,7 @@ function DrawingPicker({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-white"
+          className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
         >
           Cancel
         </button>
