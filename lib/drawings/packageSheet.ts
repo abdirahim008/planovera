@@ -46,12 +46,16 @@ export function renderPackageSheetHtml(
   sheetCount: number,
 ): string {
   const tb = item.titleBlock;
-  // Per-sheet drawing size: >1 fills the frame by cropping the SVG's own
-  // baked-in margins, <1 shrinks. Clamped so a bad stored value can't blow up
-  // the layout.
+  // Per-sheet drawing size + offset: zoom >1 fills the frame by cropping the
+  // SVG's own baked-in margins; pan (set by dragging the preview) picks which
+  // part sits in the frame. Clamped so bad stored values can't blow up the
+  // layout. translate is the outer transform, so a pan of 10% shifts the
+  // drawing by 10% of the drawing area regardless of zoom.
   const zoom = Math.min(Math.max(item.zoom ?? 1, 0.5), 3);
+  const panX = Math.min(Math.max(item.panX ?? 0, -80), 80);
+  const panY = Math.min(Math.max(item.panY ?? 0, -80), 80);
   const drawing = svg
-    ? `<div class="dp-zoom" style="transform: scale(${zoom.toFixed(2)})">${sanitizeSvgMarkup(svg)}</div>`
+    ? `<div class="dp-zoom" style="transform: translate(${panX.toFixed(1)}%, ${panY.toFixed(1)}%) scale(${zoom.toFixed(2)})">${sanitizeSvgMarkup(svg)}</div>`
     : `<div class="dp-missing">Drawing unavailable — it may have been removed from the library.</div>`;
   const cell = (label: string, value: string, wide = false) =>
     `<div class="dp-tb-cell${wide ? " dp-wide" : ""}"><span class="dp-tb-label">${esc(label)}</span><span class="dp-tb-value">${esc(value) || "&nbsp;"}</span></div>`;

@@ -425,8 +425,8 @@ export default function DrawingPackagesModule() {
                         svg={svgCache[selectedItem.libraryItemId]}
                         index={selectedPackage.items.findIndex((i) => i.id === selectedItem.id)}
                         count={selectedPackage.items.length}
-                        onZoomChange={(zoom) =>
-                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, { zoom })
+                        onAdjust={(updates) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, updates)
                         }
                       />
                     )}
@@ -639,19 +639,22 @@ function TitleBlockForm({
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
+const PAN_LIMIT = 80;
+
+const clampPan = (value: number) => Math.min(Math.max(value, -PAN_LIMIT), PAN_LIMIT);
 
 function SheetPreview({
   item,
   svg,
   index,
   count,
-  onZoomChange,
+  onAdjust,
 }: {
   item: DrawingPackageItem;
   svg: string | null | undefined;
   index: number;
   count: number;
-  onZoomChange: (zoom: number) => void;
+  onAdjust: (updates: Partial<Pick<DrawingPackageItem, "zoom" | "panX" | "panY">>) => void;
 }) {
   const html = useMemo(
     () => renderPackageSheetHtml(item, svg ?? null, index, count),
@@ -659,14 +662,64 @@ function SheetPreview({
   );
 
   const zoom = Math.min(Math.max(item.zoom ?? 1, ZOOM_MIN), ZOOM_MAX);
+  const panX = clampPan(item.panX ?? 0);
+  const panY = clampPan(item.panY ?? 0);
   const step = (direction: -1 | 1) => {
     const next = Math.min(Math.max(zoom + direction * ZOOM_STEP, ZOOM_MIN), ZOOM_MAX);
-    if (next !== zoom) onZoomChange(Number(next.toFixed(2)));
+    if (next !== zoom) onAdjust({ zoom: Number(next.toFixed(2)) });
   };
+
+  // Drag-to-pan: while dragging, write the transform straight onto the DOM
+  // node (re-rendering the whole sheet HTML per pointer-move would re-parse
+  // the SVG each frame); commit to the store once, on release.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; lastX: number; lastY: number } | null>(null);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!svg || event.button !== 0) return;
+    dragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: panX,
+      baseY: panY,
+      lastX: panX,
+      lastY: panY,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* pointer capture is an enhancement — dragging still works without it */
+    }
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const container = containerRef.current;
+    if (!drag || !container) return;
+    const area = container.querySelector<HTMLElement>(".dp-drawing");
+    const zoomEl = container.querySelector<HTMLElement>(".dp-zoom");
+    if (!area || !zoomEl) return;
+    const rect = area.getBoundingClientRect();
+    drag.lastX = clampPan(drag.baseX + ((event.clientX - drag.startX) / rect.width) * 100);
+    drag.lastY = clampPan(drag.baseY + ((event.clientY - drag.startY) / rect.height) * 100);
+    zoomEl.style.transform = `translate(${drag.lastX.toFixed(1)}%, ${drag.lastY.toFixed(1)}%) scale(${zoom.toFixed(2)})`;
+  };
+
+  const handlePointerUp = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag) return;
+    if (drag.lastX !== drag.baseX || drag.lastY !== drag.baseY) {
+      onAdjust({ panX: Number(drag.lastX.toFixed(1)), panY: Number(drag.lastY.toFixed(1)) });
+    }
+  };
+
+  const adjusted = zoom !== 1 || panX !== 0 || panY !== 0;
 
   return (
     <div className="rounded-2xl border border-border bg-bg-surface p-3">
       <div className="mb-2 flex items-center justify-end gap-1.5">
+        <span className="mr-auto text-[10px] text-txt-muted">Drag the sheet to pan the drawing</span>
         <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
           Drawing size
         </span>
@@ -691,10 +744,10 @@ function SheetPreview({
         >
           +
         </button>
-        {zoom !== 1 && (
+        {adjusted && (
           <button
             type="button"
-            onClick={() => onZoomChange(1)}
+            onClick={() => onAdjust({ zoom: 1, panX: 0, panY: 0 })}
             className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
           >
             Reset
@@ -703,8 +756,13 @@ function SheetPreview({
       </div>
       <style>{PACKAGE_SHEET_CSS}</style>
       <div
-        className="relative w-full overflow-hidden rounded-lg"
-        style={{ aspectRatio: "297 / 210", fontSize: "clamp(6px, 1.05vw, 12px)" }}
+        ref={containerRef}
+        className="relative w-full cursor-grab overflow-hidden rounded-lg active:cursor-grabbing"
+        style={{ aspectRatio: "297 / 210", fontSize: "clamp(6px, 1.05vw, 12px)", touchAction: "none" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         {svg === undefined ? (
           <div className="flex h-full items-center justify-center bg-white text-xs text-slate-400">
