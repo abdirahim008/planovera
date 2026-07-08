@@ -17,6 +17,7 @@ import {
   BoxSelect,
   MousePointer2,
   Move,
+  Lasso,
   PanelLeftClose,
   PanelLeftOpen,
   PencilLine,
@@ -43,6 +44,7 @@ import type { DrawingPanelTab } from "./LeftPanel";
 type ToolMode =
   | "select"
   | "marquee"
+  | "lasso"
   | "pan"
   | "line"
   | "dimension"
@@ -190,6 +192,7 @@ export default function Toolbar({
   const toolMenuItems: Array<{ id: ToolMode; label: string; icon: ReactNode }> = [
     { id: "select", label: "Select / move", icon: <MousePointer2 className="h-4 w-4" /> },
     { id: "marquee", label: "Select area (box)", icon: <BoxSelect className="h-4 w-4" /> },
+    { id: "lasso", label: "Select freehand (lasso)", icon: <Lasso className="h-4 w-4" /> },
     { id: "pan", label: "Pan canvas", icon: <Move className="h-4 w-4" /> },
     { id: "line", label: "Line tool", icon: <Minus className="h-4 w-4" /> },
     { id: "wall", label: "Wall line tool", icon: <Minus className="h-4 w-4" /> },

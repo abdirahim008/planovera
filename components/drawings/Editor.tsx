@@ -77,6 +77,7 @@ type FabricMod = typeof FabricNS;
 type ToolMode =
   | "select"
   | "marquee"
+  | "lasso"
   | "pan"
   | "line"
   | "dimension"
@@ -172,6 +173,58 @@ function isUngroupableObject(object?: FabricNS.FabricObject | null): object is G
     typeof candidate.removeAll === "function" ||
     Boolean(candidate._objects && candidate._objects.length > 0)
   );
+}
+
+// ── Region-selection geometry ─────────────────────────────────────────
+// Both region tools (box + lasso) use the same strict rule: an object is
+// selected only when it sits FULLY inside the traced region. Nothing outside
+// the region is ever grabbed — no matter how its (possibly huge) bounding box
+// overlaps, and no matter how many identical shapes exist elsewhere — which is
+// what makes carving parts out of dense drawings predictable.
+
+type RegionPoint = { x: number; y: number };
+
+// Ray-cast point-in-polygon, scene coordinates.
+function pointInPolygon(point: RegionPoint, polygon: RegionPoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    const crosses =
+      a.y > point.y !== b.y > point.y &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+// The points that must all fall inside the region: bounding-box corners, edge
+// midpoints and centre (9 samples — enough to reject boxes that poke out of a
+// concave lasso without walking every path segment).
+function objectSamplePoints(object: FabricNS.FabricObject): RegionPoint[] {
+  const rect = object.getBoundingRect();
+  const xs = [rect.left, rect.left + rect.width / 2, rect.left + rect.width];
+  const ys = [rect.top, rect.top + rect.height / 2, rect.top + rect.height];
+  const points: RegionPoint[] = [];
+  for (const x of xs) for (const y of ys) points.push({ x, y });
+  return points;
+}
+
+function objectFullyInRect(
+  object: FabricNS.FabricObject,
+  box: { left: number; top: number; width: number; height: number },
+): boolean {
+  const b = object.getBoundingRect();
+  return (
+    b.left >= box.left &&
+    b.top >= box.top &&
+    b.left + b.width <= box.left + box.width &&
+    b.top + b.height <= box.top + box.height
+  );
+}
+
+function objectFullyInPolygon(object: FabricNS.FabricObject, polygon: RegionPoint[]): boolean {
+  return objectSamplePoints(object).every((point) => pointInPolygon(point, polygon));
 }
 
 function serializeLibraryObject(object: FabricNS.FabricObject) {
@@ -459,10 +512,15 @@ export default function Editor({
   });
   const toolModeRef = useRef<ToolMode>("select");
   const snapEnabledRef = useRef(true);
-  // Box-select ("marquee") tool: drag a rectangle to select every object whose
-  // centre falls inside it — reliable on dense imported drawings where pressing
-  // anywhere lands on a line.
+  // Box-select ("marquee") tool: drag a rectangle to select every object that
+  // sits FULLY inside it — the predictable window-selection rule on dense
+  // imported drawings where pressing anywhere lands on a line.
   const marqueeRef = useRef<{ start?: { x: number; y: number }; rect?: FabricNS.FabricObject | null }>({});
+  // Freehand ("lasso") tool: trace any outline around the objects to select —
+  // for details a rectangle can't isolate cleanly.
+  const lassoRef = useRef<{ points: { x: number; y: number }[]; line?: FabricNS.FabricObject | null }>({
+    points: [],
+  });
   const dimStateRef = useRef<{
     step: number;
     p1?: { x: number; y: number };
@@ -1452,6 +1510,15 @@ export default function Editor({
         return;
       }
 
+      if (toolModeRef.current === "lasso" && event.button === 0) {
+        const point = canvas.getScenePoint(event);
+        canvas.selection = false;
+        canvas.discardActiveObject();
+        lassoRef.current = { points: [{ x: point.x, y: point.y }], line: null };
+        canvas.requestRenderAll();
+        return;
+      }
+
       if ((toolModeRef.current === "door" || toolModeRef.current === "window") && event.button === 0) {
         const point: { x: number; y: number } = canvas.getScenePoint(event);
         const host = findNearestWall(point);
@@ -1745,6 +1812,35 @@ export default function Editor({
         return;
       }
 
+      if (toolModeRef.current === "lasso" && lassoRef.current.points.length > 0) {
+        const point = canvas.getScenePoint(event);
+        const points = lassoRef.current.points;
+        const last = points[points.length - 1];
+        // Only append when the pointer actually travelled — keeps the polygon
+        // small and the preview cheap to rebuild.
+        if (Math.hypot(point.x - last.x, point.y - last.y) < 3) return;
+        points.push({ x: point.x, y: point.y });
+        if (lassoRef.current.line) canvas.remove(lassoRef.current.line);
+        const line = new fabricMod.Polyline(
+          points.map((p) => ({ x: p.x, y: p.y })),
+          {
+            fill: "rgba(37,99,235,0.08)",
+            stroke: "#2563eb",
+            strokeWidth: 1,
+            strokeDashArray: [4, 3],
+            strokeUniform: true,
+            selectable: false,
+            evented: false,
+            objectCaching: false,
+            excludeFromExport: true,
+          },
+        );
+        lassoRef.current.line = line;
+        canvas.add(line);
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (toolModeRef.current === "door" || toolModeRef.current === "window") {
         const point: { x: number; y: number } = canvas.getScenePoint(event);
         const host = findNearestWall(point);
@@ -1898,25 +1994,14 @@ export default function Editor({
         if (rect) canvas.remove(rect);
         marqueeRef.current = {};
         if (box && box.width > 2 && box.height > 2) {
-          const cx0 = box.left;
-          const cy0 = box.top;
-          const cx1 = box.left + box.width;
-          const cy1 = box.top + box.height;
-          const hits = canvas.getObjects().filter((obj) => {
-            if (obj.selectable === false || obj === rect) return false;
-            // At least half of the object's extent, per axis, must sit inside
-            // the box. A bbox-CENTRE test wrongly grabs objects whose bounding
-            // box spans the sheet (groups with far-flung members, paths merged
-            // across sections, long dimension lines) — their centre can land in
-            // the box while all their ink is elsewhere. The half-overlap rule
-            // keeps the forgiving feel for labels sticking partly out while
-            // rejecting far-away objects with huge bounding boxes.
-            const b = obj.getBoundingRect();
-            const ox = Math.min(cx1, b.left + b.width) - Math.max(cx0, b.left);
-            const oy = Math.min(cy1, b.top + b.height) - Math.max(cy0, b.top);
-            if (ox < 0 || oy < 0) return false;
-            return ox >= b.width * 0.5 && oy >= b.height * 0.5;
-          });
+          // Strict window selection: only objects FULLY inside the box are
+          // picked. Partial-overlap rules (centre, half-in) all misfire on
+          // dense imported drawings — an unrelated object's bounding box can
+          // overlap the box while its ink is elsewhere. Fully-inside never
+          // selects anything the admin didn't encircle.
+          const hits = canvas
+            .getObjects()
+            .filter((obj) => obj.selectable !== false && obj !== rect && objectFullyInRect(obj, box));
           canvas.discardActiveObject();
           if (hits.length === 1) {
             canvas.setActiveObject(hits[0]);
@@ -1926,10 +2011,38 @@ export default function Editor({
           setMessage(
             hits.length
               ? `Selected ${hits.length} object${hits.length === 1 ? "" : "s"} — drag to move, or delete/group them.`
-              : "Nothing in the box — drag across the part you want.",
+              : "Nothing fully inside the box — drag a box around the whole part (only fully-enclosed objects are selected).",
           );
         }
         // Drop back to normal select so the new selection can be dragged.
+        setToolMode("select");
+        toolModeRef.current = "select";
+        canvas.selection = true;
+        canvas.defaultCursor = "default";
+        canvas.requestRenderAll();
+        return;
+      }
+
+      if (toolModeRef.current === "lasso" && lassoRef.current.points.length > 0) {
+        const { points, line } = lassoRef.current;
+        if (line) canvas.remove(line);
+        lassoRef.current = { points: [], line: null };
+        if (points.length >= 3) {
+          const hits = canvas
+            .getObjects()
+            .filter((obj) => obj.selectable !== false && objectFullyInPolygon(obj, points));
+          canvas.discardActiveObject();
+          if (hits.length === 1) {
+            canvas.setActiveObject(hits[0]);
+          } else if (hits.length > 1) {
+            canvas.setActiveObject(new fabricMod.ActiveSelection(hits, { canvas }));
+          }
+          setMessage(
+            hits.length
+              ? `Selected ${hits.length} object${hits.length === 1 ? "" : "s"} — drag to move, group, or save as a part.`
+              : "Nothing fully inside the outline — trace all the way around the part you want.",
+          );
+        }
         setToolMode("select");
         toolModeRef.current = "select";
         canvas.selection = true;
@@ -3708,9 +3821,16 @@ export default function Editor({
             <button
               className={`btn ${toolMode === "marquee" ? "btn-primary" : ""}`}
               onClick={() => handleSetToolMode(toolMode === "marquee" ? "select" : "marquee")}
-              title="Drag a box across any part of the drawing to select everything inside it — even on a dense drawing"
+              title="Drag a box around a detail — only objects FULLY inside the box are selected"
             >
               {toolMode === "marquee" ? "Drag a box…" : "Select area"}
+            </button>
+            <button
+              className={`btn ${toolMode === "lasso" ? "btn-primary" : ""}`}
+              onClick={() => handleSetToolMode(toolMode === "lasso" ? "select" : "lasso")}
+              title="Trace any outline around a detail — only objects FULLY inside the outline are selected"
+            >
+              {toolMode === "lasso" ? "Trace around it…" : "Select freehand"}
             </button>
             <button
               className="btn"
