@@ -769,6 +769,13 @@ export interface DrawingPackageItem {
    * or reduce. Saved per sheet so preview and PDF export stay identical.
    */
   zoom?: number;
+  /**
+   * Drawing offset on the sheet, as a percentage of the drawing area
+   * (0 = centred). Set by dragging the preview — picks which part of an
+   * enlarged drawing sits in the frame.
+   */
+  panX?: number;
+  panY?: number;
 }
 
 export interface DrawingPackage {
