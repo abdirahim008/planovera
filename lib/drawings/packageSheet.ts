@@ -26,7 +26,8 @@ export const PACKAGE_SHEET_CSS = `
 .dp-sheet * { box-sizing: border-box; }
 .dp-frame { position: absolute; inset: 3.2% 2.4%; border: 2px solid #0f172a; display: flex; flex-direction: column; }
 .dp-drawing { flex: 1 1 auto; min-height: 0; padding: 1.5%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.dp-drawing svg { width: 100%; height: 100%; }
+.dp-zoom { width: 100%; height: 100%; transform-origin: center center; }
+.dp-zoom svg { width: 100%; height: 100%; }
 .dp-missing { font-size: 1.1em; color: #94a3b8; text-align: center; padding: 8%; }
 .dp-tb { flex: 0 0 auto; border-top: 2px solid #0f172a; display: grid; grid-template-columns: repeat(6, 1fr); }
 .dp-tb-cell { border-right: 1px solid #0f172a; border-top: 1px solid #0f172a; padding: 0.45em 0.6em 0.5em; min-width: 0; }
@@ -45,8 +46,12 @@ export function renderPackageSheetHtml(
   sheetCount: number,
 ): string {
   const tb = item.titleBlock;
+  // Per-sheet drawing size: >1 fills the frame by cropping the SVG's own
+  // baked-in margins, <1 shrinks. Clamped so a bad stored value can't blow up
+  // the layout.
+  const zoom = Math.min(Math.max(item.zoom ?? 1, 0.5), 3);
   const drawing = svg
-    ? sanitizeSvgMarkup(svg)
+    ? `<div class="dp-zoom" style="transform: scale(${zoom.toFixed(2)})">${sanitizeSvgMarkup(svg)}</div>`
     : `<div class="dp-missing">Drawing unavailable — it may have been removed from the library.</div>`;
   const cell = (label: string, value: string, wide = false) =>
     `<div class="dp-tb-cell${wide ? " dp-wide" : ""}"><span class="dp-tb-label">${esc(label)}</span><span class="dp-tb-value">${esc(value) || "&nbsp;"}</span></div>`;

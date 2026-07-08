@@ -425,6 +425,9 @@ export default function DrawingPackagesModule() {
                         svg={svgCache[selectedItem.libraryItemId]}
                         index={selectedPackage.items.findIndex((i) => i.id === selectedItem.id)}
                         count={selectedPackage.items.length}
+                        onZoomChange={(zoom) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, { zoom })
+                        }
                       />
                     )}
                   </div>
@@ -633,24 +636,71 @@ function TitleBlockForm({
   );
 }
 
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3;
+
 function SheetPreview({
   item,
   svg,
   index,
   count,
+  onZoomChange,
 }: {
   item: DrawingPackageItem;
   svg: string | null | undefined;
   index: number;
   count: number;
+  onZoomChange: (zoom: number) => void;
 }) {
   const html = useMemo(
     () => renderPackageSheetHtml(item, svg ?? null, index, count),
     [item, svg, index, count],
   );
 
+  const zoom = Math.min(Math.max(item.zoom ?? 1, ZOOM_MIN), ZOOM_MAX);
+  const step = (direction: -1 | 1) => {
+    const next = Math.min(Math.max(zoom + direction * ZOOM_STEP, ZOOM_MIN), ZOOM_MAX);
+    if (next !== zoom) onZoomChange(Number(next.toFixed(2)));
+  };
+
   return (
     <div className="rounded-2xl border border-border bg-bg-surface p-3">
+      <div className="mb-2 flex items-center justify-end gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
+          Drawing size
+        </span>
+        <button
+          type="button"
+          onClick={() => step(-1)}
+          disabled={zoom <= ZOOM_MIN}
+          className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+          aria-label="Reduce drawing"
+        >
+          −
+        </button>
+        <span className="w-11 text-center text-xs font-semibold tabular-nums text-txt">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          onClick={() => step(1)}
+          disabled={zoom >= ZOOM_MAX}
+          className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+          aria-label="Enlarge drawing"
+        >
+          +
+        </button>
+        {zoom !== 1 && (
+          <button
+            type="button"
+            onClick={() => onZoomChange(1)}
+            className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+          >
+            Reset
+          </button>
+        )}
+      </div>
       <style>{PACKAGE_SHEET_CSS}</style>
       <div
         className="relative w-full overflow-hidden rounded-lg"

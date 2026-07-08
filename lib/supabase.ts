@@ -763,6 +763,12 @@ export interface DrawingPackageItem {
   libraryItemId: string;
   name: string;
   titleBlock: DrawingPackageTitleBlock;
+  /**
+   * Drawing size on the sheet (1 = fit as stored). Many library SVGs carry
+   * baked-in margins, so engineers can enlarge to fill the frame (edges crop)
+   * or reduce. Saved per sheet so preview and PDF export stay identical.
+   */
+  zoom?: number;
 }
 
 export interface DrawingPackage {
