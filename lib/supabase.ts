@@ -758,6 +758,19 @@ export interface DrawingPackageTitleBlock {
 }
 
 /**
+ * A white patch "erasing" unwanted content (labels, dimensions, stray text)
+ * from a placed drawing or part. Stored in the source SVG's own coordinate
+ * units and injected as a white rect at render time — it follows the drawing
+ * through zoom, pan, crop and export, and removing it restores the content.
+ */
+export interface DrawingErasure {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
  * A reusable part (beam section, column, footing, manhole…) placed on top of
  * a sheet's drawing. Position and width are percentages of the sheet's
  * drawing area; height follows the part's own aspect ratio. Like the sheets
@@ -771,6 +784,15 @@ export interface DrawingPackageOverlay {
   x: number;
   y: number;
   width: number;
+  /**
+   * Optional crop window in the source drawing's own viewBox units — lets a
+   * user place just a SECTION of a full drawing without the admin pre-carving
+   * it into a part. Applied by rewriting the SVG's viewBox at render time, so
+   * the stored data stays a reference plus four numbers.
+   */
+  crop?: { x: number; y: number; width: number; height: number };
+  /** White-out patches over this part, in the source SVG's units. */
+  erasures?: DrawingErasure[];
 }
 
 export interface DrawingPackageItem {
@@ -781,6 +803,8 @@ export interface DrawingPackageItem {
   titleBlock: DrawingPackageTitleBlock;
   /** Parts stamped on top of the drawing. */
   overlays?: DrawingPackageOverlay[];
+  /** White-out patches over the base drawing, in its SVG's units. */
+  erasures?: DrawingErasure[];
   /**
    * Drawing size on the sheet (1 = fit as stored). Many library SVGs carry
    * baked-in margins, so engineers can enlarge to fill the frame (edges crop)
