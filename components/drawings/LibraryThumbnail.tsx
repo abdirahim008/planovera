@@ -38,6 +38,13 @@ export function LibraryThumbnail({
   const [thumb, setThumb] = useState<string | null>(() => thumbnail || thumbnailCache.get(id) || null);
   const [visible, setVisible] = useState(false);
 
+  // Thumbnails STREAM in per-batch after the list renders (the list query is
+  // metadata-only), so the prop usually arrives after mount — adopt it, or the
+  // card stays blank forever.
+  useEffect(() => {
+    if (thumbnail) setThumb((current) => current ?? thumbnail);
+  }, [thumbnail]);
+
   useEffect(() => {
     if (thumb || !svg) return;
     const el = ref.current;
