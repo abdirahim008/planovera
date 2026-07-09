@@ -3,6 +3,8 @@
 import {
   ChevronDown,
   ChevronUp,
+  Crop,
+  Eraser,
   ExternalLink,
   FileDown,
   FolderOpen,
@@ -10,6 +12,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
@@ -26,10 +29,14 @@ import {
   PACKAGE_SHEET_CSS,
   buildPackagePrintHtml,
   packageSheetLibraryIds,
+  parseSvgViewBox,
   renderPackageSheetHtml,
+  type SvgViewBox,
 } from "@/lib/drawings/packageSheet";
+import { sanitizeSvgMarkup } from "@/lib/drawings/svgSanitize";
 import {
   emptyDrawingPackageTitleBlock,
+  type DrawingErasure,
   type DrawingPackage,
   type DrawingPackageItem,
   type DrawingPackageOverlay,
@@ -210,6 +217,42 @@ export default function DrawingPackagesModule() {
   };
 
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Crop-a-section flow: instead of adding the full drawing, the user drags a
+  // box over a preview and only that region lands on the sheet (stored as a
+  // library reference + crop window — no geometry is copied).
+  const [cropTarget, setCropTarget] = useState<LibraryItem | null>(null);
+  const handleCropStart = (item: LibraryItem) => {
+    setPickerOpen(false);
+    setCropTarget(item);
+    void ensureSvg(item.id);
+  };
+  const handleCropConfirm = (crop: SvgViewBox) => {
+    const target = selectedItem ?? selectedPackage?.items[0] ?? null;
+    if (!selectedPackage || !target || !cropTarget) {
+      setNotice("Add a drawing sheet first — sections are placed on top of a sheet.");
+      setCropTarget(null);
+      return;
+    }
+    updateDrawingPackageItem(selectedPackage.id, target.id, {
+      overlays: [
+        ...(target.overlays ?? []),
+        {
+          id: uuid(),
+          libraryItemId: cropTarget.id,
+          name: `${cropTarget.name} — section`,
+          x: 32,
+          y: 30,
+          width: 35,
+          crop,
+        },
+      ],
+    });
+    setNotice(
+      `Placed a section of “${cropTarget.name}” on “${target.name}” — drag to position, resize while selected.`,
+    );
+    setCropTarget(null);
+  };
 
   // Picker confirm: full drawings become sheets; parts land as overlays on
   // the currently selected sheet (staggered so several don't stack exactly).
@@ -491,6 +534,36 @@ export default function DrawingPackagesModule() {
                             ),
                           })
                         }
+                        onAddErasure={(overlayId, patch) => {
+                          if (overlayId === null) {
+                            updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                              erasures: [...(selectedItem.erasures ?? []), patch],
+                            });
+                            return;
+                          }
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            overlays: (selectedItem.overlays ?? []).map((overlay) =>
+                              overlay.id === overlayId
+                                ? { ...overlay, erasures: [...(overlay.erasures ?? []), patch] }
+                                : overlay,
+                            ),
+                          });
+                        }}
+                        onUndoErasure={(overlayId) => {
+                          if (overlayId === null) {
+                            updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                              erasures: (selectedItem.erasures ?? []).slice(0, -1),
+                            });
+                            return;
+                          }
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            overlays: (selectedItem.overlays ?? []).map((overlay) =>
+                              overlay.id === overlayId
+                                ? { ...overlay, erasures: (overlay.erasures ?? []).slice(0, -1) }
+                                : overlay,
+                            ),
+                          });
+                        }}
                       />
                     )}
                   </div>
@@ -506,7 +579,17 @@ export default function DrawingPackagesModule() {
         onClose={() => setPickerOpen(false)}
         library={library}
         onConfirm={handleAddFromPicker}
+        onCrop={handleCropStart}
       />
+
+      {cropTarget && (
+        <CropDrawingModal
+          item={cropTarget}
+          svg={svgCache[cropTarget.id]}
+          onClose={() => setCropTarget(null)}
+          onConfirm={handleCropConfirm}
+        />
+      )}
     </section>
   );
 }
@@ -740,6 +823,8 @@ function SheetPreview({
   onAdjust,
   onUpdateOverlay,
   onRemoveOverlay,
+  onAddErasure,
+  onUndoErasure,
 }: {
   item: DrawingPackageItem;
   svgByLibraryId: Record<string, string | null>;
@@ -748,10 +833,24 @@ function SheetPreview({
   onAdjust: (updates: Partial<Pick<DrawingPackageItem, "zoom" | "panX" | "panY">>) => void;
   onUpdateOverlay: (overlayId: string, updates: Partial<DrawingPackageOverlay>) => void;
   onRemoveOverlay: (overlayId: string) => void;
+  onAddErasure: (overlayId: string | null, patch: DrawingErasure) => void;
+  onUndoErasure: (overlayId: string | null) => void;
 }) {
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [eraserOn, setEraserOn] = useState(false);
+  // Live erase-drag rectangle (container coordinates, visual only). The
+  // committed patch is computed in the target SVG's own units on release.
+  const [eraseRect, setEraseRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const eraseDragRef = useRef<{ overlayId: string | null; startX: number; startY: number } | null>(null);
+  const eraseHistoryRef = useRef<Array<string | null>>([]);
+  const [eraseCount, setEraseCount] = useState(0); // enables/disables Undo
   useEffect(() => {
     setSelectedOverlayId(null);
+    setEraserOn(false);
+    setEraseRect(null);
+    eraseDragRef.current = null;
+    eraseHistoryRef.current = [];
+    setEraseCount(0);
   }, [item.id]);
   const selectedOverlay =
     (item.overlays ?? []).find((overlay) => overlay.id === selectedOverlayId) ?? null;
@@ -782,6 +881,30 @@ function SheetPreview({
     if (!baseSvg || event.button !== 0) return;
     const overlayEl = (event.target as Element).closest<HTMLElement>(".dp-overlay");
     const overlayId = overlayEl?.dataset.overlayId;
+
+    if (eraserOn) {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      eraseDragRef.current = {
+        overlayId: overlayId ?? null,
+        startX: event.clientX,
+        startY: event.clientY,
+      };
+      setEraseRect({
+        left: event.clientX - rect.left,
+        top: event.clientY - rect.top,
+        width: 0,
+        height: 0,
+      });
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        /* enhancement only */
+      }
+      return;
+    }
+
     const overlay = overlayId
       ? (item.overlays ?? []).find((entry) => entry.id === overlayId)
       : undefined;
@@ -814,6 +937,19 @@ function SheetPreview({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const eraseDrag = eraseDragRef.current;
+    if (eraseDrag) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setEraseRect({
+        left: Math.min(eraseDrag.startX, event.clientX) - rect.left,
+        top: Math.min(eraseDrag.startY, event.clientY) - rect.top,
+        width: Math.abs(event.clientX - eraseDrag.startX),
+        height: Math.abs(event.clientY - eraseDrag.startY),
+      });
+      return;
+    }
+
     const drag = dragRef.current;
     const container = containerRef.current;
     if (!drag || !container) return;
@@ -845,7 +981,43 @@ function SheetPreview({
     overlayEl.style.top = `${drag.lastY.toFixed(1)}%`;
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const eraseDrag = eraseDragRef.current;
+    if (eraseDrag) {
+      eraseDragRef.current = null;
+      setEraseRect(null);
+      const container = containerRef.current;
+      if (!container) return;
+      // Map both corners into the target SVG's own units via its screen CTM —
+      // this accounts for zoom/pan transforms, meet-fit letterboxing and any
+      // crop viewBox in one step.
+      const svgEl = eraseDrag.overlayId
+        ? container.querySelector<SVGSVGElement>(
+            `[data-overlay-id="${eraseDrag.overlayId}"] svg`,
+          )
+        : container.querySelector<SVGSVGElement>(".dp-zoom svg");
+      const ctm = svgEl?.getScreenCTM();
+      if (!svgEl || !ctm) return;
+      if (
+        Math.abs(event.clientX - eraseDrag.startX) < 4 ||
+        Math.abs(event.clientY - eraseDrag.startY) < 4
+      ) {
+        return; // too small to be a deliberate patch
+      }
+      const inverse = ctm.inverse();
+      const a = new DOMPoint(eraseDrag.startX, eraseDrag.startY).matrixTransform(inverse);
+      const b = new DOMPoint(event.clientX, event.clientY).matrixTransform(inverse);
+      onAddErasure(eraseDrag.overlayId, {
+        x: Math.min(a.x, b.x),
+        y: Math.min(a.y, b.y),
+        width: Math.abs(b.x - a.x),
+        height: Math.abs(b.y - a.y),
+      });
+      eraseHistoryRef.current.push(eraseDrag.overlayId);
+      setEraseCount(eraseHistoryRef.current.length);
+      return;
+    }
+
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
@@ -918,7 +1090,42 @@ function SheetPreview({
             Reset
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setEraserOn((on) => !on)}
+          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+            eraserOn
+              ? "border-accent bg-accent/10 text-accent"
+              : "border-border text-txt-muted hover:text-txt"
+          }`}
+          title="Erase unwanted text, labels or dimensions — drag a box over them to white them out (undoable)"
+        >
+          <Eraser size={12} /> Eraser
+        </button>
+        {eraseCount > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const target = eraseHistoryRef.current.pop();
+              if (target !== undefined) {
+                onUndoErasure(target);
+                setEraseCount(eraseHistoryRef.current.length);
+              }
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+            title="Restore the last erased area"
+          >
+            <Undo2 size={12} /> Undo erase
+          </button>
+        )}
       </div>
+      {eraserOn && (
+        <div className="mb-2 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-accent">
+          Eraser on — drag a box over text, labels or dimensions to white them out. It works on
+          the drawing and on placed parts, follows zoom and pan, and “Undo erase” brings the
+          content back.
+        </div>
+      )}
       {selectedOverlay && (
         <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5">
           <span className="mr-auto truncate text-[11px] font-semibold text-accent">
@@ -963,7 +1170,9 @@ function SheetPreview({
       <style>{PACKAGE_SHEET_CSS}</style>
       <div
         ref={containerRef}
-        className="relative w-full cursor-grab overflow-hidden rounded-lg active:cursor-grabbing"
+        className={`relative w-full overflow-hidden rounded-lg ${
+          eraserOn ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"
+        }`}
         style={{ aspectRatio: "297 / 210", fontSize: "clamp(6px, 1.05vw, 12px)", touchAction: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -977,6 +1186,17 @@ function SheetPreview({
         ) : (
           <div className="h-full w-full" dangerouslySetInnerHTML={{ __html: html }} />
         )}
+        {eraseRect && (
+          <div
+            className="pointer-events-none absolute border border-dashed border-err bg-white/80"
+            style={{
+              left: eraseRect.left,
+              top: eraseRect.top,
+              width: eraseRect.width,
+              height: eraseRect.height,
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -987,11 +1207,13 @@ function DrawingPicker({
   onClose,
   library,
   onConfirm,
+  onCrop,
 }: {
   open: boolean;
   onClose: () => void;
   library: LibraryItem[] | null;
   onConfirm: (items: LibraryItem[]) => void;
+  onCrop: (item: LibraryItem) => void;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
@@ -1130,6 +1352,20 @@ function DrawingPicker({
                   {item.tags.length > 0 ? ` · ${item.tags.slice(0, 4).join(", ")}` : ""}
                 </span>
               </span>
+              {item.assetType !== "object" ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onCrop(item);
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:border-accent/40 hover:text-accent"
+                  title="Add only a section of this drawing — drag a box over the preview to crop"
+                >
+                  <Crop size={11} /> Crop
+                </button>
+              ) : null}
             </label>
           ))
         )}
@@ -1151,6 +1387,148 @@ function DrawingPicker({
         >
           Add {selectedIds.size > 0 ? selectedIds.size : ""} item
           {selectedIds.size === 1 ? "" : "s"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Crop-a-section preview: the full drawing renders as plain SVG and the user
+ * drags a box over the region they want. On confirm the box is mapped into
+ * the drawing's own viewBox units — the sheet stores just the reference plus
+ * that window, and the renderer rewrites the viewBox at draw time.
+ */
+function CropDrawingModal({
+  item,
+  svg,
+  onClose,
+  onConfirm,
+}: {
+  item: LibraryItem;
+  svg: string | null | undefined;
+  onClose: () => void;
+  onConfirm: (crop: SvgViewBox) => void;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [selection, setSelection] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const draggingRef = useRef(false);
+
+  const clean = useMemo(() => (svg ? sanitizeSvgMarkup(svg) : null), [svg]);
+  const viewBox = useMemo(() => (clean ? parseSvgViewBox(clean) : null), [clean]);
+
+  const pointInWrap = (event: React.PointerEvent) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      x: Math.min(Math.max(event.clientX - rect.left, 0), rect.width),
+      y: Math.min(Math.max(event.clientY - rect.top, 0), rect.height),
+    };
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!clean || event.button !== 0) return;
+    const point = pointInWrap(event);
+    if (!point) return;
+    draggingRef.current = true;
+    setSelection({ x0: point.x, y0: point.y, x1: point.x, y1: point.y });
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* enhancement only */
+    }
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    const point = pointInWrap(event);
+    if (!point) return;
+    setSelection((current) => (current ? { ...current, x1: point.x, y1: point.y } : current));
+  };
+
+  const handlePointerUp = () => {
+    draggingRef.current = false;
+  };
+
+  const box = selection
+    ? {
+        left: Math.min(selection.x0, selection.x1),
+        top: Math.min(selection.y0, selection.y1),
+        width: Math.abs(selection.x1 - selection.x0),
+        height: Math.abs(selection.y1 - selection.y0),
+      }
+    : null;
+  const bigEnough = Boolean(box && box.width > 8 && box.height > 8);
+
+  const handleConfirm = () => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect || !box || !viewBox || !bigEnough) return;
+    const scaleX = viewBox.width / rect.width;
+    const scaleY = viewBox.height / rect.height;
+    onConfirm({
+      x: viewBox.x + box.left * scaleX,
+      y: viewBox.y + box.top * scaleY,
+      width: box.width * scaleX,
+      height: box.height * scaleY,
+    });
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Crop a section — ${item.name}`} width={860}>
+      <p className="mb-3 text-xs leading-5 text-txt-muted">
+        Drag a box over the part of the drawing you want. Only that section is placed on your
+        sheet — you can drag and resize it there like any part.
+      </p>
+
+      {svg === undefined ? (
+        <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-white text-xs text-slate-400">
+          <Loader2 size={16} className="mr-2 animate-spin" /> Loading drawing…
+        </div>
+      ) : !clean || !viewBox ? (
+        <div className="rounded-lg border border-border bg-bg-surface px-4 py-8 text-center text-xs text-txt-muted">
+          This drawing can&apos;t be cropped (its geometry couldn&apos;t be measured).
+        </div>
+      ) : (
+        <div className="max-h-[58vh] overflow-auto rounded-lg border border-border">
+          <div
+            ref={wrapRef}
+            className="dp-crop-wrap relative w-full cursor-crosshair select-none bg-white"
+            style={{ touchAction: "none" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          >
+            <style>{`.dp-crop-wrap svg { display: block; width: 100%; height: auto; }`}</style>
+            <div dangerouslySetInnerHTML={{ __html: clean }} />
+            {box && (
+              <div
+                className="pointer-events-none absolute border-2 border-dashed border-accent bg-accent/10"
+                style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+        {box && !bigEnough ? (
+          <span className="mr-auto text-[11px] text-txt-muted">Drag a bigger box to crop.</span>
+        ) : null}
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={!bigEnough || !viewBox}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition hover:bg-accent-strong disabled:opacity-50"
+        >
+          <Crop size={13} /> Add selection to sheet
         </button>
       </div>
     </Modal>

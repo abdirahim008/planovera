@@ -6,7 +6,7 @@
 // plain HTML/CSS.
 // ------------------------------------------------------------------
 
-import type { DrawingPackage, DrawingPackageItem } from "@/lib/supabase";
+import type { DrawingErasure, DrawingPackage, DrawingPackageItem } from "@/lib/supabase";
 import { sanitizeSvgMarkup } from "./svgSanitize";
 
 const esc = (value: string) =>
@@ -15,6 +15,66 @@ const esc = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+
+export interface SvgViewBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Read the root <svg> tag's viewBox, falling back to width/height attrs. */
+export function parseSvgViewBox(svg: string): SvgViewBox | null {
+  const tag = svg.match(/<svg[^>]*>/i)?.[0];
+  if (!tag) return null;
+  const vb = tag.match(
+    /viewBox\s*=\s*["']\s*([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)[\s,]+([-\d.eE+]+)\s*["']/i,
+  );
+  if (vb) {
+    const parsed = { x: +vb[1], y: +vb[2], width: +vb[3], height: +vb[4] };
+    if (parsed.width > 0 && parsed.height > 0) return parsed;
+  }
+  const w = tag.match(/\swidth\s*=\s*["']([\d.]+)(?:px)?["']/i);
+  const h = tag.match(/\sheight\s*=\s*["']([\d.]+)(?:px)?["']/i);
+  if (w && h && +w[1] > 0 && +h[1] > 0) return { x: 0, y: 0, width: +w[1], height: +h[1] };
+  return null;
+}
+
+/**
+ * Crop an SVG by rewriting its root viewBox to the given window (source
+ * viewBox units) and dropping any fixed width/height so CSS sizing follows
+ * the crop's aspect ratio. The geometry itself is untouched — everything
+ * outside the window simply falls outside the canvas.
+ */
+export function cropSvgToRegion(svg: string, crop: SvgViewBox): string {
+  return svg.replace(/<svg[^>]*>/i, (tag) => {
+    const stripped = tag
+      .replace(/\sviewBox\s*=\s*["'][^"']*["']/gi, "")
+      .replace(/\swidth\s*=\s*["'][^"']*["']/gi, "")
+      .replace(/\sheight\s*=\s*["'][^"']*["']/gi, "");
+    return stripped.replace(
+      /<svg/i,
+      `<svg viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}"`,
+    );
+  });
+}
+
+/**
+ * "Erase" unwanted content (labels, dimensions, stray text) by appending
+ * white rects inside the SVG, in its own coordinate units — they ride along
+ * with the drawing through zoom/pan/crop and print identically. The source
+ * geometry is untouched, so removing an erasure restores the content.
+ */
+export function injectErasures(svg: string, erasures?: DrawingErasure[]): string {
+  if (!erasures || erasures.length === 0) return svg;
+  const rects = erasures
+    .map(
+      (patch) =>
+        `<rect x="${patch.x}" y="${patch.y}" width="${patch.width}" height="${patch.height}" fill="#ffffff" stroke="none"/>`,
+    )
+    .join("");
+  return svg.replace(/<\/svg>\s*$/i, `${rects}</svg>`);
+}
 
 /**
  * Layout CSS shared by preview and print. The sheet is fully
@@ -66,7 +126,7 @@ export function renderPackageSheetHtml(
   const panX = Math.min(Math.max(item.panX ?? 0, -80), 80);
   const panY = Math.min(Math.max(item.panY ?? 0, -80), 80);
   const drawing = baseSvg
-    ? `<div class="dp-zoom" style="transform: translate(${panX.toFixed(1)}%, ${panY.toFixed(1)}%) scale(${zoom.toFixed(2)})">${sanitizeSvgMarkup(baseSvg)}</div>`
+    ? `<div class="dp-zoom" style="transform: translate(${panX.toFixed(1)}%, ${panY.toFixed(1)}%) scale(${zoom.toFixed(2)})">${injectErasures(sanitizeSvgMarkup(baseSvg), item.erasures)}</div>`
     : `<div class="dp-missing">Drawing unavailable — it may have been removed from the library.</div>`;
 
   // Part overlays: cropped library details stamped on top of the drawing.
@@ -80,7 +140,12 @@ export function renderPackageSheetHtml(
       const svg = svgByLibraryId[overlay.libraryItemId];
       const selected = opts?.selectedOverlayId === overlay.id ? " dp-overlay-selected" : "";
       const body = svg
-        ? sanitizeSvgMarkup(svg)
+        ? injectErasures(
+            overlay.crop
+              ? cropSvgToRegion(sanitizeSvgMarkup(svg), overlay.crop)
+              : sanitizeSvgMarkup(svg),
+            overlay.erasures,
+          )
         : `<div class="dp-overlay-missing">${esc(overlay.name || "Part")}</div>`;
       return `<div class="dp-overlay${selected}" data-overlay-id="${esc(overlay.id)}" style="left:${x}%;top:${y}%;width:${width}%">${body}</div>`;
     })
