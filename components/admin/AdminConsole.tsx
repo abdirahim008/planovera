@@ -1,25 +1,35 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, BarChart3, BookCopy, CreditCard, PencilRuler } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, BarChart3, BookCopy, CreditCard, MessageSquareText, PencilRuler } from "lucide-react";
 
 import AdminDrawings from "@/components/admin/AdminDrawings";
+import AdminFeedback from "@/components/admin/AdminFeedback";
 import AdminLibrary from "@/components/admin/AdminLibrary";
 import AdminOverview from "@/components/admin/AdminOverview";
 import BillingAdminPanel from "@/components/admin/BillingAdminPanel";
+import { fetchNewFeedbackCount } from "@/lib/feedback";
 
-type Tab = "overview" | "billing" | "library" | "drawings";
+type Tab = "overview" | "billing" | "library" | "drawings" | "feedback";
 
 // The admin watches platform usage and curates the BOQ library and the drawing
 // warehouse from this console (not from the studio / warehouse front end).
 export default function AdminConsole() {
   const [tab, setTab] = useState<Tab>("overview");
+  const [newFeedback, setNewFeedback] = useState(0);
 
-  const tabs: Array<{ id: Tab; label: string; icon: typeof CreditCard }> = [
+  // Refresh the badge on entry and whenever the admin switches tabs (cheap
+  // head-only count), so triaging in the Feedback tab clears it promptly.
+  useEffect(() => {
+    void fetchNewFeedbackCount().then(setNewFeedback);
+  }, [tab]);
+
+  const tabs: Array<{ id: Tab; label: string; icon: typeof CreditCard; badge?: number }> = [
     { id: "overview", label: "Overview", icon: BarChart3 },
     { id: "billing", label: "Billing Ops", icon: CreditCard },
     { id: "library", label: "BOQ Library", icon: BookCopy },
     { id: "drawings", label: "Drawing Warehouse", icon: PencilRuler },
+    { id: "feedback", label: "Feedback", icon: MessageSquareText, badge: newFeedback },
   ];
 
   return (
@@ -35,7 +45,7 @@ export default function AdminConsole() {
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-border bg-bg-surface p-2">
-          {tabs.map(({ id, label, icon: Icon }) => (
+          {tabs.map(({ id, label, icon: Icon, badge }) => (
             <button
               key={id}
               type="button"
@@ -46,6 +56,15 @@ export default function AdminConsole() {
             >
               <Icon size={15} />
               {label}
+              {badge ? (
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                    tab === id ? "bg-white/20 text-white" : "bg-accent/15 text-accent"
+                  }`}
+                >
+                  {badge}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -55,6 +74,7 @@ export default function AdminConsole() {
           {tab === "billing" ? <BillingAdminPanel /> : null}
           {tab === "library" ? <AdminLibrary embedded /> : null}
           {tab === "drawings" ? <AdminDrawings /> : null}
+          {tab === "feedback" ? <AdminFeedback /> : null}
         </div>
       </div>
     </div>
