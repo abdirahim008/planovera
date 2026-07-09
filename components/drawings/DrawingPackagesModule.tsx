@@ -954,7 +954,7 @@ function SheetPreview({
               onRemoveOverlay(selectedOverlay.id);
               setSelectedOverlayId(null);
             }}
-            className="inline-flex items-center gap-1 rounded-md border border-danger/40 px-1.5 py-0.5 text-[10px] font-semibold text-danger transition hover:bg-danger/10"
+            className="inline-flex items-center gap-1 rounded-md border border-err/40 px-1.5 py-0.5 text-[10px] font-semibold text-err transition hover:bg-err/10"
           >
             <Trash2 size={11} /> Remove
           </button>

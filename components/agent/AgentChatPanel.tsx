@@ -6,6 +6,7 @@ import { Sparkles, X, Send, Bot, Loader2 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 
 import { useAppStore } from "@/lib/store";
+import { requestFeedbackForm } from "@/lib/feedback";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-browser";
 import {
   mapProjectRecord,
@@ -722,6 +723,14 @@ export default function AgentChatPanel() {
           <div className="text-sm font-semibold text-txt">Planovera Assistant</div>
           <div className="truncate text-[11px] text-txt-dim">Sets things up &amp; answers questions for you</div>
         </div>
+        <button
+          type="button"
+          onClick={() => requestFeedbackForm()}
+          className="rounded-lg px-2 py-1 text-[11px] font-semibold text-txt-dim transition hover:bg-bg-hover hover:text-txt"
+          title="Tell the Planovera team about a problem or an idea"
+        >
+          Report a problem
+        </button>
         <button
           type="button"
           onClick={() => setOpen(false)}

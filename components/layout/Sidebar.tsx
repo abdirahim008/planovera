@@ -29,6 +29,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import FeedbackLauncher from "@/components/feedback/FeedbackLauncher";
 import UserProfileMenu from "./UserProfileMenu";
 
 interface SidebarProps {
@@ -242,6 +243,7 @@ export default function Sidebar({
       </nav>
 
       <div className={clsx("border-t border-border", collapsed ? "p-2" : "p-3")}>
+        <FeedbackLauncher collapsed={collapsed} />
         {authConfigured ? (
           <a
             href="/organization"
