@@ -18,6 +18,7 @@ import {
   Search,
   Trash2,
   Undo2,
+  ZoomIn,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
@@ -354,6 +355,8 @@ export default function DrawingPackagesModule() {
           </p>
           <p className="mt-1 text-sm text-txt-muted">
             Pick ready-made drawings from the warehouse, fill the title block, export as PDF.
+            Every package is saved automatically — reopen it here anytime to continue, edit or
+            re-print.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -941,6 +944,14 @@ const OVERLAY_WIDTH_STEP = 5;
 const OVERLAY_WIDTH_MIN = 5;
 const OVERLAY_WIDTH_MAX = 100;
 
+// View-only magnifier: lets the user look closer to erase small text or
+// dimensions precisely. Never persisted and never part of the printed sheet —
+// unlike item.zoom, which changes the document layout.
+const VIEW_ZOOM_MAX = 4;
+const VIEW_ZOOM_STEP = 0.5;
+
+type SheetView = { z: number; x: number; y: number };
+
 type SheetDrag =
   | {
       kind: "pan";
@@ -961,6 +972,15 @@ type SheetDrag =
       lastX: number;
       lastY: number;
       moved: boolean;
+    }
+  | {
+      kind: "viewpan";
+      startX: number;
+      startY: number;
+      baseX: number;
+      baseY: number;
+      lastX: number;
+      lastY: number;
     }
   | {
       kind: "dimension";
@@ -1025,6 +1045,11 @@ function SheetPreview({
   const eraseDragRef = useRef<{ overlayId: string | null; startX: number; startY: number } | null>(null);
   const eraseHistoryRef = useRef<Array<string | null>>([]);
   const [eraseCount, setEraseCount] = useState(0); // enables/disables Undo
+  // View-only magnifier state (px translate + scale of the sheet content).
+  const [view, setView] = useState<SheetView>({ z: 1, x: 0, y: 0 });
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const viewWrapRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     setSelectedOverlayId(null);
     setSelectedDimensionId(null);
@@ -1033,6 +1058,7 @@ function SheetPreview({
     eraseDragRef.current = null;
     eraseHistoryRef.current = [];
     setEraseCount(0);
+    setView({ z: 1, x: 0, y: 0 });
   }, [item.id]);
   const selectedOverlay =
     (item.overlays ?? []).find((overlay) => overlay.id === selectedOverlayId) ?? null;
@@ -1064,6 +1090,49 @@ function SheetPreview({
   // A press-without-movement on a part selects it.
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<SheetDrag | null>(null);
+
+  // Keep the magnified content covering the frame — no blank gutters.
+  const clampView = (z: number, x: number, y: number): SheetView => {
+    const el = containerRef.current;
+    const w = el?.clientWidth ?? 0;
+    const h = el?.clientHeight ?? 0;
+    return {
+      z,
+      x: Math.min(Math.max(x, w * (1 - z)), 0),
+      y: Math.min(Math.max(y, h * (1 - z)), 0),
+    };
+  };
+
+  const zoomViewTo = (nz: number, anchorX: number, anchorY: number) => {
+    const { z, x, y } = viewRef.current;
+    if (nz === z) return;
+    // Keep the sheet point under the anchor stationary while scaling.
+    setView(clampView(nz, anchorX - ((anchorX - x) * nz) / z, anchorY - ((anchorY - y) * nz) / z));
+  };
+
+  const stepView = (direction: -1 | 1) => {
+    const el = containerRef.current;
+    const nz = Math.min(Math.max(viewRef.current.z + direction * VIEW_ZOOM_STEP, 1), VIEW_ZOOM_MAX);
+    zoomViewTo(nz, (el?.clientWidth ?? 0) / 2, (el?.clientHeight ?? 0) / 2);
+  };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Native listener: React registers wheel handlers as passive, and stopping
+    // the browser's page zoom on ctrl+scroll needs preventDefault.
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const { z } = viewRef.current;
+      const nz = Math.min(Math.max(z * (event.deltaY < 0 ? 1.15 : 1 / 1.15), 1), VIEW_ZOOM_MAX);
+      const rect = el.getBoundingClientRect();
+      zoomViewTo(nz, event.clientX - rect.left, event.clientY - rect.top);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!baseSvg || event.button !== 0) return;
@@ -1145,15 +1214,27 @@ function SheetPreview({
           lastY: overlay.y,
           moved: false,
         }
-      : {
-          kind: "pan",
-          startX: event.clientX,
-          startY: event.clientY,
-          baseX: panX,
-          baseY: panY,
-          lastX: panX,
-          lastY: panY,
-        };
+      : view.z > 1
+        ? {
+            // While magnified, dragging the sheet moves the view — the printed
+            // layout must never shift as a side effect of looking closer.
+            kind: "viewpan",
+            startX: event.clientX,
+            startY: event.clientY,
+            baseX: view.x,
+            baseY: view.y,
+            lastX: view.x,
+            lastY: view.y,
+          }
+        : {
+            kind: "pan",
+            startX: event.clientX,
+            startY: event.clientY,
+            baseX: panX,
+            baseY: panY,
+            lastX: panX,
+            lastY: panY,
+          };
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -1178,6 +1259,20 @@ function SheetPreview({
     const drag = dragRef.current;
     const container = containerRef.current;
     if (!drag || !container) return;
+
+    if (drag.kind === "viewpan") {
+      const next = clampView(
+        view.z,
+        drag.baseX + (event.clientX - drag.startX),
+        drag.baseY + (event.clientY - drag.startY),
+      );
+      drag.lastX = next.x;
+      drag.lastY = next.y;
+      const wrap = viewWrapRef.current;
+      if (wrap) wrap.style.transform = `translate(${next.x}px, ${next.y}px) scale(${view.z})`;
+      return;
+    }
+
     const area = container.querySelector<HTMLElement>(".dp-drawing");
     if (!area) return;
     const rect = area.getBoundingClientRect();
@@ -1272,6 +1367,15 @@ function SheetPreview({
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
+    if (drag.kind === "viewpan") {
+      if (drag.lastX !== drag.baseX || drag.lastY !== drag.baseY) {
+        setView((current) => ({ ...current, x: drag.lastX, y: drag.lastY }));
+      } else {
+        setSelectedOverlayId(null);
+        setSelectedDimensionId(null);
+      }
+      return;
+    }
     if (drag.kind === "pan") {
       if (drag.lastX !== drag.baseX || drag.lastY !== drag.baseY) {
         onAdjust({ panX: Number(drag.lastX.toFixed(1)), panY: Number(drag.lastY.toFixed(1)) });
@@ -1383,6 +1487,45 @@ function SheetPreview({
           )}
         </div>
 
+        <div
+          className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1"
+          title="Magnify the view to inspect or erase small text precisely — never changes the printed sheet. Tip: Ctrl+scroll on the sheet zooms at the cursor."
+        >
+          <span className="inline-flex items-center gap-1 px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-txt-dim">
+            <ZoomIn size={11} /> Magnify
+          </span>
+          <button
+            type="button"
+            onClick={() => stepView(-1)}
+            disabled={view.z <= 1}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Magnify less (view only)"
+          >
+            −
+          </button>
+          <span className="w-10 text-center text-xs font-semibold tabular-nums text-txt">
+            {Math.round(view.z * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => stepView(1)}
+            disabled={view.z >= VIEW_ZOOM_MAX}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Magnify more (view only)"
+          >
+            +
+          </button>
+          {view.z > 1 && (
+            <button
+              type="button"
+              onClick={() => setView({ z: 1, x: 0, y: 0 })}
+              className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+            >
+              Fit
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
           <span className="px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-txt-dim">
             Dimension
@@ -1440,14 +1583,14 @@ function SheetPreview({
         </div>
 
         <span className="ml-auto hidden text-[10px] text-txt-muted xl:inline">
-          Drag the sheet to pan · click a part or dimension to select it
+          Drag the sheet to pan · click a part or dimension to select · Ctrl+scroll to magnify
         </span>
       </div>
       {eraserOn && (
         <div className="mb-2 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-accent">
-          Eraser on — drag a box over text, labels or dimensions to white them out. It works on
-          the drawing and on placed parts, follows zoom and pan, and “Undo erase” brings the
-          content back.
+          Eraser on — drag a box over text, labels or dimensions to white them out. For small
+          text, magnify first (Ctrl+scroll or the Magnify buttons) and erase precisely. It works
+          on the drawing and on placed parts, and “Undo” brings the content back.
         </div>
       )}
       {selectedOverlay && (
@@ -1563,7 +1706,19 @@ function SheetPreview({
             <Loader2 size={16} className="mr-2 animate-spin" /> Loading drawing…
           </div>
         ) : (
-          <div className="h-full w-full" dangerouslySetInnerHTML={{ __html: html }} />
+          <div
+            ref={viewWrapRef}
+            className="h-full w-full"
+            style={
+              view.z > 1
+                ? {
+                    transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`,
+                    transformOrigin: "0 0",
+                  }
+                : undefined
+            }
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
         )}
         {eraseRect && (
           <div
