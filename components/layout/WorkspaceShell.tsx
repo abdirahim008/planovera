@@ -914,66 +914,118 @@ export default function WorkspaceShell() {
     }
 
     let active = true;
-    const timer = window.setTimeout(async () => {
-      if (serializedPayload !== lastSavedWorkspaceRef.current) {
-        const { error } = await supabase.from("construction_workspace_snapshots").upsert({
-          owner_id: activeUserId,
-          payload: normalizedPayload,
-        });
+    let inFlight = false;
+    let retryTimer: number | null = null;
 
-        if (!active) return;
+    // A failed cloud save must not wait for the user's next edit — field
+    // connectivity drops mid-session are the norm, not the exception.
+    const scheduleRetry = () => {
+      if (!active || retryTimer !== null) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void flush();
+      }, 15000);
+    };
 
-        if (error) {
-          setWorkspaceNotice(`Could not save workspace changes: ${error.message}`);
-          return;
-        }
-
-        lastSavedWorkspaceRef.current = serializedPayload;
-      }
-
-      if (normalizedSyncSignature !== lastNormalizedSyncRef.current) {
-        const response = await fetch("/api/workspace/sync", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+    const flush = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        if (serializedPayload !== lastSavedWorkspaceRef.current) {
+          const { error } = await supabase.from("construction_workspace_snapshots").upsert({
+            owner_id: activeUserId,
             payload: normalizedPayload,
-            activeProjectId: project?.id ?? null,
-            activeModule,
-          }),
-        });
+          });
 
-        if (!active) return;
+          if (!active) return;
 
-        if (!response.ok) {
-          const result = (await response.json().catch(() => null)) as
-            | {
-                error?: string;
-              }
-            | null;
-          setWorkspaceNotice(
-            `Could not synchronize project records: ${
-              result?.error || "Unexpected server response."
-            }`,
-          );
-          return;
+          if (error) {
+            setWorkspaceNotice(
+              `Could not save workspace changes: ${error.message} — kept on this device, retrying automatically.`,
+            );
+            scheduleRetry();
+            return;
+          }
+
+          lastSavedWorkspaceRef.current = serializedPayload;
         }
 
-        lastNormalizedSyncRef.current = normalizedSyncSignature;
-      }
+        if (normalizedSyncSignature !== lastNormalizedSyncRef.current) {
+          const response = await fetch("/api/workspace/sync", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              payload: normalizedPayload,
+              activeProjectId: project?.id ?? null,
+              activeModule,
+            }),
+          });
 
-      setWorkspaceNotice((current) =>
-        current?.startsWith("Could not save workspace changes") ||
-        current?.startsWith("Could not synchronize project records")
-          ? null
-          : current,
-      );
-    }, 900);
+          if (!active) return;
+
+          if (!response.ok) {
+            const result = (await response.json().catch(() => null)) as
+              | {
+                  error?: string;
+                }
+              | null;
+            setWorkspaceNotice(
+              `Could not synchronize project records: ${
+                result?.error || "Unexpected server response."
+              } — kept on this device, retrying automatically.`,
+            );
+            scheduleRetry();
+            return;
+          }
+
+          lastNormalizedSyncRef.current = normalizedSyncSignature;
+        }
+
+        setWorkspaceNotice((current) =>
+          current?.startsWith("Could not save workspace changes") ||
+          current?.startsWith("Could not synchronize project records") ||
+          current?.startsWith("You appear to be offline")
+            ? null
+            : current,
+        );
+      } catch {
+        // Network drop: the work is already persisted locally; keep retrying
+        // until the connection returns.
+        if (active) {
+          setWorkspaceNotice(
+            "You appear to be offline — changes are saved on this device and will sync automatically when the connection returns.",
+          );
+          scheduleRetry();
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const timer = window.setTimeout(() => void flush(), 900);
+
+    // Don't let the debounce window swallow a save when the user leaves or the
+    // connection comes back — push immediately on those signals.
+    const flushNow = () => {
+      window.clearTimeout(timer);
+      void flush();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") flushNow();
+    };
+    window.addEventListener("online", flushNow);
+    window.addEventListener("pagehide", flushNow);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       active = false;
       window.clearTimeout(timer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      window.removeEventListener("online", flushNow);
+      window.removeEventListener("pagehide", flushNow);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [
     activeModule,
