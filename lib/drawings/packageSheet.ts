@@ -125,8 +125,9 @@ export const PACKAGE_SHEET_CSS = `
 .dp-missing { font-size: 1.1em; color: #94a3b8; text-align: center; padding: 8%; }
 .dp-tb { flex: 0 0 auto; border-top: 2px solid #0f172a; display: grid; grid-template-columns: repeat(6, 1fr); }
 .dp-tb-cell { border-right: 1px solid #0f172a; border-top: 1px solid #0f172a; padding: 0.45em 0.6em 0.5em; min-width: 0; }
-.dp-tb-cell:nth-child(-n+6) { border-top: none; }
-.dp-tb-cell:nth-child(6n) { border-right: none; }
+/* Fixed 3-row layout (cells 1-3 / 4-7 / 8-13) — keep in sync with the cell order in renderPackageSheetHtml. */
+.dp-tb-cell:nth-child(-n+3) { border-top: none; }
+.dp-tb-cell:nth-child(3), .dp-tb-cell:nth-child(7), .dp-tb-cell:nth-child(13) { border-right: none; }
 .dp-tb-label { display: block; font-size: 0.62em; font-weight: 700; letter-spacing: 0.08em; color: #64748b; text-transform: uppercase; }
 .dp-tb-value { display: block; font-size: 0.92em; font-weight: 600; margin-top: 0.15em; min-height: 1.1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dp-tb-cell.dp-wide { grid-column: span 2; }
@@ -222,7 +223,7 @@ ${cell("Consultant", tb.consultant, true)}
 ${cell("Drawing title", tb.drawingTitle, true)}
 ${cell("Drawing no", tb.drawingNo)}
 ${cell("Scale", tb.scale)}
-${cell("Date", tb.date)}
+${cell("Date", tb.date, true)}
 ${cell("Drawn by", tb.drawnBy)}
 ${cell("Checked by", tb.checkedBy)}
 ${cell("Approved by", tb.approvedBy)}
