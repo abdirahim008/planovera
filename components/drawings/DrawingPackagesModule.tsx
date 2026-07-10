@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookmarkPlus,
   ChevronDown,
   ChevronUp,
   Crop,
@@ -9,6 +10,10 @@ import {
   FileDown,
   FolderOpen,
   Loader2,
+  MoveHorizontal,
+  MoveVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Trash2,
@@ -38,9 +43,11 @@ import {
   emptyDrawingPackageTitleBlock,
   type DrawingErasure,
   type DrawingPackage,
+  type DrawingPackageDimension,
   type DrawingPackageItem,
   type DrawingPackageOverlay,
   type DrawingPackageTitleBlock,
+  type TitleBlockPreset,
 } from "@/lib/supabase";
 import { isSupabaseConfigured } from "@/lib/supabase-browser";
 import { useAppStore } from "@/lib/store";
@@ -58,6 +65,9 @@ export default function DrawingPackagesModule() {
   const updateDrawingPackageItem = useAppStore((state) => state.updateDrawingPackageItem);
   const removeDrawingPackageItem = useAppStore((state) => state.removeDrawingPackageItem);
   const moveDrawingPackageItem = useAppStore((state) => state.moveDrawingPackageItem);
+  const titleBlockPresets = useAppStore((state) => state.titleBlockPresets);
+  const saveTitleBlockPreset = useAppStore((state) => state.saveTitleBlockPreset);
+  const deleteTitleBlockPreset = useAppStore((state) => state.deleteTitleBlockPreset);
 
   const projectPackages = useMemo(
     () => drawingPackages.filter((pkg) => pkg.project_id === (project?.id ?? "")),
@@ -160,6 +170,8 @@ export default function DrawingPackagesModule() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Hide the sheets + title-block panel to give the drawing the full width.
+  const [panelHidden, setPanelHidden] = useState(false);
 
   // The picker needs the warehouse list however it was opened.
   useEffect(() => {
@@ -423,6 +435,19 @@ export default function DrawingPackagesModule() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => setPanelHidden((hidden) => !hidden)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
+                    title={
+                      panelHidden
+                        ? "Show the sheets and title-block panel"
+                        : "Hide the panel to give the drawing the full width"
+                    }
+                  >
+                    {panelHidden ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+                    {panelHidden ? "Show panel" : "Hide panel"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       void ensureLibrary();
                       setPickerOpen(true);
@@ -459,9 +484,13 @@ export default function DrawingPackagesModule() {
                   warehouse.
                 </div>
               ) : (
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
+                <div
+                  className={
+                    panelHidden ? "space-y-4" : "grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]"
+                  }
+                >
                   {/* Sheet list + title-block form */}
-                  <div className="space-y-2">
+                  <div className={panelHidden ? "hidden" : "space-y-2"}>
                     {selectedPackage.items.map((item, index) => (
                       <SheetRow
                         key={item.id}
@@ -481,6 +510,9 @@ export default function DrawingPackagesModule() {
                       <TitleBlockForm
                         key={selectedItem.id}
                         item={selectedItem}
+                        presets={titleBlockPresets}
+                        onSavePreset={saveTitleBlockPreset}
+                        onDeletePreset={deleteTitleBlockPreset}
                         onCommit={(titleBlock) =>
                           updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
                             titleBlock,
@@ -564,6 +596,25 @@ export default function DrawingPackagesModule() {
                             ),
                           });
                         }}
+                        onAddDimension={(dimension) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            dimensions: [...(selectedItem.dimensions ?? []), dimension],
+                          })
+                        }
+                        onUpdateDimension={(dimId, updates) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            dimensions: (selectedItem.dimensions ?? []).map((dim) =>
+                              dim.id === dimId ? { ...dim, ...updates } : dim,
+                            ),
+                          })
+                        }
+                        onRemoveDimension={(dimId) =>
+                          updateDrawingPackageItem(selectedPackage.id, selectedItem.id, {
+                            dimensions: (selectedItem.dimensions ?? []).filter(
+                              (dim) => dim.id !== dimId,
+                            ),
+                          })
+                        }
                       />
                     )}
                   </div>
@@ -732,52 +783,149 @@ const TITLE_BLOCK_FIELDS: Array<{ key: keyof DrawingPackageTitleBlock; label: st
 
 // Local draft committed on blur — every store write re-serializes the whole
 // persisted workspace, so per-keystroke commits are deliberately avoided.
+// Applying a preset fills the RECURRING fields; the sheet keeps its own
+// drawing title, number and date.
+const PRESET_EXCLUDED_FIELDS: Array<keyof DrawingPackageTitleBlock> = [
+  "drawingTitle",
+  "drawingNo",
+  "date",
+];
+
 function TitleBlockForm({
   item,
+  presets,
+  onSavePreset,
+  onDeletePreset,
   onCommit,
   onApplyToAll,
 }: {
   item: DrawingPackageItem;
+  presets: TitleBlockPreset[];
+  onSavePreset: (name: string, titleBlock: DrawingPackageTitleBlock) => void;
+  onDeletePreset: (id: string) => void;
   onCommit: (titleBlock: DrawingPackageTitleBlock) => void;
   onApplyToAll: (titleBlock: DrawingPackageTitleBlock) => void;
 }) {
   const [draft, setDraft] = useState<DrawingPackageTitleBlock>(item.titleBlock);
   useEffect(() => setDraft(item.titleBlock), [item.titleBlock]);
+  // Collapsed by default once filled? Keep it simple: open, one click to fold
+  // away when the engineer wants the space.
+  const [open, setOpen] = useState(true);
+  const [presetId, setPresetId] = useState("");
 
   const commit = (next: DrawingPackageTitleBlock) => {
     if (JSON.stringify(next) !== JSON.stringify(item.titleBlock)) onCommit(next);
   };
 
+  const applyPreset = (id: string) => {
+    setPresetId(id);
+    const preset = presets.find((entry) => entry.id === id);
+    if (!preset) return;
+    const next = { ...draft };
+    (Object.keys(preset.titleBlock) as Array<keyof DrawingPackageTitleBlock>).forEach((key) => {
+      if (!PRESET_EXCLUDED_FIELDS.includes(key)) next[key] = preset.titleBlock[key];
+    });
+    setDraft(next);
+    commit(next);
+  };
+
+  const handleSavePreset = () => {
+    const name = window.prompt(
+      "Name this title block (saving under an existing name replaces it):",
+      draft.projectTitle || "My title block",
+    );
+    if (name?.trim()) onSavePreset(name, draft);
+  };
+
   return (
     <div className="rounded-2xl border border-border bg-bg-surface p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-accent">Title block</p>
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
-          onClick={() => onApplyToAll(draft)}
-          className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-txt-muted transition hover:text-txt"
-          title="Copy the shared fields (project, client, consultant, date, signatures, revision, status) to every sheet in the package"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-accent"
+          title={open ? "Collapse the title block to save space" : "Expand the title block"}
         >
-          Apply to all sheets
+          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          Title block
         </button>
+        {!open ? (
+          <span className="min-w-0 truncate text-[11px] text-txt-muted">
+            {[item.titleBlock.drawingNo, item.titleBlock.drawingTitle]
+              .filter(Boolean)
+              .join(" · ") || "collapsed"}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onApplyToAll(draft)}
+            className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-txt-muted transition hover:text-txt"
+            title="Copy the shared fields (project, client, consultant, date, signatures, revision, status) to every sheet in the package"
+          >
+            Apply to all sheets
+          </button>
+        )}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {TITLE_BLOCK_FIELDS.map(({ key, label }) => (
-          <label key={key} className="block">
-            <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
-              {label}
-            </span>
-            <input
-              data-tb-field={key}
-              value={draft[key]}
-              onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-              onBlur={(e) => commit({ ...draft, [key]: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-              className="mt-0.5 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs text-txt outline-none focus:border-accent/60"
-            />
-          </label>
-        ))}
-      </div>
+
+      {open && (
+        <>
+          <div className="mt-3 flex items-center gap-1.5">
+            <select
+              value={presetId}
+              onChange={(event) => applyPreset(event.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-border bg-bg-surface px-2 py-1.5 text-xs text-txt outline-none"
+              title="Fill the recurring fields from a saved title block (drawing title, number and date stay as they are)"
+            >
+              <option value="">Apply saved title block…</option>
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleSavePreset}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] font-semibold text-txt-muted transition hover:text-txt"
+              title="Save this title block so you can re-apply it on any sheet without retyping"
+            >
+              <BookmarkPlus size={12} /> Save
+            </button>
+            {presetId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onDeletePreset(presetId);
+                  setPresetId("");
+                }}
+                className="inline-flex shrink-0 items-center justify-center rounded-md border border-err/40 p-1.5 text-err transition hover:bg-err/10"
+                title="Delete the selected saved title block"
+                aria-label="Delete saved title block"
+              >
+                <Trash2 size={12} />
+              </button>
+            ) : null}
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {TITLE_BLOCK_FIELDS.map(({ key, label }) => (
+              <label key={key} className="block">
+                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
+                  {label}
+                </span>
+                <input
+                  data-tb-field={key}
+                  value={draft[key]}
+                  onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                  onBlur={(e) => commit({ ...draft, [key]: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                  className="mt-0.5 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs text-txt outline-none focus:border-accent/60"
+                />
+              </label>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -813,7 +961,33 @@ type SheetDrag =
       lastX: number;
       lastY: number;
       moved: boolean;
+    }
+  | {
+      kind: "dimension";
+      dimId: string;
+      /** move the whole line, or stretch one of its ends */
+      mode: "move" | "start" | "end";
+      horizontal: boolean;
+      startX: number;
+      startY: number;
+      baseX: number;
+      baseY: number;
+      baseLength: number;
+      lastX: number;
+      lastY: number;
+      lastLength: number;
+      moved: boolean;
     };
+
+const DIM_MIN_LENGTH = 3;
+const DIM_MAX_LENGTH = 110;
+const DIM_SCALE_STEP = 0.25;
+const DIM_SCALE_MIN = 0.5;
+const DIM_SCALE_MAX = 3;
+
+const clampDimPos = (value: number) => Math.min(Math.max(value, -10), 105);
+const clampDimLength = (value: number) =>
+  Math.min(Math.max(value, DIM_MIN_LENGTH), DIM_MAX_LENGTH);
 
 function SheetPreview({
   item,
@@ -825,6 +999,9 @@ function SheetPreview({
   onRemoveOverlay,
   onAddErasure,
   onUndoErasure,
+  onAddDimension,
+  onUpdateDimension,
+  onRemoveDimension,
 }: {
   item: DrawingPackageItem;
   svgByLibraryId: Record<string, string | null>;
@@ -835,8 +1012,12 @@ function SheetPreview({
   onRemoveOverlay: (overlayId: string) => void;
   onAddErasure: (overlayId: string | null, patch: DrawingErasure) => void;
   onUndoErasure: (overlayId: string | null) => void;
+  onAddDimension: (dimension: DrawingPackageDimension) => void;
+  onUpdateDimension: (dimId: string, updates: Partial<DrawingPackageDimension>) => void;
+  onRemoveDimension: (dimId: string) => void;
 }) {
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [selectedDimensionId, setSelectedDimensionId] = useState<string | null>(null);
   const [eraserOn, setEraserOn] = useState(false);
   // Live erase-drag rectangle (container coordinates, visual only). The
   // committed patch is computed in the target SVG's own units on release.
@@ -846,6 +1027,7 @@ function SheetPreview({
   const [eraseCount, setEraseCount] = useState(0); // enables/disables Undo
   useEffect(() => {
     setSelectedOverlayId(null);
+    setSelectedDimensionId(null);
     setEraserOn(false);
     setEraseRect(null);
     eraseDragRef.current = null;
@@ -854,11 +1036,17 @@ function SheetPreview({
   }, [item.id]);
   const selectedOverlay =
     (item.overlays ?? []).find((overlay) => overlay.id === selectedOverlayId) ?? null;
+  const selectedDimension =
+    (item.dimensions ?? []).find((dim) => dim.id === selectedDimensionId) ?? null;
 
   const baseSvg = svgByLibraryId[item.libraryItemId];
   const html = useMemo(
-    () => renderPackageSheetHtml(item, svgByLibraryId, index, count, { selectedOverlayId }),
-    [item, svgByLibraryId, index, count, selectedOverlayId],
+    () =>
+      renderPackageSheetHtml(item, svgByLibraryId, index, count, {
+        selectedOverlayId,
+        selectedDimensionId,
+      }),
+    [item, svgByLibraryId, index, count, selectedOverlayId, selectedDimensionId],
   );
 
   const zoom = Math.min(Math.max(item.zoom ?? 1, ZOOM_MIN), ZOOM_MAX);
@@ -897,6 +1085,43 @@ function SheetPreview({
         width: 0,
         height: 0,
       });
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        /* enhancement only */
+      }
+      return;
+    }
+
+    // Dimension hit: middle drags the whole line, the last ~16px of each end
+    // stretches that end (length only — the 1px stroke never changes).
+    const dimEl = (event.target as Element).closest<HTMLElement>(".dp-dim");
+    const dim = dimEl
+      ? (item.dimensions ?? []).find((entry) => entry.id === dimEl.dataset.dimId)
+      : undefined;
+    if (dimEl && dim) {
+      const rect = dimEl.getBoundingClientRect();
+      const horizontal = dim.orientation === "horizontal";
+      const along = horizontal ? event.clientX - rect.left : event.clientY - rect.top;
+      const extent = horizontal ? rect.width : rect.height;
+      const grip = Math.min(16, extent * 0.25);
+      const mode: "move" | "start" | "end" =
+        along <= grip ? "start" : along >= extent - grip ? "end" : "move";
+      dragRef.current = {
+        kind: "dimension",
+        dimId: dim.id,
+        mode,
+        horizontal,
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: dim.x,
+        baseY: dim.y,
+        baseLength: dim.length,
+        lastX: dim.x,
+        lastY: dim.y,
+        lastLength: dim.length,
+        moved: false,
+      };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {
@@ -968,6 +1193,32 @@ function SheetPreview({
       return;
     }
 
+    if (drag.kind === "dimension") {
+      if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 3) {
+        drag.moved = true;
+      }
+      const dimEl = container.querySelector<HTMLElement>(`[data-dim-id="${drag.dimId}"]`);
+      if (!dimEl) return;
+      const dAxis = drag.horizontal ? dxPct : dyPct;
+      if (drag.mode === "move") {
+        drag.lastX = clampDimPos(drag.baseX + dxPct);
+        drag.lastY = clampDimPos(drag.baseY + dyPct);
+      } else if (drag.mode === "end") {
+        drag.lastLength = clampDimLength(drag.baseLength + dAxis);
+      } else {
+        // Stretching the start end keeps the far end fixed.
+        const shift = Math.min(Math.max(dAxis, -105), drag.baseLength - DIM_MIN_LENGTH);
+        drag.lastLength = clampDimLength(drag.baseLength - shift);
+        if (drag.horizontal) drag.lastX = clampDimPos(drag.baseX + shift);
+        else drag.lastY = clampDimPos(drag.baseY + shift);
+      }
+      dimEl.style.left = `${drag.lastX.toFixed(1)}%`;
+      dimEl.style.top = `${drag.lastY.toFixed(1)}%`;
+      if (drag.horizontal) dimEl.style.width = `${drag.lastLength.toFixed(1)}%`;
+      else dimEl.style.height = `${drag.lastLength.toFixed(1)}%`;
+      return;
+    }
+
     if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 3) {
       drag.moved = true;
     }
@@ -1026,6 +1277,21 @@ function SheetPreview({
         onAdjust({ panX: Number(drag.lastX.toFixed(1)), panY: Number(drag.lastY.toFixed(1)) });
       } else {
         setSelectedOverlayId(null);
+        setSelectedDimensionId(null);
+      }
+      return;
+    }
+    if (drag.kind === "dimension") {
+      if (drag.moved) {
+        setSelectedDimensionId(drag.dimId);
+        onUpdateDimension(drag.dimId, {
+          x: Number(drag.lastX.toFixed(1)),
+          y: Number(drag.lastY.toFixed(1)),
+          length: Number(drag.lastLength.toFixed(1)),
+        });
+      } else {
+        setSelectedDimensionId((current) => (current === drag.dimId ? null : drag.dimId));
+        setSelectedOverlayId(null);
       }
       return;
     }
@@ -1049,75 +1315,133 @@ function SheetPreview({
     if (next !== selectedOverlay.width) onUpdateOverlay(selectedOverlay.id, { width: next });
   };
 
+  const addDimension = (orientation: "horizontal" | "vertical") => {
+    const dimension: DrawingPackageDimension = {
+      id: uuid(),
+      orientation,
+      x: orientation === "horizontal" ? 32 : 50,
+      y: orientation === "horizontal" ? 50 : 32,
+      length: 30,
+      text: "",
+      scale: 1,
+    };
+    onAddDimension(dimension);
+    setSelectedDimensionId(dimension.id);
+    setSelectedOverlayId(null);
+    setEraserOn(false);
+  };
+
+  const stepDimensionScale = (direction: -1 | 1) => {
+    if (!selectedDimension) return;
+    const current = selectedDimension.scale ?? 1;
+    const next = Math.min(
+      Math.max(current + direction * DIM_SCALE_STEP, DIM_SCALE_MIN),
+      DIM_SCALE_MAX,
+    );
+    if (next !== current) onUpdateDimension(selectedDimension.id, { scale: next });
+  };
+
   const adjusted = zoom !== 1 || panX !== 0 || panY !== 0;
 
   return (
     <div className="rounded-2xl border border-border bg-bg-surface p-3">
-      <div className="mb-2 flex items-center justify-end gap-1.5">
-        <span className="mr-auto text-[10px] text-txt-muted">
-          Drag the sheet to pan · click a part to select it
-        </span>
-        <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
-          Drawing size
-        </span>
-        <button
-          type="button"
-          onClick={() => step(-1)}
-          disabled={zoom <= ZOOM_MIN}
-          className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
-          aria-label="Reduce drawing"
-        >
-          −
-        </button>
-        <span className="w-11 text-center text-xs font-semibold tabular-nums text-txt">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={() => step(1)}
-          disabled={zoom >= ZOOM_MAX}
-          className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
-          aria-label="Enlarge drawing"
-        >
-          +
-        </button>
-        {adjusted && (
+      {/* Sheet tools, organised into labelled groups. */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+          <span className="px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-txt-dim">
+            Size
+          </span>
           <button
             type="button"
-            onClick={() => onAdjust({ zoom: 1, panX: 0, panY: 0 })}
-            className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+            onClick={() => step(-1)}
+            disabled={zoom <= ZOOM_MIN}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Reduce drawing"
           >
-            Reset
+            −
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setEraserOn((on) => !on)}
-          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
-            eraserOn
-              ? "border-accent bg-accent/10 text-accent"
-              : "border-border text-txt-muted hover:text-txt"
-          }`}
-          title="Erase unwanted text, labels or dimensions — drag a box over them to white them out (undoable)"
-        >
-          <Eraser size={12} /> Eraser
-        </button>
-        {eraseCount > 0 && (
+          <span className="w-10 text-center text-xs font-semibold tabular-nums text-txt">
+            {Math.round(zoom * 100)}%
+          </span>
           <button
             type="button"
-            onClick={() => {
-              const target = eraseHistoryRef.current.pop();
-              if (target !== undefined) {
-                onUndoErasure(target);
-                setEraseCount(eraseHistoryRef.current.length);
-              }
-            }}
+            onClick={() => step(1)}
+            disabled={zoom >= ZOOM_MAX}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Enlarge drawing"
+          >
+            +
+          </button>
+          {adjusted && (
+            <button
+              type="button"
+              onClick={() => onAdjust({ zoom: 1, panX: 0, panY: 0 })}
+              className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+          <span className="px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-txt-dim">
+            Dimension
+          </span>
+          <button
+            type="button"
+            onClick={() => addDimension("horizontal")}
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
-            title="Restore the last erased area"
+            title="Add a horizontal dimension line — drag its middle to move it, drag an end to stretch it"
           >
-            <Undo2 size={12} /> Undo erase
+            <MoveHorizontal size={12} /> H
           </button>
-        )}
+          <button
+            type="button"
+            onClick={() => addDimension("vertical")}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+            title="Add a vertical dimension line — drag its middle to move it, drag an end to stretch it"
+          >
+            <MoveVertical size={12} /> V
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+          <span className="px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-txt-dim">
+            Clean up
+          </span>
+          <button
+            type="button"
+            onClick={() => setEraserOn((on) => !on)}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+              eraserOn
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-border text-txt-muted hover:text-txt"
+            }`}
+            title="Erase unwanted text, labels or dimensions — drag a box over them to white them out (undoable)"
+          >
+            <Eraser size={12} /> Eraser
+          </button>
+          {eraseCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const target = eraseHistoryRef.current.pop();
+                if (target !== undefined) {
+                  onUndoErasure(target);
+                  setEraseCount(eraseHistoryRef.current.length);
+                }
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+              title="Restore the last erased area"
+            >
+              <Undo2 size={12} /> Undo
+            </button>
+          )}
+        </div>
+
+        <span className="ml-auto hidden text-[10px] text-txt-muted xl:inline">
+          Drag the sheet to pan · click a part or dimension to select it
+        </span>
       </div>
       {eraserOn && (
         <div className="mb-2 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-accent">
@@ -1160,6 +1484,61 @@ function SheetPreview({
             onClick={() => {
               onRemoveOverlay(selectedOverlay.id);
               setSelectedOverlayId(null);
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-err/40 px-1.5 py-0.5 text-[10px] font-semibold text-err transition hover:bg-err/10"
+          >
+            <Trash2 size={11} /> Remove
+          </button>
+        </div>
+      )}
+      {selectedDimension && (
+        <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5">
+          <span className="mr-auto text-[11px] font-semibold text-accent">
+            Dimension — drag middle to move, ends to stretch
+          </span>
+          <input
+            key={selectedDimension.id}
+            defaultValue={selectedDimension.text}
+            placeholder="Text, e.g. 3500"
+            onBlur={(event) => {
+              if (event.target.value !== selectedDimension.text) {
+                onUpdateDimension(selectedDimension.id, { text: event.target.value });
+              }
+            }}
+            onKeyDown={(event) =>
+              event.key === "Enter" && (event.target as HTMLInputElement).blur()
+            }
+            className="w-28 rounded-md border border-border bg-transparent px-2 py-1 text-xs text-txt outline-none focus:border-accent/60"
+          />
+          <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-txt-muted">
+            Size
+          </span>
+          <button
+            type="button"
+            onClick={() => stepDimensionScale(-1)}
+            disabled={(selectedDimension.scale ?? 1) <= DIM_SCALE_MIN}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Reduce dimension size"
+          >
+            −
+          </button>
+          <span className="w-11 text-center text-xs font-semibold tabular-nums text-txt">
+            {(selectedDimension.scale ?? 1).toFixed(2)}×
+          </span>
+          <button
+            type="button"
+            onClick={() => stepDimensionScale(1)}
+            disabled={(selectedDimension.scale ?? 1) >= DIM_SCALE_MAX}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-sm font-bold text-txt-muted transition hover:text-txt disabled:opacity-30"
+            aria-label="Enlarge dimension size"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onRemoveDimension(selectedDimension.id);
+              setSelectedDimensionId(null);
             }}
             className="inline-flex items-center gap-1 rounded-md border border-err/40 px-1.5 py-0.5 text-[10px] font-semibold text-err transition hover:bg-err/10"
           >

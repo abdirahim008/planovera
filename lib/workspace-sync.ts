@@ -377,6 +377,7 @@ export const buildProjectSyncSignature = (
     drawingPackages: activeProjectId
       ? payload.drawingPackages.filter((item) => item.project_id === activeProjectId)
       : [],
+    titleBlockPresets: payload.titleBlockPresets,
     attendeeGroups: payload.attendeeGroups,
     meetingMinutes: payload.meetingMinutes,
     actionPoints: payload.actionPoints,
