@@ -6,7 +6,12 @@
 // plain HTML/CSS.
 // ------------------------------------------------------------------
 
-import type { DrawingErasure, DrawingPackage, DrawingPackageItem } from "@/lib/supabase";
+import type {
+  DrawingErasure,
+  DrawingPackage,
+  DrawingPackageDimension,
+  DrawingPackageItem,
+} from "@/lib/supabase";
 import { sanitizeSvgMarkup } from "./svgSanitize";
 
 const esc = (value: string) =>
@@ -93,6 +98,30 @@ export const PACKAGE_SHEET_CSS = `
 .dp-overlay svg { display: block; width: 100%; height: auto; }
 .dp-overlay-selected { outline: 2px dashed #3b82f6; outline-offset: 2px; }
 .dp-overlay-missing { border: 1px dashed #94a3b8; color: #94a3b8; font-size: 0.7em; padding: 4% 6%; text-align: center; background: rgba(255,255,255,0.85); }
+.dp-dim { position: absolute; color: #0f172a; }
+.dp-dim-line { position: absolute; }
+.dp-dim-tick { position: absolute; background: currentColor; }
+.dp-dim-arrow { position: absolute; width: 0; height: 0; }
+.dp-dim-text { position: absolute; left: 50%; top: 50%; font-size: 0.85em; font-weight: 600; line-height: 1; white-space: nowrap; background: #ffffff; padding: 0 0.25em; }
+.dp-dim-h { height: 1.8em; transform: translateY(-50%); }
+.dp-dim-h .dp-dim-line { left: 0; right: 0; top: 50%; border-top: 1px solid currentColor; }
+.dp-dim-h .dp-dim-tick { top: 50%; width: 1px; height: 1.1em; transform: translateY(-50%); }
+.dp-dim-h .dp-dim-tick-start { left: 0; }
+.dp-dim-h .dp-dim-tick-end { right: 0; }
+.dp-dim-h .dp-dim-arrow { top: 50%; transform: translateY(-50%); border-top: 0.26em solid transparent; border-bottom: 0.26em solid transparent; }
+.dp-dim-h .dp-dim-arrow-start { left: 1px; border-right: 0.75em solid currentColor; }
+.dp-dim-h .dp-dim-arrow-end { right: 1px; border-left: 0.75em solid currentColor; }
+.dp-dim-h .dp-dim-text { transform: translate(-50%, -50%) translateY(-0.85em); }
+.dp-dim-v { width: 1.8em; transform: translateX(-50%); }
+.dp-dim-v .dp-dim-line { top: 0; bottom: 0; left: 50%; border-left: 1px solid currentColor; }
+.dp-dim-v .dp-dim-tick { left: 50%; height: 1px; width: 1.1em; transform: translateX(-50%); }
+.dp-dim-v .dp-dim-tick-start { top: 0; }
+.dp-dim-v .dp-dim-tick-end { bottom: 0; }
+.dp-dim-v .dp-dim-arrow { left: 50%; transform: translateX(-50%); border-left: 0.26em solid transparent; border-right: 0.26em solid transparent; }
+.dp-dim-v .dp-dim-arrow-start { top: 1px; border-bottom: 0.75em solid currentColor; }
+.dp-dim-v .dp-dim-arrow-end { bottom: 1px; border-top: 0.75em solid currentColor; }
+.dp-dim-v .dp-dim-text { transform: translate(-50%, -50%) rotate(-90deg) translateY(-0.85em); }
+.dp-dim-selected { outline: 1.5px dashed #3b82f6; outline-offset: 2px; }
 .dp-missing { font-size: 1.1em; color: #94a3b8; text-align: center; padding: 8%; }
 .dp-tb { flex: 0 0 auto; border-top: 2px solid #0f172a; display: grid; grid-template-columns: repeat(6, 1fr); }
 .dp-tb-cell { border-right: 1px solid #0f172a; border-top: 1px solid #0f172a; padding: 0.45em 0.6em 0.5em; min-width: 0; }
@@ -104,16 +133,42 @@ export const PACKAGE_SHEET_CSS = `
 `;
 
 /**
- * One framed sheet: drawing area + part overlays + title block. SVGs are
- * looked up by library item id (base drawing and overlays alike). Values
- * render blank when unset.
+ * A manual dimension: line + arrowheads + end ticks + optional text, all in
+ * plain HTML/CSS. The root box's extent along the dimension axis is a
+ * percentage (stretch changes only the line's length), while arrows, ticks
+ * and text are sized in em — multiplied by `scale` via the root font-size, so
+ * one control grows the whole annotation proportionally without touching the
+ * 1px line weight.
+ */
+function renderDimensionHtml(dim: DrawingPackageDimension, selected: boolean): string {
+  const scale = Math.min(Math.max(dim.scale ?? 1, 0.5), 3);
+  const x = Math.min(Math.max(dim.x, -10), 105).toFixed(1);
+  const y = Math.min(Math.max(dim.y, -10), 105).toFixed(1);
+  const length = Math.min(Math.max(dim.length, 3), 110).toFixed(1);
+  const horizontal = dim.orientation === "horizontal";
+  const size = horizontal ? `left:${x}%;top:${y}%;width:${length}%` : `left:${x}%;top:${y}%;height:${length}%`;
+  const text = dim.text.trim() ? `<span class="dp-dim-text">${esc(dim.text.trim())}</span>` : "";
+  return `<div class="dp-dim ${horizontal ? "dp-dim-h" : "dp-dim-v"}${selected ? " dp-dim-selected" : ""}" data-dim-id="${esc(dim.id)}" style="${size};font-size:${scale.toFixed(2)}em">
+<div class="dp-dim-line"></div>
+<div class="dp-dim-tick dp-dim-tick-start"></div>
+<div class="dp-dim-tick dp-dim-tick-end"></div>
+<div class="dp-dim-arrow dp-dim-arrow-start"></div>
+<div class="dp-dim-arrow dp-dim-arrow-end"></div>
+${text}
+</div>`;
+}
+
+/**
+ * One framed sheet: drawing area + part overlays + dimensions + title block.
+ * SVGs are looked up by library item id (base drawing and overlays alike).
+ * Values render blank when unset.
  */
 export function renderPackageSheetHtml(
   item: DrawingPackageItem,
   svgByLibraryId: Record<string, string | null | undefined>,
   sheetIndex: number,
   sheetCount: number,
-  opts?: { selectedOverlayId?: string | null },
+  opts?: { selectedOverlayId?: string | null; selectedDimensionId?: string | null },
 ): string {
   const tb = item.titleBlock;
   const baseSvg = svgByLibraryId[item.libraryItemId] ?? null;
@@ -151,11 +206,15 @@ export function renderPackageSheetHtml(
     })
     .join("");
 
+  const dimensions = (item.dimensions ?? [])
+    .map((dim) => renderDimensionHtml(dim, opts?.selectedDimensionId === dim.id))
+    .join("");
+
   const cell = (label: string, value: string, wide = false) =>
     `<div class="dp-tb-cell${wide ? " dp-wide" : ""}"><span class="dp-tb-label">${esc(label)}</span><span class="dp-tb-value">${esc(value) || "&nbsp;"}</span></div>`;
 
   return `<div class="dp-sheet"><div class="dp-frame">
-<div class="dp-drawing">${drawing}${overlays}</div>
+<div class="dp-drawing">${drawing}${overlays}${dimensions}</div>
 <div class="dp-tb">
 ${cell("Project", tb.projectTitle, true)}
 ${cell("Client", tb.client, true)}

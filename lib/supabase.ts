@@ -771,6 +771,29 @@ export interface DrawingErasure {
 }
 
 /**
+ * A manual dimension annotation on a sheet: a line with arrowheads, end ticks
+ * and user-typed text. Pure HTML/CSS at render time — the line's length is a
+ * percentage of the drawing area while arrows/ticks/text are sized in em, so
+ * stretching the dimension never thickens the line, and `scale` grows the
+ * arrows and text proportionally for dimensioning small details.
+ *
+ * Horizontal: (x, y) is the line's left end, `length` runs along the width.
+ * Vertical:   (x, y) is the line's top end, `length` runs along the height.
+ * All values are percentages of the drawing area.
+ */
+export interface DrawingPackageDimension {
+  id: string;
+  orientation: "horizontal" | "vertical";
+  x: number;
+  y: number;
+  length: number;
+  /** Manual dimension text, e.g. "3500". Empty renders just the line. */
+  text: string;
+  /** Arrow/tick/text size multiplier (1 = default). */
+  scale?: number;
+}
+
+/**
  * A reusable part (beam section, column, footing, manhole…) placed on top of
  * a sheet's drawing. Position and width are percentages of the sheet's
  * drawing area; height follows the part's own aspect ratio. Like the sheets
@@ -805,6 +828,8 @@ export interface DrawingPackageItem {
   overlays?: DrawingPackageOverlay[];
   /** White-out patches over the base drawing, in its SVG's units. */
   erasures?: DrawingErasure[];
+  /** Manual dimension annotations on the sheet. */
+  dimensions?: DrawingPackageDimension[];
   /**
    * Drawing size on the sheet (1 = fit as stored). Many library SVGs carry
    * baked-in margins, so engineers can enlarge to fill the frame (edges crop)
@@ -827,6 +852,19 @@ export interface DrawingPackage {
   items: DrawingPackageItem[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A saved title block the user can re-apply to any sheet instead of retyping
+ * the recurring fields (project, client, consultant, signatures…). Workspace-
+ * owned (not project-scoped) so one engineer's presets follow them across
+ * projects.
+ */
+export interface TitleBlockPreset {
+  id: string;
+  name: string;
+  titleBlock: DrawingPackageTitleBlock;
+  createdAt: string;
 }
 
 export const emptyDrawingPackageTitleBlock = (): DrawingPackageTitleBlock => ({
@@ -866,6 +904,7 @@ export interface ConstructionWorkspacePayload {
   risks: Risk[];
   stakeholders: Stakeholder[];
   drawingPackages: DrawingPackage[];
+  titleBlockPresets: TitleBlockPreset[];
   attendeeGroups: MeetingAttendeeGroup[];
   meetingMinutes: MeetingMinute[];
   meetingSeries: MeetingSeries[];
@@ -1233,6 +1272,7 @@ export const emptyConstructionWorkspacePayload =
     risks: [],
     stakeholders: [],
     drawingPackages: [],
+    titleBlockPresets: [],
     attendeeGroups: [],
     meetingSeries: [],
     meetingMinutes: [],
@@ -1322,6 +1362,7 @@ export const normalizeConstructionWorkspacePayload = (
   risks: payload?.risks ?? [],
   stakeholders: payload?.stakeholders ?? [],
   drawingPackages: payload?.drawingPackages ?? [],
+  titleBlockPresets: payload?.titleBlockPresets ?? [],
   attendeeGroups: payload?.attendeeGroups ?? [],
   meetingMinutes: payload?.meetingMinutes ?? [],
   meetingSeries: payload?.meetingSeries ?? [],

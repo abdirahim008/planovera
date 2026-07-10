@@ -34,6 +34,8 @@ import type {
   Stakeholder,
   DrawingPackage,
   DrawingPackageItem,
+  DrawingPackageTitleBlock,
+  TitleBlockPreset,
   ApprovalStep,
   MeetingAttendee,
   MeetingAttendeeGroup,
@@ -2097,6 +2099,10 @@ interface AppState {
   removeDrawingPackageItem: (packageId: string, itemId: string) => void;
   moveDrawingPackageItem: (packageId: string, itemId: string, direction: -1 | 1) => void;
 
+  titleBlockPresets: TitleBlockPreset[];
+  saveTitleBlockPreset: (name: string, titleBlock: DrawingPackageTitleBlock) => void;
+  deleteTitleBlockPreset: (id: string) => void;
+
   risks: Risk[];
   addRisk: (risk?: Partial<Risk>) => void;
   updateRisk: (id: string, updates: Partial<Risk>) => void;
@@ -2289,6 +2295,7 @@ export const useAppStore = create<AppState>()(
           risks: deepClone(next.risks),
           stakeholders: deepClone(next.stakeholders),
           drawingPackages: deepClone(next.drawingPackages),
+          titleBlockPresets: deepClone(next.titleBlockPresets),
           attendeeGroups: deepClone(next.attendeeGroups),
           meetingMinutes: deepClone(next.meetingMinutes),
           meetingSeries: deepClone(next.meetingSeries),
@@ -2321,6 +2328,7 @@ export const useAppStore = create<AppState>()(
           risks: next.risks,
           stakeholders: next.stakeholders,
           drawingPackages: next.drawingPackages,
+          titleBlockPresets: next.titleBlockPresets,
           attendeeGroups: next.attendeeGroups,
           meetingMinutes: next.meetingMinutes,
           meetingSeries: next.meetingSeries,
@@ -3814,6 +3822,33 @@ export const useAppStore = create<AppState>()(
             [items[index], items[target]] = [items[target], items[index]];
             return { ...pkg, items, updatedAt: new Date().toISOString() };
           }),
+        })),
+
+      // Saved title blocks: re-apply recurring fields to any sheet instead of
+      // retyping. Saving under an existing name replaces that preset.
+      titleBlockPresets: [],
+      saveTitleBlockPreset: (name, titleBlock) =>
+        set((s) => {
+          const cleanName = name.trim();
+          if (!cleanName) return s;
+          const preset: TitleBlockPreset = {
+            id: uuid(),
+            name: cleanName,
+            titleBlock: { ...titleBlock },
+            createdAt: new Date().toISOString(),
+          };
+          return {
+            titleBlockPresets: [
+              preset,
+              ...s.titleBlockPresets.filter(
+                (entry) => entry.name.toLowerCase() !== cleanName.toLowerCase(),
+              ),
+            ],
+          };
+        }),
+      deleteTitleBlockPreset: (id) =>
+        set((s) => ({
+          titleBlockPresets: s.titleBlockPresets.filter((entry) => entry.id !== id),
         })),
 
       // ═══════════════════════════════════════════════════════════════

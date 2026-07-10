@@ -390,6 +390,7 @@ export default function WorkspaceShell() {
     checklistItems: state.checklistItems,
     siteNotes: state.siteNotes,
     drawingPackages: state.drawingPackages,
+    titleBlockPresets: state.titleBlockPresets,
     attendeeGroups: state.attendeeGroups,
     meetingMinutes: state.meetingMinutes,
     meetingSeries: state.meetingSeries,
