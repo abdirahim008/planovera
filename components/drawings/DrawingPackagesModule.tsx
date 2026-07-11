@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 import Modal from "@/components/ui/Modal";
+import { LibraryThumbnail } from "@/components/drawings/LibraryThumbnail";
 import { LIBRARY_CATEGORIES, type LibraryItem } from "@/lib/drawings/appModel";
 import {
   fetchCurrentUserRole,
@@ -197,21 +198,33 @@ export default function DrawingPackagesModule() {
     return () => window.removeEventListener("keydown", onKey);
   }, [panelHidden]);
 
-  // The picker needs the warehouse list however it was opened — and it's the
-  // first place thumbnails are visible, so their batches start streaming here
-  // (once) instead of on module mount.
-  const thumbnailsStartedRef = useRef(false);
+  // The picker needs the warehouse list however it was opened.
   useEffect(() => {
-    if (!pickerOpen) return;
-    void ensureLibrary().then((items) => {
-      if (thumbnailsStartedRef.current) return;
-      thumbnailsStartedRef.current = true;
-      void streamLibraryThumbnails(
-        items.filter((item) => !item.thumbnail).map((item) => item.id),
-        mergeThumbnails,
-      );
-    });
-  }, [pickerOpen, ensureLibrary, mergeThumbnails]);
+    if (pickerOpen) void ensureLibrary();
+  }, [pickerOpen, ensureLibrary]);
+
+  // Thumbnails are fetched per row, only when the row scrolls into view —
+  // never the whole warehouse up front (161 thumbnails for ~8 visible rows
+  // was what made the picker heavy). Rows becoming visible around the same
+  // moment are collected briefly and fetched as one query.
+  const requestedThumbsRef = useRef(new Set<string>());
+  const pendingThumbsRef = useRef(new Set<string>());
+  const thumbTimerRef = useRef<number | null>(null);
+  const requestThumbnail = useCallback(
+    (id: string) => {
+      if (requestedThumbsRef.current.has(id)) return;
+      requestedThumbsRef.current.add(id);
+      pendingThumbsRef.current.add(id);
+      if (thumbTimerRef.current !== null) return;
+      thumbTimerRef.current = window.setTimeout(() => {
+        thumbTimerRef.current = null;
+        const ids = Array.from(pendingThumbsRef.current);
+        pendingThumbsRef.current.clear();
+        if (ids.length > 0) void streamLibraryThumbnails(ids, mergeThumbnails);
+      }, 150);
+    },
+    [mergeThumbnails],
+  );
 
   // Re-pull the warehouse after an admin curates it in the studio (another tab),
   // so this module doesn't keep serving the memoized pre-edit list. Skip when the
@@ -231,7 +244,8 @@ export default function DrawingPackagesModule() {
       libraryPromiseRef.current = promise;
       if (clearSvgCache) {
         setSvgCache({});
-        thumbnailsStartedRef.current = false;
+        // Curated thumbnails may have changed — let visible rows re-request.
+        requestedThumbsRef.current.clear();
       }
       void promise;
     },
@@ -709,6 +723,7 @@ export default function DrawingPackagesModule() {
         library={library}
         onConfirm={handleAddFromPicker}
         onCrop={handleCropStart}
+        onRequestThumbnail={requestThumbnail}
       />
 
       {cropTarget && (
@@ -1772,18 +1787,84 @@ function SheetPreview({
   );
 }
 
+/**
+ * Picker row tile: shows the stored thumbnail when it has arrived; otherwise
+ * asks for it the moment the row scrolls near the viewport. This is what
+ * keeps the warehouse picker light — only visible rows cost bandwidth.
+ */
+function PickerThumb({
+  item,
+  onRequest,
+}: {
+  item: LibraryItem;
+  onRequest: (id: string) => void;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isDbItem = !item.thumbnail && !item.svg;
+  useEffect(() => {
+    if (!isDbItem) return;
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      onRequest(item.id);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onRequest(item.id);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isDbItem, item.id, onRequest]);
+
+  if (item.thumbnail) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={item.thumbnail}
+        alt=""
+        className="h-10 w-14 shrink-0 rounded border border-border bg-white object-contain"
+      />
+    );
+  }
+  if (item.svg) {
+    // Seed/demo items carry their SVG inline — rasterize lazily (cached).
+    return (
+      <LibraryThumbnail
+        id={item.id}
+        svg={item.svg}
+        alt=""
+        className="flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-white"
+      />
+    );
+  }
+  return (
+    <span
+      ref={ref}
+      className="flex h-10 w-14 shrink-0 animate-pulse items-center justify-center rounded border border-border bg-white/5"
+    />
+  );
+}
+
 function DrawingPicker({
   open,
   onClose,
   library,
   onConfirm,
   onCrop,
+  onRequestThumbnail,
 }: {
   open: boolean;
   onClose: () => void;
   library: LibraryItem[] | null;
   onConfirm: (items: LibraryItem[]) => void;
   onCrop: (item: LibraryItem) => void;
+  onRequestThumbnail: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
@@ -1903,18 +1984,7 @@ function DrawingPicker({
                 onChange={() => toggle(item.id)}
                 className="accent-[--accent]"
               />
-              {item.thumbnail ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.thumbnail}
-                  alt=""
-                  className="h-10 w-14 shrink-0 rounded border border-border bg-white object-contain"
-                />
-              ) : (
-                <span className="flex h-10 w-14 shrink-0 items-center justify-center rounded border border-border bg-white/5 text-[9px] text-txt-muted">
-                  No preview
-                </span>
-              )}
+              <PickerThumb item={item} onRequest={onRequestThumbnail} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-semibold text-txt">{item.name}</span>
                 <span className="block truncate text-[10px] text-txt-muted">
