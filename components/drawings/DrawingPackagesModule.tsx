@@ -383,10 +383,26 @@ export default function DrawingPackagesModule() {
       if (!printWindow) return;
       printWindow.document.write(buildPackagePrintHtml(selectedPackage, svgByLibraryId));
       printWindow.document.close();
-      setTimeout(() => {
+      // Print only after the window has parsed and laid out EVERY page — a
+      // fixed short delay truncated multi-sheet exports on slower machines
+      // (the print preview snapshotted before later pages existed).
+      let printed = false;
+      const doPrint = () => {
+        if (printed) return;
+        printed = true;
         printWindow.focus();
         printWindow.print();
-      }, 350);
+      };
+      const afterLayout = () => {
+        if (typeof printWindow.requestAnimationFrame === "function") {
+          printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(doPrint));
+        } else {
+          doPrint();
+        }
+      };
+      if (printWindow.document.readyState === "complete") afterLayout();
+      else printWindow.addEventListener("load", afterLayout);
+      window.setTimeout(doPrint, 2000); // safety net if load never fires
     } finally {
       setExporting(false);
     }
@@ -508,9 +524,13 @@ export default function DrawingPackagesModule() {
               onClick={() => void handleExport()}
               disabled={selectedPackage.items.length === 0 || exporting}
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-white transition hover:bg-accent-strong disabled:opacity-50"
+              title="Exports every sheet in this package as one PDF — one A4 page per sheet"
             >
               {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
               Export PDF
+              {selectedPackage.items.length > 0
+                ? ` (${selectedPackage.items.length} sheet${selectedPackage.items.length === 1 ? "" : "s"})`
+                : ""}
             </button>
           </div>
         )}
