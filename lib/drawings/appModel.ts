@@ -32,12 +32,36 @@ export interface ProfileRecord {
 }
 
 export type LibraryCategory =
+  // Sector taxonomy — what humanitarian/infrastructure engineers search by.
+  | "water"
+  | "sanitation"
+  | "drainage"
+  | "roads"
+  | "buildings"
+  | "electrical"
+  | "details"
+  // Legacy CAD-style ids — still readable (seed items, un-migrated rows) but
+  // normalized to the sector taxonomy at load time and no longer offered.
   | "layouts"
   | "structural"
   | "mechanical"
-  | "electrical"
-  | "civil"
-  | "details";
+  | "civil";
+
+/** Map legacy category ids onto the sector taxonomy; pass new ids through. */
+export function normalizeLibraryCategory(category: string): LibraryCategory {
+  switch (category) {
+    case "layouts":
+    case "structural":
+      return "buildings";
+    case "mechanical":
+    case "civil":
+      return "details";
+    default:
+      return LIBRARY_CATEGORIES.some((entry) => entry.id === category)
+        ? (category as LibraryCategory)
+        : "details";
+  }
+}
 
 /**
  * Fabric object JSON stored alongside a library item's SVG. Unlike SVG (which
@@ -130,12 +154,13 @@ export const LIBRARY_CATEGORIES: Array<{
   id: LibraryCategory;
   label: string;
 }> = [
-  { id: "layouts", label: "Layouts" },
-  { id: "structural", label: "Structural" },
-  { id: "mechanical", label: "Mechanical" },
-  { id: "electrical", label: "Electrical" },
-  { id: "civil", label: "Civil" },
-  { id: "details", label: "Details" },
+  { id: "water", label: "Water" },
+  { id: "sanitation", label: "Sanitation" },
+  { id: "drainage", label: "Drainage" },
+  { id: "roads", label: "Roads & Transport" },
+  { id: "buildings", label: "Buildings & Shelter" },
+  { id: "electrical", label: "Electrical & Solar" },
+  { id: "details", label: "General details" },
 ];
 
 export const STORAGE_KEYS = {
@@ -673,7 +698,7 @@ export function mapLibraryRecord(record: LibraryItemRecord): LibraryItem {
   return {
     id: record.id,
     name: record.name,
-    category: record.category,
+    category: normalizeLibraryCategory(record.category),
     description: record.description,
     tags: record.tags ?? [],
     svg: record.svg ?? "",
@@ -686,25 +711,31 @@ export function mapLibraryRecord(record: LibraryItemRecord): LibraryItem {
   };
 }
 
+// Legacy category ids (seeds, stored local items) map to the sector taxonomy.
+const withNormalizedCategories = (items: LibraryItem[]): LibraryItem[] =>
+  items.map((item) => ({ ...item, category: normalizeLibraryCategory(item.category) }));
+
 export function loadLibraryItems(): LibraryItem[] {
-  if (typeof window === "undefined") return SEED_LIBRARY_ITEMS;
+  if (typeof window === "undefined") return withNormalizedCategories(SEED_LIBRARY_ITEMS);
   const stored = window.localStorage.getItem(STORAGE_KEYS.library);
-  if (!stored) return SEED_LIBRARY_ITEMS;
+  if (!stored) return withNormalizedCategories(SEED_LIBRARY_ITEMS);
 
   try {
     const parsed = JSON.parse(stored) as LibraryItem[];
-    if (!Array.isArray(parsed) || parsed.length === 0) return SEED_LIBRARY_ITEMS;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return withNormalizedCategories(SEED_LIBRARY_ITEMS);
+    }
     const seedIds = new Set(SEED_LIBRARY_ITEMS.map((item) => item.id));
     const customItems = parsed.filter((item) => item.source !== "seed" && !seedIds.has(item.id));
     // A saved item with a seed's name overrides that seed (mirrors the DB-first
     // merge in production), so admin-curated versions replace the built-ins.
     const customNames = new Set(customItems.map((item) => item.name.toLowerCase()));
-    return [
+    return withNormalizedCategories([
       ...SEED_LIBRARY_ITEMS.filter((item) => !customNames.has(item.name.toLowerCase())),
       ...customItems,
-    ];
+    ]);
   } catch {
-    return SEED_LIBRARY_ITEMS;
+    return withNormalizedCategories(SEED_LIBRARY_ITEMS);
   }
 }
 

@@ -308,7 +308,9 @@ create table if not exists public.drawing_projects (
 create table if not exists public.drawing_library_items (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  category text not null check (category in ('layouts', 'structural', 'mechanical', 'electrical', 'civil', 'details')),
+  -- Sector taxonomy (see apply-drawing-categories.sql for the migration from
+  -- the legacy CAD-style list).
+  category text not null check (category in ('water', 'sanitation', 'drainage', 'roads', 'buildings', 'electrical', 'details')),
   description text not null default '',
   tags text[] not null default '{}',
   svg text not null,

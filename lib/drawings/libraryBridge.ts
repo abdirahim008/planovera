@@ -13,6 +13,7 @@ import {
   SEED_LIBRARY_ITEMS,
   loadLibraryItems,
   mapLibraryRecord,
+  normalizeLibraryCategory,
   type LibraryItem,
   type LibraryItemRecord,
 } from "./appModel";
@@ -238,9 +239,16 @@ export async function streamLibraryThumbnails(
 }
 
 // Merge remote (DB) library items with the static seed set, de-duped by name.
+// Seed categories are legacy ids — normalize onto the sector taxonomy.
 function mergeWithSeed(remoteItems: LibraryItem[]): LibraryItem[] {
   const seen = new Set(remoteItems.map((item) => item.name.toLowerCase()));
-  return [...remoteItems, ...SEED_LIBRARY_ITEMS.filter((item) => !seen.has(item.name.toLowerCase()))];
+  return [
+    ...remoteItems,
+    ...SEED_LIBRARY_ITEMS.filter((item) => !seen.has(item.name.toLowerCase())).map((item) => ({
+      ...item,
+      category: normalizeLibraryCategory(item.category),
+    })),
+  ];
 }
 
 /**

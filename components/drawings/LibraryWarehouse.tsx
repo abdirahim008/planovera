@@ -144,7 +144,11 @@ export default function LibraryWarehouse({
   const [showFilters, setShowFilters] = useState(false);
   const [justImported, setJustImported] = useState<Record<string, number>>({});
   const [preview, setPreview] = useState<PreviewState | null>(null);
-  const [expanded, setExpanded] = useState<Set<LibraryCategory>>(() => new Set<LibraryCategory>(["civil" as LibraryCategory]));
+  // Sector categories are small groups — start them all open; thumbnails are
+  // viewport-lazy so expansion costs nothing until tiles scroll into view.
+  const [expanded, setExpanded] = useState<Set<LibraryCategory>>(
+    () => new Set<LibraryCategory>(LIBRARY_CATEGORIES.map((cat) => cat.id)),
+  );
   const [selectedLeaves, setSelectedLeaves] = useState<Set<string>>(() => new Set());
 
   const toggleExpanded = (cat: LibraryCategory) =>

@@ -1868,6 +1868,7 @@ function DrawingPicker({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [tab, setTab] = useState<"drawings" | "parts">("drawings");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -1875,10 +1876,37 @@ function DrawingPicker({
     if (open) setSelectedIds(new Set());
   }, [open]);
 
+  // A narrower topic only makes sense inside one category — clear it whenever
+  // the category (or tab) changes.
+  useEffect(() => {
+    setActiveTag(null);
+  }, [category, tab]);
+
   const counts = useMemo(() => {
     const parts = (library ?? []).filter((item) => item.assetType === "object").length;
     return { parts, drawings: (library?.length ?? 0) - parts };
   }, [library]);
+
+  // Sub-selection without a second dropdown: once a category is chosen, offer
+  // its most common tags as chips. Derived from the data, so it adapts as the
+  // admin curates — no schema, no extra fetch.
+  const tagChips = useMemo(() => {
+    if (!library || category === "all") return [];
+    const counts = new Map<string, number>();
+    for (const item of library) {
+      const isPart = item.assetType === "object";
+      if (tab === "parts" ? !isPart : isPart) continue;
+      if (item.category !== category) continue;
+      for (const tag of item.tags) {
+        const clean = tag.trim().toLowerCase();
+        if (clean) counts.set(clean, (counts.get(clean) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([tag]) => tag);
+  }, [library, category, tab]);
 
   const filtered = useMemo(() => {
     if (!library) return [];
@@ -1887,6 +1915,9 @@ function DrawingPicker({
       const isPart = item.assetType === "object";
       if (tab === "parts" ? !isPart : isPart) return false;
       if (category !== "all" && item.category !== category) return false;
+      if (activeTag && !item.tags.some((tag) => tag.trim().toLowerCase() === activeTag)) {
+        return false;
+      }
       if (!q) return true;
       return (
         item.name.toLowerCase().includes(q) ||
@@ -1894,7 +1925,7 @@ function DrawingPicker({
         item.tags.some((tag) => tag.toLowerCase().includes(q))
       );
     });
-  }, [library, query, category, tab]);
+  }, [library, query, category, activeTag, tab]);
 
   const toggle = (id: string) =>
     setSelectedIds((current) => {
@@ -1955,6 +1986,34 @@ function DrawingPicker({
           ))}
         </select>
       </div>
+
+      {tagChips.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {tagChips.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => setActiveTag((current) => (current === tag ? null : tag))}
+              className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold transition ${
+                activeTag === tag
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border text-txt-muted hover:border-accent/40 hover:text-txt"
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+          {activeTag && (
+            <button
+              type="button"
+              onClick={() => setActiveTag(null)}
+              className="rounded-full px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 max-h-[46vh] space-y-1 overflow-y-auto pr-1">
         {!library ? (
