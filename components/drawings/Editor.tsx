@@ -3072,7 +3072,7 @@ export default function Editor({
         mode,
         scope,
         name: defaultName,
-        category: mode === "object" ? "structural" : "layouts",
+        category: mode === "object" ? "details" : "buildings",
         description:
           mode === "object"
             ? "Reusable engineering object saved from the canvas."
