@@ -14,6 +14,7 @@ import {
   MoveVertical,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -358,40 +359,120 @@ export default function DrawingPackagesModule() {
   }
 
   return (
-    <section className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-bg-surface px-5 py-4">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-accent">
-            Drawing packages
-          </p>
-          <p className="mt-1 text-sm text-txt-muted">
-            Pick ready-made drawings from the warehouse, fill the title block, export as PDF.
-            Every package is saved automatically — reopen it here anytime to continue, edit or
-            re-print.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <a
-              href="/drawings/studio"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
-            >
-              Curate library (studio)
-              <ExternalLink size={13} />
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={handleCreatePackage}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition hover:bg-accent-strong"
+    <section className="space-y-3">
+      {/* One compact command bar — package switcher, package actions and
+          export in a single row so the drawing canvas gets the height. */}
+      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-bg-surface px-3 py-2">
+        {projectPackages.length > 0 && (
+          <select
+            value={selectedPackage?.id ?? ""}
+            onChange={(event) => {
+              setSelectedPackageId(event.target.value);
+              setSelectedItemId(null);
+            }}
+            className="max-w-[240px] rounded-lg border border-border bg-bg-surface px-2 py-1.5 text-xs font-semibold text-txt outline-none"
+            title="Switch drawing package — every package is saved automatically"
           >
-            <Plus size={14} />
-            New package
-          </button>
-        </div>
-      </header>
+            {projectPackages.map((pkg) => (
+              <option key={pkg.id} value={pkg.id}>
+                {pkg.name} · {pkg.items.length} sheet{pkg.items.length === 1 ? "" : "s"}
+              </option>
+            ))}
+          </select>
+        )}
+        {selectedPackage && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                const name = window.prompt("Rename package:", selectedPackage.name);
+                if (name?.trim()) renameDrawingPackage(selectedPackage.id, name.trim());
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-txt-muted transition hover:text-txt"
+              aria-label="Rename package"
+              title="Rename package"
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete "${selectedPackage.name}"? The warehouse drawings themselves are not affected.`,
+                  )
+                ) {
+                  deleteDrawingPackage(selectedPackage.id);
+                  setSelectedPackageId(null);
+                }
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-txt-muted transition hover:text-err"
+              aria-label="Delete package"
+              title="Delete package"
+            >
+              <Trash2 size={13} />
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={handleCreatePackage}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-txt-muted transition hover:text-txt"
+          title="Create a new drawing package for this project"
+        >
+          <Plus size={13} />
+          New
+        </button>
+        {isAdmin && (
+          <a
+            href="/drawings/studio"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-txt-muted transition hover:text-txt"
+            title="Curate the shared warehouse (admin studio)"
+          >
+            Studio
+            <ExternalLink size={12} />
+          </a>
+        )}
+        {selectedPackage && (
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPanelHidden((hidden) => !hidden)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-txt-muted transition hover:text-txt"
+              title={
+                panelHidden
+                  ? "Open the sheets and title-block panel — it floats over the drawing without shrinking it"
+                  : "Close the panel (Esc works too)"
+              }
+            >
+              {panelHidden ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+              {panelHidden ? "Show panel" : "Hide panel"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void ensureLibrary();
+                setPickerOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-txt-muted transition hover:text-txt"
+            >
+              <Plus size={13} />
+              Add drawings / parts
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport()}
+              disabled={selectedPackage.items.length === 0 || exporting}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-white transition hover:bg-accent-strong disabled:opacity-50"
+            >
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+              Export PDF
+            </button>
+          </div>
+        )}
+      </div>
 
       {projectPackages.length === 0 ? (
         <div className="rounded-[28px] border border-border bg-bg-surface p-10 text-center">
@@ -413,76 +494,9 @@ export default function DrawingPackagesModule() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Packages as a horizontal strip so the sheet preview below gets
-              the full content width — engineers work on one package at a time. */}
-          <div className="flex flex-wrap gap-2">
-            {projectPackages.map((pkg) => (
-              <PackageCard
-                key={pkg.id}
-                pkg={pkg}
-                active={pkg.id === selectedPackage?.id}
-                onSelect={() => {
-                  setSelectedPackageId(pkg.id);
-                  setSelectedItemId(null);
-                }}
-                onRename={(name) => renameDrawingPackage(pkg.id, name)}
-                onDelete={() => {
-                  deleteDrawingPackage(pkg.id);
-                  if (selectedPackageId === pkg.id) setSelectedPackageId(null);
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Selected package detail */}
+        <div className="space-y-3">
           {selectedPackage && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-bg-surface px-4 py-3">
-                <p className="text-sm font-semibold text-txt">
-                  {selectedPackage.name}
-                  <span className="ml-2 text-xs font-normal text-txt-muted">
-                    {selectedPackage.items.length} sheet
-                    {selectedPackage.items.length === 1 ? "" : "s"}
-                  </span>
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPanelHidden((hidden) => !hidden)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
-                    title={
-                      panelHidden
-                        ? "Open the sheets and title-block panel — it floats over the drawing without shrinking it"
-                        : "Close the panel (Esc works too)"
-                    }
-                  >
-                    {panelHidden ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
-                    {panelHidden ? "Show panel" : "Hide panel"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void ensureLibrary();
-                      setPickerOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
-                  >
-                    <Plus size={13} />
-                    Add drawings / parts
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleExport()}
-                    disabled={selectedPackage.items.length === 0 || exporting}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-bold text-white transition hover:bg-accent-strong disabled:opacity-50"
-                  >
-                    {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-                    Export PDF
-                  </button>
-                </div>
-              </div>
-
+            <div className="space-y-3">
               {notice ? (
                 <div className="flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent">
                   <span>{notice}</span>
@@ -674,60 +688,6 @@ export default function DrawingPackagesModule() {
         />
       )}
     </section>
-  );
-}
-
-function PackageCard({
-  pkg,
-  active,
-  onSelect,
-  onRename,
-  onDelete,
-}: {
-  pkg: DrawingPackage;
-  active: boolean;
-  onSelect: () => void;
-  onRename: (name: string) => void;
-  onDelete: () => void;
-}) {
-  const [name, setName] = useState(pkg.name);
-  useEffect(() => setName(pkg.name), [pkg.name]);
-
-  return (
-    <div
-      className={`w-full cursor-pointer rounded-2xl border px-4 py-3 transition sm:w-[260px] ${
-        active ? "border-accent/60 bg-accent/10" : "border-border bg-bg-surface hover:border-accent/30"
-      }`}
-      onClick={onSelect}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && name !== pkg.name && onRename(name)}
-          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-          onClick={(e) => e.stopPropagation()}
-          className="w-full bg-transparent text-sm font-semibold text-txt outline-none"
-        />
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (window.confirm(`Delete "${pkg.name}"? The warehouse drawings themselves are not affected.`)) {
-              onDelete();
-            }
-          }}
-          className="text-txt-muted transition hover:text-red-400"
-          aria-label="Delete package"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-      <p className="mt-1 text-xs text-txt-muted">
-        {pkg.items.length} sheet{pkg.items.length === 1 ? "" : "s"} · updated{" "}
-        {pkg.updatedAt.slice(0, 10)}
-      </p>
-    </div>
   );
 }
 
