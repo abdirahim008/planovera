@@ -811,9 +811,9 @@ function TitleBlockForm({
 }) {
   const [draft, setDraft] = useState<DrawingPackageTitleBlock>(item.titleBlock);
   useEffect(() => setDraft(item.titleBlock), [item.titleBlock]);
-  // Collapsed by default once filled? Keep it simple: open, one click to fold
-  // away when the engineer wants the space.
-  const [open, setOpen] = useState(true);
+  // Collapsed by default — drawing space wins; the header shows the drawing
+  // number and title, one click expands the form when it needs editing.
+  const [open, setOpen] = useState(false);
   const [presetId, setPresetId] = useState("");
 
   const commit = (next: DrawingPackageTitleBlock) => {
@@ -1039,8 +1039,6 @@ function SheetPreview({
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [selectedDimensionId, setSelectedDimensionId] = useState<string | null>(null);
   const [eraserOn, setEraserOn] = useState(false);
-  const eraserOnRef = useRef(eraserOn);
-  eraserOnRef.current = eraserOn;
   // Live erase-drag rectangle (container coordinates, visual only). The
   // committed patch is computed in the target SVG's own units on release.
   const [eraseRect, setEraseRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -1110,8 +1108,8 @@ function SheetPreview({
     if (nz === z) return;
     // Keep the sheet point under the anchor stationary while scaling.
     const next = clampView(nz, anchorX - ((anchorX - x) * nz) / z, anchorY - ((anchorY - y) * nz) / z);
-    // Update the ref immediately — wheel events arrive faster than re-renders,
-    // and each step must compound on the previous one, not on a stale value.
+    // Update the ref immediately so rapid button clicks compound on the
+    // latest value, not on a stale pre-render one.
     viewRef.current = next;
     setView(next);
   };
@@ -1122,28 +1120,6 @@ function SheetPreview({
     zoomViewTo(nz, (el?.clientWidth ?? 0) / 2, (el?.clientHeight ?? 0) / 2);
   };
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    // Native listener: React registers wheel handlers as passive, and stopping
-    // the browser's page zoom on ctrl+scroll needs preventDefault.
-    const onWheel = (event: WheelEvent) => {
-      // Plain scroll zooms at the cursor while the eraser is active (the user
-      // is fine-tuning erasures, not scrolling the page) or while already
-      // magnified (so scrolling out again needs no modifier). Otherwise the
-      // page keeps scrolling and Ctrl/Cmd+scroll opts in.
-      const modifier = event.ctrlKey || event.metaKey;
-      if (!modifier && !eraserOnRef.current && viewRef.current.z <= 1) return;
-      event.preventDefault();
-      const { z } = viewRef.current;
-      const nz = Math.min(Math.max(z * (event.deltaY < 0 ? 1.15 : 1 / 1.15), 1), VIEW_ZOOM_MAX);
-      const rect = el.getBoundingClientRect();
-      zoomViewTo(nz, event.clientX - rect.left, event.clientY - rect.top);
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!baseSvg || event.button !== 0) return;
@@ -1500,7 +1476,7 @@ function SheetPreview({
 
         <div
           className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1"
-          title="Magnify the view to inspect or erase small text precisely — never changes the printed sheet. Tip: Ctrl+scroll on the sheet zooms at the cursor."
+          title="Magnify the view to inspect or erase small text precisely — never changes the printed sheet. Drag the sheet to move around while magnified."
         >
           <span className="inline-flex items-center gap-1 px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-txt-dim">
             <ZoomIn size={11} /> Magnify
@@ -1594,14 +1570,14 @@ function SheetPreview({
         </div>
 
         <span className="ml-auto hidden text-[10px] text-txt-muted xl:inline">
-          Drag the sheet to pan · click a part or dimension to select · Ctrl+scroll to magnify
+          Drag the sheet to pan · click a part or dimension to select it
         </span>
       </div>
       {eraserOn && (
         <div className="mb-2 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-accent">
           Eraser on — drag a box over text, labels or dimensions to white them out. For small
-          text, point at it and scroll to zoom in, then erase precisely; scroll back out when
-          done. It works on the drawing and on placed parts, and “Undo” brings the content back.
+          text, use the Magnify buttons to zoom in first and erase precisely. It works on the
+          drawing and on placed parts, and “Undo” brings the content back.
         </div>
       )}
       {selectedOverlay && (

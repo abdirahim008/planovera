@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { useAppStore } from "@/lib/store";
 import { isSupabaseConfigured } from "@/lib/supabase-browser";
@@ -45,7 +44,6 @@ export default function Sidebar({
   onCloseMobile,
   forceCollapsed = false,
 }: SidebarProps) {
-  const router = useRouter();
   const authConfigured = isSupabaseConfigured();
   const {
     project,
@@ -102,14 +100,6 @@ export default function Sidebar({
   ).filter((item) => isModuleEnabled(item.id));
 
   const collapsed = isMobile ? false : forceCollapsed || sidebarCollapsed;
-  const handleBrandClick = () => {
-    setActiveModule("dashboard");
-    router.push("/workspace");
-
-    if (isMobile) {
-      onCloseMobile?.();
-    }
-  };
 
   const handleNavClick = (moduleId: string) => {
     // Drawings is a normal in-workspace module now (the package builder);
@@ -133,12 +123,13 @@ export default function Sidebar({
       )}
       style={isMobile ? undefined : { width: desktopWidth }}
     >
+      {/* The logo is deliberately not a link — an accidental click while
+          aiming for the collapse button used to bounce users to the home page. */}
       <div
         className={clsx(
-          "flex cursor-pointer items-center gap-2.5 border-b border-border",
+          "flex items-center gap-2.5 border-b border-border",
           collapsed ? "justify-center px-2 py-4" : "px-4 py-4"
         )}
-        onClick={handleBrandClick}
       >
         <img
           src="/brand/planovera-mark.png"
@@ -153,10 +144,7 @@ export default function Sidebar({
             {isMobile ? (
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCloseMobile?.();
-                }}
+                onClick={() => onCloseMobile?.()}
                 className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-txt-dim transition hover:bg-bg-hover hover:text-txt"
                 aria-label="Close navigation"
               >
@@ -165,10 +153,7 @@ export default function Sidebar({
             ) : (
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleSidebar();
-                }}
+                onClick={toggleSidebar}
                 className="ml-auto inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-txt-dim transition hover:bg-bg-hover hover:text-txt"
                 aria-label="Collapse sidebar"
                 title="Collapse sidebar"
@@ -181,10 +166,7 @@ export default function Sidebar({
         {collapsed && !isMobile && (
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleSidebar();
-            }}
+            onClick={toggleSidebar}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-txt-dim transition hover:bg-bg-hover hover:text-txt"
             aria-label="Expand sidebar"
             title="Expand sidebar"
