@@ -791,6 +791,12 @@ export interface DrawingPackageDimension {
   text: string;
   /** Arrow/tick/text size multiplier (1 = default). */
   scale?: number;
+  /**
+   * Part this dimension is attached to. When set, x/y/length are percentages
+   * of that part's box and the dimension renders inside the part, so moving
+   * or resizing the part carries it along. Unset = anchored to the sheet.
+   */
+  overlayId?: string | null;
 }
 
 /**
