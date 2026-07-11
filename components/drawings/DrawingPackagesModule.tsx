@@ -1039,6 +1039,8 @@ function SheetPreview({
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [selectedDimensionId, setSelectedDimensionId] = useState<string | null>(null);
   const [eraserOn, setEraserOn] = useState(false);
+  const eraserOnRef = useRef(eraserOn);
+  eraserOnRef.current = eraserOn;
   // Live erase-drag rectangle (container coordinates, visual only). The
   // committed patch is computed in the target SVG's own units on release.
   const [eraseRect, setEraseRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -1107,7 +1109,11 @@ function SheetPreview({
     const { z, x, y } = viewRef.current;
     if (nz === z) return;
     // Keep the sheet point under the anchor stationary while scaling.
-    setView(clampView(nz, anchorX - ((anchorX - x) * nz) / z, anchorY - ((anchorY - y) * nz) / z));
+    const next = clampView(nz, anchorX - ((anchorX - x) * nz) / z, anchorY - ((anchorY - y) * nz) / z);
+    // Update the ref immediately — wheel events arrive faster than re-renders,
+    // and each step must compound on the previous one, not on a stale value.
+    viewRef.current = next;
+    setView(next);
   };
 
   const stepView = (direction: -1 | 1) => {
@@ -1122,7 +1128,12 @@ function SheetPreview({
     // Native listener: React registers wheel handlers as passive, and stopping
     // the browser's page zoom on ctrl+scroll needs preventDefault.
     const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      // Plain scroll zooms at the cursor while the eraser is active (the user
+      // is fine-tuning erasures, not scrolling the page) or while already
+      // magnified (so scrolling out again needs no modifier). Otherwise the
+      // page keeps scrolling and Ctrl/Cmd+scroll opts in.
+      const modifier = event.ctrlKey || event.metaKey;
+      if (!modifier && !eraserOnRef.current && viewRef.current.z <= 1) return;
       event.preventDefault();
       const { z } = viewRef.current;
       const nz = Math.min(Math.max(z * (event.deltaY < 0 ? 1.15 : 1 / 1.15), 1), VIEW_ZOOM_MAX);
@@ -1589,8 +1600,8 @@ function SheetPreview({
       {eraserOn && (
         <div className="mb-2 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-accent">
           Eraser on — drag a box over text, labels or dimensions to white them out. For small
-          text, magnify first (Ctrl+scroll or the Magnify buttons) and erase precisely. It works
-          on the drawing and on placed parts, and “Undo” brings the content back.
+          text, point at it and scroll to zoom in, then erase precisely; scroll back out when
+          done. It works on the drawing and on placed parts, and “Undo” brings the content back.
         </div>
       )}
       {selectedOverlay && (
