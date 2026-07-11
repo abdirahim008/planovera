@@ -18,6 +18,7 @@ import {
   Search,
   Trash2,
   Undo2,
+  X,
   ZoomIn,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -171,8 +172,18 @@ export default function DrawingPackagesModule() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  // Hide the sheets + title-block panel to give the drawing the full width.
-  const [panelHidden, setPanelHidden] = useState(false);
+  // The sheets + title-block panel floats OVER the drawing (never shrinks it)
+  // and starts hidden — the drawing gets the full width by default.
+  const [panelHidden, setPanelHidden] = useState(true);
+
+  useEffect(() => {
+    if (panelHidden) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPanelHidden(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelHidden]);
 
   // The picker needs the warehouse list however it was opened.
   useEffect(() => {
@@ -442,8 +453,8 @@ export default function DrawingPackagesModule() {
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-txt-muted transition hover:text-txt"
                     title={
                       panelHidden
-                        ? "Show the sheets and title-block panel"
-                        : "Hide the panel to give the drawing the full width"
+                        ? "Open the sheets and title-block panel — it floats over the drawing without shrinking it"
+                        : "Close the panel (Esc works too)"
                     }
                   >
                     {panelHidden ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
@@ -487,13 +498,31 @@ export default function DrawingPackagesModule() {
                   warehouse.
                 </div>
               ) : (
-                <div
-                  className={
-                    panelHidden ? "space-y-4" : "grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]"
-                  }
-                >
-                  {/* Sheet list + title-block form */}
-                  <div className={panelHidden ? "hidden" : "space-y-2"}>
+                <div className="relative">
+                  {/* Sheet list + title-block form — floats over the canvas so
+                      the drawing never gives up width; close via ✕, Esc or the
+                      toggle button. */}
+                  <div
+                    className={
+                      panelHidden
+                        ? "hidden"
+                        : "absolute left-0 top-0 z-20 max-h-full w-[360px] max-w-[calc(100%-0.75rem)] space-y-2 overflow-y-auto rounded-2xl border border-border bg-bg-surface p-3 shadow-[0_18px_50px_rgba(15,23,42,0.18)]"
+                    }
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-txt-dim">
+                        Sheets &amp; title block
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPanelHidden(true)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-txt-muted transition hover:bg-bg-hover hover:text-txt"
+                        aria-label="Close panel"
+                        title="Close (Esc)"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                     {selectedPackage.items.map((item, index) => (
                       <SheetRow
                         key={item.id}
