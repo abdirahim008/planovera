@@ -31,6 +31,8 @@ import {
   fetchCurrentUserRole,
   fetchDrawingLibrary,
   fetchLibraryItemSvg,
+  fetchLibrarySvgById,
+  streamLibraryThumbnails,
   subscribeLibraryChanges,
 } from "@/lib/drawings/libraryBridge";
 import {
@@ -110,15 +112,18 @@ export default function DrawingPackagesModule() {
       );
     });
   }, []);
+  // Metadata only — thumbnails are streamed separately when the picker opens
+  // (they're invisible until then, and on slow connections their batches were
+  // starving the sheet SVG fetches).
   const ensureLibrary = useCallback((): Promise<LibraryItem[]> => {
     if (!libraryPromiseRef.current) {
-      libraryPromiseRef.current = fetchDrawingLibrary(mergeThumbnails).then((items) => {
+      libraryPromiseRef.current = fetchDrawingLibrary().then((items) => {
         applyLibrary(items);
         return items;
       });
     }
     return libraryPromiseRef.current;
-  }, [applyLibrary, mergeThumbnails]);
+  }, [applyLibrary]);
 
   // ── Full SVGs, fetched lazily per drawing and cached for the session. ──
   const [svgCache, setSvgCache] = useState<Record<string, string | null>>({});
@@ -134,9 +139,15 @@ export default function DrawingPackagesModule() {
       if (inFlight) return inFlight;
       const request = (async () => {
         try {
-          const items = await ensureLibrary();
-          const entry = items.find((item) => item.id === libraryItemId);
-          const svg = entry ? (await fetchLibraryItemSvg(entry)) || null : null;
+          // Fast path: pull the SVG straight by id — rendering a saved sheet
+          // must not wait for the whole warehouse list to arrive first.
+          let svg: string | null = (await fetchLibrarySvgById(libraryItemId)) || null;
+          if (!svg) {
+            // Seed and demo-mode items carry their SVG inline in the list.
+            const items = await ensureLibrary();
+            const entry = items.find((item) => item.id === libraryItemId);
+            svg = entry ? (await fetchLibraryItemSvg(entry)) || null : null;
+          }
           setSvgCache((cache) => ({ ...cache, [libraryItemId]: svg }));
           return svg;
         } finally {
@@ -186,10 +197,21 @@ export default function DrawingPackagesModule() {
     return () => window.removeEventListener("keydown", onKey);
   }, [panelHidden]);
 
-  // The picker needs the warehouse list however it was opened.
+  // The picker needs the warehouse list however it was opened — and it's the
+  // first place thumbnails are visible, so their batches start streaming here
+  // (once) instead of on module mount.
+  const thumbnailsStartedRef = useRef(false);
   useEffect(() => {
-    if (pickerOpen) void ensureLibrary();
-  }, [pickerOpen, ensureLibrary]);
+    if (!pickerOpen) return;
+    void ensureLibrary().then((items) => {
+      if (thumbnailsStartedRef.current) return;
+      thumbnailsStartedRef.current = true;
+      void streamLibraryThumbnails(
+        items.filter((item) => !item.thumbnail).map((item) => item.id),
+        mergeThumbnails,
+      );
+    });
+  }, [pickerOpen, ensureLibrary, mergeThumbnails]);
 
   // Re-pull the warehouse after an admin curates it in the studio (another tab),
   // so this module doesn't keep serving the memoized pre-edit list. Skip when the
@@ -199,15 +221,21 @@ export default function DrawingPackagesModule() {
   const refreshLibrary = useCallback(
     (clearSvgCache: boolean) => {
       if (!libraryPromiseRef.current) return;
-      const promise = fetchDrawingLibrary(mergeThumbnails).then((items) => {
+      // Metadata only — window focus fires this often, and re-streaming every
+      // thumbnail on each refocus starved slow connections. After an admin
+      // curation event the next picker open re-streams fresh thumbnails.
+      const promise = fetchDrawingLibrary().then((items) => {
         applyLibrary(items);
         return items;
       });
       libraryPromiseRef.current = promise;
-      if (clearSvgCache) setSvgCache({});
+      if (clearSvgCache) {
+        setSvgCache({});
+        thumbnailsStartedRef.current = false;
+      }
       void promise;
     },
-    [applyLibrary, mergeThumbnails],
+    [applyLibrary],
   );
 
   useEffect(() => {
