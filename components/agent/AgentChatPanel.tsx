@@ -161,14 +161,11 @@ export default function AgentChatPanel() {
   async function createProject(draft: AgentProjectDraft) {
     const st = useAppStore.getState();
     const now = new Date().toISOString();
-    // Best-effort org scoping: attach to the first known program's org so the row
-    // is visible under org accounts; harmless ("") for individual/demo accounts.
-    const orgId = st.programs[0]?.organizationId || "";
-    const project: Project = {
+    const makeProject = (organizationId: string): Project => ({
       id: uuid(),
       programId: "",
       categoryId: "",
-      organizationId: orgId,
+      organizationId,
       name: draft.name,
       type: draft.projectType || "construction",
       role: draft.role || "contractor",
@@ -183,7 +180,7 @@ export default function AgentChatPanel() {
       contractTitle: draft.contractTitle || "",
       contractAmount: draft.contractAmount || "",
       currency: draft.currency || "USD",
-    };
+    });
 
     if (isSupabaseConfigured()) {
       const supabase = getSupabaseBrowserClient();
@@ -193,17 +190,45 @@ export default function AgentChatPanel() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("You need to be signed in to create a project.");
-      const { data, error } = await supabase
+
+      // Scope to an organization the user actually belongs to — the store's
+      // program list can carry stale org ids (it hydrates from localStorage),
+      // and inserting with a foreign org id violates row-level security.
+      const { data: membership } = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      const project = makeProject(membership?.organization_id ?? "");
+
+      let { data, error } = await supabase
         .from("projects")
         .insert(toProjectRecord(project, user.id))
         .select("*")
         .single();
+      if (error && /row-level security/i.test(error.message) && project.organizationId) {
+        // Membership changed under us — fall back to a personal project
+        // rather than failing the whole request.
+        ({ data, error } = await supabase
+          .from("projects")
+          .insert(toProjectRecord(makeProject(""), user.id))
+          .select("*")
+          .single());
+      }
       if (error) throw new Error(error.message);
       st.createNewProject(mapProjectRecord(data as ProjectRecord));
+      push(
+        "assistant",
+        `✅ Created project "${project.name}" and opened it.`,
+        "status",
+      );
     } else {
+      const project = makeProject(st.programs[0]?.organizationId || "");
       st.createNewProject(project);
+      push("assistant", `✅ Created project "${project.name}" and opened it.`, "status");
     }
-    push("assistant", `✅ Created project "${project.name}" and opened it.`, "status");
   }
 
   function selectProjectByName(name: string) {
