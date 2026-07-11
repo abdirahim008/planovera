@@ -285,6 +285,25 @@ export async function fetchDrawingLibrary(
   }
 }
 
+/**
+ * Fetch one drawing's SVG straight by id — no dependency on the library list.
+ * Rendering a saved sheet must not wait for (or share bandwidth with) the
+ * full warehouse metadata + thumbnail streams. Returns "" for ids that are
+ * not DB rows (seed/local items — their SVG lives inline in the list).
+ */
+export async function fetchLibrarySvgById(id: string): Promise<string> {
+  if (!isSupabaseConfigured()) return "";
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return "";
+  await supabase.auth.getSession(); // carry auth so RLS doesn't drop the row
+  const { data } = await supabase
+    .from("drawing_library_items")
+    .select("svg")
+    .eq("id", id)
+    .maybeSingle();
+  return (data?.svg as string) ?? "";
+}
+
 // Resolve a library item's full SVG for a large preview (seed items carry it;
 // DB items load metadata-only, so fetch the heavy svg by id on demand).
 export async function fetchLibraryItemSvg(item: LibraryItem): Promise<string> {
