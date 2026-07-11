@@ -185,6 +185,15 @@ export function renderPackageSheetHtml(
     ? `<div class="dp-zoom" style="transform: translate(${panX.toFixed(1)}%, ${panY.toFixed(1)}%) scale(${zoom.toFixed(2)})">${injectErasures(sanitizeSvgMarkup(baseSvg), item.erasures)}</div>`
     : `<div class="dp-missing">Drawing unavailable — it may have been removed from the library.</div>`;
 
+  // Dimensions attached to a part render INSIDE that part's box (their
+  // percentages are of the part), so moving or resizing the part carries
+  // them along with no recomputation. Unattached ones anchor to the sheet.
+  const dimensionsFor = (overlayId: string | null) =>
+    (item.dimensions ?? [])
+      .filter((dim) => (dim.overlayId ?? null) === overlayId)
+      .map((dim) => renderDimensionHtml(dim, opts?.selectedDimensionId === dim.id))
+      .join("");
+
   // Part overlays: cropped library details stamped on top of the drawing.
   // Their SVGs carry a tight viewBox, so width alone sizes them (height
   // follows the part's own aspect ratio).
@@ -203,13 +212,11 @@ export function renderPackageSheetHtml(
             overlay.erasures,
           )
         : `<div class="dp-overlay-missing">${esc(overlay.name || "Part")}</div>`;
-      return `<div class="dp-overlay${selected}" data-overlay-id="${esc(overlay.id)}" style="left:${x}%;top:${y}%;width:${width}%">${body}</div>`;
+      return `<div class="dp-overlay${selected}" data-overlay-id="${esc(overlay.id)}" style="left:${x}%;top:${y}%;width:${width}%">${body}${dimensionsFor(overlay.id)}</div>`;
     })
     .join("");
 
-  const dimensions = (item.dimensions ?? [])
-    .map((dim) => renderDimensionHtml(dim, opts?.selectedDimensionId === dim.id))
-    .join("");
+  const dimensions = dimensionsFor(null);
 
   const cell = (label: string, value: string, wide = false) =>
     `<div class="dp-tb-cell${wide ? " dp-wide" : ""}"><span class="dp-tb-label">${esc(label)}</span><span class="dp-tb-value">${esc(value) || "&nbsp;"}</span></div>`;

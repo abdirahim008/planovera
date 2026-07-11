@@ -610,6 +610,10 @@ export default function DrawingPackagesModule() {
                             overlays: (selectedItem.overlays ?? []).filter(
                               (overlay) => overlay.id !== overlayId,
                             ),
+                            // A part's attached dimensions go with it.
+                            dimensions: (selectedItem.dimensions ?? []).filter(
+                              (dim) => dim.overlayId !== overlayId,
+                            ),
                           })
                         }
                         onAddErasure={(overlayId, patch) => {
@@ -974,6 +978,8 @@ type SheetDrag =
   | {
       kind: "dimension";
       dimId: string;
+      /** part the dimension is attached to — drag deltas are % of its box */
+      overlayId: string | null;
       /** move the whole line, or stretch one of its ends */
       mode: "move" | "start" | "end";
       horizontal: boolean;
@@ -1155,6 +1161,7 @@ function SheetPreview({
       dragRef.current = {
         kind: "dimension",
         dimId: dim.id,
+        overlayId: dim.overlayId ?? null,
         mode,
         horizontal,
         startX: event.clientX,
@@ -1270,10 +1277,23 @@ function SheetPreview({
       }
       const dimEl = container.querySelector<HTMLElement>(`[data-dim-id="${drag.dimId}"]`);
       if (!dimEl) return;
-      const dAxis = drag.horizontal ? dxPct : dyPct;
+      // A part-attached dimension lives in the part's own percentage space,
+      // so its drag deltas are measured against the part's box, not the sheet.
+      let dx = dxPct;
+      let dy = dyPct;
+      if (drag.overlayId) {
+        const overlayEl = container.querySelector<HTMLElement>(
+          `[data-overlay-id="${drag.overlayId}"]`,
+        );
+        if (!overlayEl) return;
+        const overlayRect = overlayEl.getBoundingClientRect();
+        dx = ((event.clientX - drag.startX) / overlayRect.width) * 100;
+        dy = ((event.clientY - drag.startY) / overlayRect.height) * 100;
+      }
+      const dAxis = drag.horizontal ? dx : dy;
       if (drag.mode === "move") {
-        drag.lastX = clampDimPos(drag.baseX + dxPct);
-        drag.lastY = clampDimPos(drag.baseY + dyPct);
+        drag.lastX = clampDimPos(drag.baseX + dx);
+        drag.lastY = clampDimPos(drag.baseY + dy);
       } else if (drag.mode === "end") {
         drag.lastLength = clampDimLength(drag.baseLength + dAxis);
       } else {
@@ -1396,14 +1416,19 @@ function SheetPreview({
   };
 
   const addDimension = (orientation: "horizontal" | "vertical") => {
+    // With a part selected the dimension attaches to it (coordinates become
+    // percentages of the part's box, spanning most of it by default), so it
+    // moves and resizes with the part from then on.
+    const attached = selectedOverlay !== null;
     const dimension: DrawingPackageDimension = {
       id: uuid(),
       orientation,
-      x: orientation === "horizontal" ? 32 : 50,
-      y: orientation === "horizontal" ? 50 : 32,
-      length: 30,
+      x: attached ? (orientation === "horizontal" ? 10 : 50) : orientation === "horizontal" ? 32 : 50,
+      y: attached ? (orientation === "horizontal" ? 50 : 10) : orientation === "horizontal" ? 50 : 32,
+      length: attached ? 80 : 30,
       text: "",
       scale: 1,
+      overlayId: attached ? selectedOverlay.id : null,
     };
     onAddDimension(dimension);
     setSelectedDimensionId(dimension.id);
@@ -1510,7 +1535,7 @@ function SheetPreview({
             type="button"
             onClick={() => addDimension("horizontal")}
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
-            title="Add a horizontal dimension line — drag its middle to move it, drag an end to stretch it"
+            title="Add a horizontal dimension line — drag its middle to move it, drag an end to stretch it. Select a part first to attach the dimension to it, so it moves and resizes with the part."
           >
             <MoveHorizontal size={12} /> H
           </button>
@@ -1518,7 +1543,7 @@ function SheetPreview({
             type="button"
             onClick={() => addDimension("vertical")}
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-txt-muted transition hover:text-txt"
-            title="Add a vertical dimension line — drag its middle to move it, drag an end to stretch it"
+            title="Add a vertical dimension line — drag its middle to move it, drag an end to stretch it. Select a part first to attach the dimension to it, so it moves and resizes with the part."
           >
             <MoveVertical size={12} /> V
           </button>
@@ -1614,6 +1639,13 @@ function SheetPreview({
         <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-2 py-1.5">
           <span className="mr-auto text-[11px] font-semibold text-accent">
             Dimension — drag middle to move, ends to stretch
+            {selectedDimension.overlayId
+              ? ` · attached to ${
+                  (item.overlays ?? []).find(
+                    (overlay) => overlay.id === selectedDimension.overlayId,
+                  )?.name || "part"
+                }`
+              : ""}
           </span>
           <input
             key={selectedDimension.id}
