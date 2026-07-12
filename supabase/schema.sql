@@ -2586,11 +2586,17 @@ using (id = auth.uid() or public.is_admin())
 with check (id = auth.uid() or public.is_admin());
 
 drop policy if exists "organizations_member_select" on public.organizations;
+-- owner_id branch so the creator can read the org back during its own
+-- INSERT ... RETURNING (no membership row exists yet at that instant).
 create policy "organizations_member_select"
 on public.organizations
 for select
 to authenticated
-using (public.is_organization_member(id) or public.is_admin());
+using (
+  public.is_admin()
+  or owner_id = auth.uid()
+  or public.is_organization_member(id)
+);
 
 drop policy if exists "organizations_owner_insert" on public.organizations;
 create policy "organizations_owner_insert"
@@ -2608,11 +2614,18 @@ using (public.can_manage_organization(id) or owner_id = auth.uid())
 with check (public.can_manage_organization(id) or owner_id = auth.uid());
 
 drop policy if exists "organization_members_member_select" on public.organization_members;
+-- user_id branch so a self-insert (e.g. the first membership on a new org) can
+-- be read back during its own INSERT ... RETURNING; is_organization_member is a
+-- self-query on this table and can't see the new row yet.
 create policy "organization_members_member_select"
 on public.organization_members
 for select
 to authenticated
-using (public.is_organization_member(organization_id) or public.is_admin());
+using (
+  public.is_admin()
+  or user_id = auth.uid()
+  or public.is_organization_member(organization_id)
+);
 
 drop policy if exists "billing_plans_authenticated_select" on public.billing_plans;
 create policy "billing_plans_authenticated_select"

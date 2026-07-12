@@ -29,8 +29,28 @@ using (
   )
 );
 
--- Note: the same self-referential pattern exists on organizations
--- (is_organization_member(id)) and organization_members
--- (is_organization_member(organization_id)) SELECT policies. Those only bite
--- when creating a new organization or adding a member via insert().select();
--- harden them the same way if/when those flows start failing with 42501.
+-- The same self-referential pattern affects organization creation and member
+-- adds via insert().select(). Add a direct "you can always see your own row"
+-- branch (owner for orgs, self for memberships) — no access is widened.
+
+drop policy if exists "organizations_member_select" on public.organizations;
+create policy "organizations_member_select"
+on public.organizations
+for select
+to authenticated
+using (
+  public.is_admin()
+  or owner_id = auth.uid()
+  or public.is_organization_member(id)
+);
+
+drop policy if exists "organization_members_member_select" on public.organization_members;
+create policy "organization_members_member_select"
+on public.organization_members
+for select
+to authenticated
+using (
+  public.is_admin()
+  or user_id = auth.uid()
+  or public.is_organization_member(organization_id)
+);
