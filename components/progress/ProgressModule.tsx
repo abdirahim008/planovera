@@ -242,7 +242,7 @@ function ProgressActivityRow({
           />
         </div>
       )}
-      <div className={`flex w-[150px] items-center gap-2 sm:w-[230px] ${showWeights ? "" : "ml-auto"}`}>
+      <div className={`flex w-[150px] items-center gap-2 sm:w-[230px] lg:w-auto lg:flex-1 ${showWeights ? "" : "ml-auto"}`}>
         <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
           <div
             className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
