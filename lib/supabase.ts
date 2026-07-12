@@ -314,7 +314,7 @@ export interface ProgressReport {
   name: string;
   date: string;
   status: "draft" | "submitted" | "approved";
-  sourceType: "boq" | "items";
+  sourceType: "boq" | "items" | "workplan";
   inputMode?: "quantity" | "percent";
   weightMode?: "boq-amount" | "equal" | "custom";
   sourceId: string;
