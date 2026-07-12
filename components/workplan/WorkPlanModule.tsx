@@ -762,11 +762,14 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
 
       <div className="overflow-auto">
         <div className="min-w-[980px]">
-          <div className="grid grid-cols-[320px_1fr] border-b border-border bg-bg/70">
-            <div className="border-r border-border px-4 py-3">
+          <div className="grid grid-cols-[minmax(180px,1fr)_150px_2fr] border-b border-border bg-bg/70">
+            <div className="border-r border-border px-4 py-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Activity</div>
             </div>
-            <div className="relative flex min-h-11">
+            <div className="border-r border-border px-3 py-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Timeline</div>
+            </div>
+            <div className="relative flex min-h-9">
               {timelineCols.map((col, index) => (
                 <div
                   key={`${col.label}-${index}`}
@@ -801,29 +804,29 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
               return (
                 <div
                   key={activity.id}
-                  className={`grid grid-cols-[320px_1fr] border-b border-border/70 ${
+                  className={`grid grid-cols-[minmax(180px,1fr)_150px_2fr] border-b border-border/70 ${
                     isSection ? "bg-bg-raised/70" : "bg-bg-surface/80 hover:bg-bg-hover"
                   }`}
                 >
-                  <div className="flex min-h-[46px] items-center gap-3 border-r border-border px-4 py-2">
-                    {isSection ? (
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-txt">{activity.description || "Section"}</div>
-                    ) : (
-                      <>
-                        <span className="w-6 shrink-0 text-right text-[10px] font-mono text-txt-dim">{rowNumber}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-txt">{activity.description || "Untitled activity"}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-txt-dim">
-                            <span>{activity.startDate || "No start"}</span>
-                            <span>→</span>
-                            <span>{activity.endDate || "Auto end"}</span>
-                            {overdue && <span className="font-bold text-err">Overdue</span>}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className="relative min-h-[46px] overflow-hidden">
+                  {isSection ? (
+                    <div className="col-span-2 flex min-h-[30px] items-center border-r border-border px-4 py-1.5">
+                      <div className="truncate text-[11px] font-bold uppercase tracking-[0.12em] text-txt">{activity.description || "Section"}</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex min-h-[32px] items-center gap-2 border-r border-border px-4 py-1">
+                        <span className="w-5 shrink-0 text-right text-[10px] font-mono text-txt-dim">{rowNumber}</span>
+                        <div className="truncate text-sm font-medium text-txt">{activity.description || "Untitled activity"}</div>
+                      </div>
+                      <div className="flex min-h-[32px] items-center gap-1 border-r border-border px-3 py-1 text-[10px] text-txt-dim whitespace-nowrap">
+                        <span>{activity.startDate || "—"}</span>
+                        <span className="opacity-60">→</span>
+                        <span>{activity.endDate || "auto"}</span>
+                        {overdue && <span className="ml-1 font-bold text-err">!</span>}
+                      </div>
+                    </>
+                  )}
+                  <div className="relative min-h-[32px] overflow-hidden">
                     {todayPosition !== null && (
                       <div
                         className="absolute bottom-0 top-0 z-10 w-px bg-warn/60"
