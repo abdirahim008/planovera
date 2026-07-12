@@ -3309,32 +3309,39 @@ export const useAppStore = create<AppState>()(
             const selectedBOQ = s.savedBOQs.find((b) => b.id === sourceId);
             if (!selectedBOQ) return s;
             sourceName = selectedBOQ.name;
-            sheets = selectedBOQ.sheets
-              .map((boqSheet) => {
-                const prevSheet = prevReport?.sheets.find((sheet) => sheet.name === boqSheet.name);
-                const items = boqSheet.rows
-                  .filter((row) => row.type === "item" && row.description)
-                  .map((row) => {
-                    const boqQty = parseNumber(row.qty);
-                    const boqRate = parseNumber(row.rate);
-                    const resolvedAmount = row.amount ? resolveCellValue(row.amount, selectedBOQ.sheets) : 0;
-                    const boqAmount = resolvedAmount || calculateBOQLineAmount(boqQty, boqRate, row.unit);
-                    const prevItem = prevSheet?.items.find(
-                      (item) => item.billNo === (row.itemNo || "") && item.description === row.description
-                    );
-                    return createProgressItem(
-                      row.itemNo || "",
-                      row.description,
-                      row.unit || "",
-                      boqQty,
-                      boqRate,
-                      boqAmount,
-                      prevItem
-                    );
-                  });
-                return items.length ? { id: uuid(), name: boqSheet.name, items } : null;
-              })
-              .filter((sheet): sheet is ProgressSheet => Boolean(sheet));
+            // Split each BOQ sheet at its section rows so BOQ section headers
+            // (e.g. "A — EARTHWORKS") become progress sections. Items before the
+            // first section stay under the sheet's own name.
+            const out: ProgressSheet[] = [];
+            for (const boqSheet of selectedBOQ.sheets) {
+              let groupName = boqSheet.name;
+              let groupItems: ProgressItem[] = [];
+              const flush = () => {
+                if (groupItems.length) out.push({ id: uuid(), name: groupName, items: groupItems });
+                groupItems = [];
+              };
+              for (const row of boqSheet.rows) {
+                if (row.type === "header") {
+                  flush();
+                  groupName = row.description?.trim() || boqSheet.name;
+                  continue;
+                }
+                if (row.type !== "item" || !row.description) continue;
+                const boqQty = parseNumber(row.qty);
+                const boqRate = parseNumber(row.rate);
+                const resolvedAmount = row.amount ? resolveCellValue(row.amount, selectedBOQ.sheets) : 0;
+                const boqAmount = resolvedAmount || calculateBOQLineAmount(boqQty, boqRate, row.unit);
+                const prevSheet = prevReport?.sheets.find((sheet) => sheet.name === groupName);
+                const prevItem = prevSheet?.items.find(
+                  (item) => item.billNo === (row.itemNo || "") && item.description === row.description
+                );
+                groupItems.push(
+                  createProgressItem(row.itemNo || "", row.description, row.unit || "", boqQty, boqRate, boqAmount, prevItem),
+                );
+              }
+              flush();
+            }
+            sheets = out;
           } else if (sourceType === "items") {
             const selectedSet = s.savedSimpleItemSets.find((itemSet) => itemSet.id === sourceId);
             if (!selectedSet) return s;
@@ -3361,31 +3368,45 @@ export const useAppStore = create<AppState>()(
               });
             sheets = items.length ? [{ id: uuid(), name: selectedSet.name, items }] : [];
           } else {
-            // Work plan source: each sheet becomes a progress sheet and each
-            // (non-section) activity becomes a percent-tracked line item. Work
-            // plans aren't priced, so qty/rate/amount are 0 — progress is
-            // weight-based percent, which is what the module uses anyway. A
-            // completed activity seeds 100% so the plan's status carries over.
+            // Work plan source: each non-section activity becomes a percent-
+            // tracked line item, and the work plan's own section headers are
+            // preserved as progress sections. Work plans aren't priced, so
+            // qty/rate/amount are 0 — progress is weight-based percent, which is
+            // what the module uses anyway. A completed activity seeds 100% so
+            // the plan's status carries over. Numbering stays continuous (1..N)
+            // across each sheet to match the work plan's row numbers.
             const selectedPlan = s.savedWorkPlans.find((wp) => wp.id === sourceId);
             if (!selectedPlan) return s;
             sourceName = selectedPlan.name;
-            sheets = selectedPlan.sheets
-              .map((wpSheet) => {
-                const prevSheet = prevReport?.sheets.find((sheet) => sheet.name === wpSheet.name);
-                const items = wpSheet.activities
-                  .filter((a) => (a.rowType || "activity") !== "section" && a.description)
-                  .map((a, idx) => {
-                    const prevItem = prevSheet?.items.find((it) => it.description === a.description);
-                    const item = createProgressItem(String(idx + 1), a.description, "", 0, 0, 0, prevItem);
-                    if (!prevItem && a.status === "completed") {
-                      item.actualPercent = "100";
-                      item.status = "completed";
-                    }
-                    return item;
-                  });
-                return items.length ? { id: uuid(), name: wpSheet.name, items } : null;
-              })
-              .filter((sheet): sheet is ProgressSheet => Boolean(sheet));
+            const out: ProgressSheet[] = [];
+            for (const wpSheet of selectedPlan.sheets) {
+              let groupName = wpSheet.name;
+              let groupItems: ProgressItem[] = [];
+              let rowNo = 0;
+              const flush = () => {
+                if (groupItems.length) out.push({ id: uuid(), name: groupName, items: groupItems });
+                groupItems = [];
+              };
+              for (const a of wpSheet.activities) {
+                if ((a.rowType || "activity") === "section") {
+                  flush();
+                  groupName = a.description?.trim() || wpSheet.name;
+                  continue;
+                }
+                if (!a.description) continue;
+                rowNo += 1;
+                const prevSheet = prevReport?.sheets.find((sheet) => sheet.name === groupName);
+                const prevItem = prevSheet?.items.find((it) => it.description === a.description);
+                const item = createProgressItem(String(rowNo), a.description, "", 0, 0, 0, prevItem);
+                if (!prevItem && a.status === "completed") {
+                  item.actualPercent = "100";
+                  item.status = "completed";
+                }
+                groupItems.push(item);
+              }
+              flush();
+            }
+            sheets = out;
           }
 
           if (sheets.length === 0) return s;
