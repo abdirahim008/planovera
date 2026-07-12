@@ -408,6 +408,7 @@ export default function ProgressModule() {
     project,
     savedBOQs,
     savedSimpleItemSets,
+    savedWorkPlans,
     progressReports,
     createProgressReport,
     updateProgressItem,
@@ -429,10 +430,23 @@ export default function ProgressModule() {
 
   const projectReports = progressReports.filter((report) => report.project_id === project?.id);
   const isConstruction = project?.type === "construction";
-  const sourceType = isConstruction ? "boq" : "items";
-  const sourceOptions = isConstruction
-    ? savedBOQs.filter((boq) => boq.project_id === project?.id && boq.sheets.some((sheet) => sheet.rows.some((row) => row.type === "item" && row.description)))
-    : savedSimpleItemSets.filter((itemSet) => itemSet.project_id === project?.id && itemSet.items.some((item) => item.description));
+  // Progress can be drawn from the priced bill (BOQ / item set) OR straight from
+  // the Work Plan — the latter is the natural source for consultancy/design
+  // projects that track deliverables and activities rather than quantities.
+  const sourceOptions: Array<{ id: string; name: string; type: "boq" | "items" | "workplan" }> = [
+    ...(isConstruction
+      ? savedBOQs
+          .filter((boq) => boq.project_id === project?.id && boq.sheets.some((sheet) => sheet.rows.some((row) => row.type === "item" && row.description)))
+          .map((boq) => ({ id: boq.id, name: boq.name, type: "boq" as const }))
+      : savedSimpleItemSets
+          .filter((itemSet) => itemSet.project_id === project?.id && itemSet.items.some((item) => item.description))
+          .map((itemSet) => ({ id: itemSet.id, name: itemSet.name, type: "items" as const }))),
+    ...savedWorkPlans
+      .filter((wp) => wp.project_id === project?.id && wp.sheets.some((sheet) => sheet.activities.some((a) => (a.rowType || "activity") !== "section" && a.description)))
+      .map((wp) => ({ id: wp.id, name: `${wp.name} (Work Plan)`, type: "workplan" as const })),
+  ];
+  const selectedSource = sourceOptions.find((option) => option.id === selectedSourceId);
+  const sourceType = selectedSource?.type ?? (isConstruction ? "boq" : "items");
   const activeReport = projectReports.find((report) => report.id === activeReportId) || null;
 
   useEffect(() => {
@@ -512,9 +526,11 @@ export default function ProgressModule() {
         {!sourceOptions.length && projectReports.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-txt-muted text-sm font-medium">
-              {isConstruction ? "Save a BOQ first" : "Save an item set first"}
+              {isConstruction ? "Save a BOQ or Work Plan first" : "Save an item set or Work Plan first"}
             </p>
-            <p className="mt-1 text-xs text-txt-dim">Progress activities are drawn from your {isConstruction ? "BOQ" : "item set"}.</p>
+            <p className="mt-1 text-xs text-txt-dim">
+              Progress activities are drawn from your {isConstruction ? "BOQ" : "item set"} or your Work Plan.
+            </p>
           </div>
         ) : projectReports.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
@@ -616,7 +632,7 @@ export default function ProgressModule() {
             </div>
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim mb-1.5">
-                Source {isConstruction ? "BOQ" : "Item Set"}
+                Source
               </label>
               <select
                 value={selectedSourceId}
@@ -633,8 +649,9 @@ export default function ProgressModule() {
             <div className="flex items-start gap-2.5 rounded-xl border border-border bg-bg-input/60 p-3 text-xs leading-5 text-txt-muted">
               <ListChecks size={16} className="mt-0.5 shrink-0 text-accent" />
               <span>
-                Activities are pulled from your {isConstruction ? "BOQ" : "item set"}. On site you just set each
-                activity&apos;s <strong className="text-txt">% complete</strong> — the overall and section progress update automatically.
+                Activities are pulled from the source you pick above ({isConstruction ? "BOQ" : "item set"} or Work Plan).
+                You just set each activity&apos;s <strong className="text-txt">% complete</strong> — the overall and section
+                progress update automatically. Work-plan activities already marked complete start at 100%.
               </span>
             </div>
             <div>

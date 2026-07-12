@@ -2022,7 +2022,7 @@ interface AppState {
   progressReports: ProgressReport[];
   createProgressReport: (
     name: string,
-    sourceType: "boq" | "items",
+    sourceType: "boq" | "items" | "workplan",
     sourceId: string,
     prevReportId?: string | null,
     inputMode?: ProgressReport["inputMode"]
@@ -3335,7 +3335,7 @@ export const useAppStore = create<AppState>()(
                 return items.length ? { id: uuid(), name: boqSheet.name, items } : null;
               })
               .filter((sheet): sheet is ProgressSheet => Boolean(sheet));
-          } else {
+          } else if (sourceType === "items") {
             const selectedSet = s.savedSimpleItemSets.find((itemSet) => itemSet.id === sourceId);
             if (!selectedSet) return s;
             sourceName = selectedSet.name;
@@ -3360,6 +3360,32 @@ export const useAppStore = create<AppState>()(
                 );
               });
             sheets = items.length ? [{ id: uuid(), name: selectedSet.name, items }] : [];
+          } else {
+            // Work plan source: each sheet becomes a progress sheet and each
+            // (non-section) activity becomes a percent-tracked line item. Work
+            // plans aren't priced, so qty/rate/amount are 0 — progress is
+            // weight-based percent, which is what the module uses anyway. A
+            // completed activity seeds 100% so the plan's status carries over.
+            const selectedPlan = s.savedWorkPlans.find((wp) => wp.id === sourceId);
+            if (!selectedPlan) return s;
+            sourceName = selectedPlan.name;
+            sheets = selectedPlan.sheets
+              .map((wpSheet) => {
+                const prevSheet = prevReport?.sheets.find((sheet) => sheet.name === wpSheet.name);
+                const items = wpSheet.activities
+                  .filter((a) => (a.rowType || "activity") !== "section" && a.description)
+                  .map((a, idx) => {
+                    const prevItem = prevSheet?.items.find((it) => it.description === a.description);
+                    const item = createProgressItem(String(idx + 1), a.description, "", 0, 0, 0, prevItem);
+                    if (!prevItem && a.status === "completed") {
+                      item.actualPercent = "100";
+                      item.status = "completed";
+                    }
+                    return item;
+                  });
+                return items.length ? { id: uuid(), name: wpSheet.name, items } : null;
+              })
+              .filter((sheet): sheet is ProgressSheet => Boolean(sheet));
           }
 
           if (sheets.length === 0) return s;
