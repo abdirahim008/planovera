@@ -24,6 +24,9 @@ import {
   Flag,
   CheckCircle2,
   Link2,
+  Circle,
+  CircleDot,
+  Clock,
 } from "lucide-react";
 import { isWorkPlanRowAchieved } from "@/lib/work-plan-milestones";
 import {
@@ -468,12 +471,29 @@ function WorkPlanTable({
       disabled: readOnly || selectedRowIds.length !== 1 || !primaryAct,
     },
     {
-      label: primaryAct?.status === "completed" ? "Reopen (in progress)" : "Mark Completed",
-      icon: <CheckCircle2 size={14} />,
-      action: () =>
-        primaryAct &&
-        updateActivity(primaryAct.id, "status", primaryAct.status === "completed" ? "in-progress" : "completed"),
+      label: "Status",
+      icon: <CircleDot size={14} />,
       disabled: readOnly || isSectionSummary || selectedRowIds.length !== 1 || !primaryAct,
+      submenu: [
+        {
+          label: "Pending",
+          icon: <Circle size={14} />,
+          active: primaryAct?.status === "pending",
+          action: () => primaryAct && updateActivity(primaryAct.id, "status", "pending"),
+        },
+        {
+          label: "In progress",
+          icon: <Clock size={14} />,
+          active: primaryAct?.status === "in-progress",
+          action: () => primaryAct && updateActivity(primaryAct.id, "status", "in-progress"),
+        },
+        {
+          label: "Completed",
+          icon: <CheckCircle2 size={14} />,
+          active: primaryAct?.status === "completed",
+          action: () => primaryAct && updateActivity(primaryAct.id, "status", "completed"),
+        },
+      ],
     },
     { divider: true },
     { label: selectedRowIds.length > 1 ? `Copy ${selectedRowIds.length} Activities` : "Copy Activity", icon: <Copy size={14} />, action: copyRow },
@@ -517,7 +537,10 @@ function WorkPlanTable({
 
   return (
     <>
-      <div className="data-table-shell overflow-auto" style={{ maxHeight: "calc(100vh - 365px)" }}>
+      <div
+        className="data-table-shell overflow-auto"
+        style={{ maxHeight: "calc(100vh - 210px)", minHeight: "min(520px, calc(100vh - 210px))" }}
+      >
         <table className="data-table data-table-sticky min-w-[430px] sm:min-w-[780px]">
           <thead>
             <tr>
