@@ -152,9 +152,12 @@ function renderSheetSection(sheet: ProgressSheet, ratios: Map<string, number>): 
     ? sheet.items.map((item, idx) => renderItemRow(item, idx + 1)).join("")
     : `<tr><td colspan="4" style="text-align:center; color:#64748b; padding:14px">No items recorded.</td></tr>`;
 
+  // No page-break-inside:avoid on the wrapper — long sections flow across pages
+  // (rows stay intact and the table header repeats via the base print CSS).
+  // Only the heading is glued to the table start so a title never strands alone.
   return `
-    <div style="margin-top:18px; page-break-inside: avoid;">
-      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px">
+    <div style="margin-top:18px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; page-break-inside: avoid; page-break-after: avoid;">
         <h2 style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#0f172a">${escapeHtml(sheet.name)}</h2>
         <span style="font-size:9px; color:#64748b; letter-spacing:0.8px; text-transform:uppercase">
           ${metrics.completed}/${metrics.totalItems} complete · ${fmtPercent(metrics.actual)}
