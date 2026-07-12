@@ -321,7 +321,7 @@ export function exportWorkPlanAsPdf(
       ? exportWorkPlanGanttHtml(workPlan, project)
       : exportWorkPlanTableHtml(workPlan, project);
   openPrintWindow(html, {
-    orientation: view === "gantt" ? "landscape" : "portrait",
+    orientation: "landscape",
     paper: view === "gantt" ? "A3" : "A4",
     title: `${workPlan.name} — Work Plan`,
   });
