@@ -397,7 +397,7 @@ function ProgressExportMenu({
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-semibold text-txt">Excel (data table)</span>
               <span className="mt-0.5 block text-[10px] leading-snug text-txt-dim">
-                Summary sheet + one sheet per section, with live formulas
+                Summary sheet + one sheet per section with progress %
               </span>
             </span>
           </button>

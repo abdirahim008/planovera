@@ -1,16 +1,15 @@
 /**
  * Progress export helpers — PDF (current view) and Excel (Summary + section sheets).
  *
- * The Progress module is percent-only: activities carry a weight ratio (summing
- * to 1 across the whole report, equal 1/N unless the user sets custom weights)
- * and a manual Actual %. Exports mirror that — no quantity columns — and use the
- * same ratio-based roll-up as the on-screen view so the totals match.
+ * Exports mirror the on-screen report exactly: Bill No · Description · Progress
+ * bar · %. Internal bookkeeping columns (weight ratios, planned %, variance,
+ * earned value) stay out of the deliverable — the weight ratios are still used
+ * behind the scenes for the section/overall roll-ups so totals match the app.
  */
 import type { Project, ProgressReport, ProgressSheet, ProgressItem } from "./supabase";
 import {
   downloadWorkbook,
   escapeHtml,
-  formatNumber,
   openPrintWindow,
   safeFilename,
 } from "./exporters";
@@ -60,13 +59,9 @@ function statsFor(items: ProgressItem[], ratios: Map<string, number>) {
       : 0;
   const actual = weightedAvg("actualPercent");
   const planned = weightedAvg("plannedPercent");
-  const earned = items.reduce((sum, item) => sum + toNumber(item.earnedAmount), 0);
   return {
     actual,
     planned,
-    variance: actual - planned,
-    earned,
-    weight: weightSum,
     completed: items.filter((item) => toNumber(item.actualPercent) >= 95).length,
     totalItems: items.length,
   };
@@ -117,66 +112,52 @@ function renderFooter(report: ProgressReport): string {
   `;
 }
 
-function renderSummaryCards(report: ProgressReport, currencyCode: string): string {
+function renderOverallProgress(report: ProgressReport): string {
   const totals = statsFor(report.sheets.flatMap((sheet) => sheet.items), computeRatios(report));
-  const variance = totals.variance;
-  const varianceColor = variance >= 0 ? "#16a34a" : "#dc2626";
-  const items = [
-    { label: "Planned", value: fmtPercent(totals.planned), color: "#f59e0b" },
-    { label: "Actual", value: fmtPercent(totals.actual), color: "#3b82f6" },
-    { label: "Variance", value: `${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%`, color: varianceColor },
-    { label: "Earned Value", value: `${currencyCode} ${formatNumber(totals.earned, 2)}`, color: "#16a34a" },
-  ];
+  const actual = clampPercent(totals.actual);
+  const color = progressTone(actual, totals.planned);
   return `
-    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:14px">
-      ${items
-        .map(
-          (item) => `
-            <div style="border:0.6px solid #cbd5e1; border-radius:8px; padding:10px 12px;">
-              <div style="font-size:9px; text-transform:uppercase; letter-spacing:1.2px; color:#64748b">${escapeHtml(item.label)}</div>
-              <div style="margin-top:4px; font-size:16px; font-weight:700; color:${item.color}">${escapeHtml(item.value)}</div>
-            </div>
-          `,
-        )
-        .join("")}
+    <div style="border:0.6px solid #cbd5e1; border-radius:8px; padding:12px 14px; margin-bottom:14px; display:flex; align-items:center; gap:16px">
+      <div>
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1.2px; color:#64748b">Overall Progress</div>
+        <div style="margin-top:4px; font-size:20px; font-weight:700; color:#0f172a">${fmtPercent(actual)}</div>
+      </div>
+      <div style="flex:1">
+        <div class="progress-bar"><span style="width:${actual}%; background:${color}"></span></div>
+      </div>
+      <div style="font-size:10px; color:#64748b">${totals.completed}/${totals.totalItems} activities complete</div>
     </div>
   `;
 }
 
-function renderItemRow(item: ProgressItem, currencyCode: string, idx: number, ratio: number): string {
+function renderItemRow(item: ProgressItem, idx: number): string {
   const planned = toNumber(item.plannedPercent);
   const actual = toNumber(item.actualPercent);
-  const earned = toNumber(item.earnedAmount);
-  const variance = actual - planned;
   const color = progressTone(actual, planned);
   return `
     <tr>
       <td>${escapeHtml(item.billNo || String(idx))}</td>
       <td>${escapeHtml(item.description || "")}</td>
-      <td class="num">${ratio.toFixed(3)}</td>
-      <td class="num">${planned.toFixed(1)}%</td>
-      <td class="num" style="color:${color}">${actual.toFixed(1)}%</td>
-      <td class="num" style="color:${variance >= 0 ? "#16a34a" : "#dc2626"}">${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%</td>
-      <td class="num">${escapeHtml(currencyCode)} ${escapeHtml(formatNumber(earned, 2))}</td>
-      <td style="min-width:120px">
+      <td style="min-width:220px">
         <div class="progress-bar"><span style="width:${clampPercent(actual)}%; background:${color}"></span></div>
       </td>
+      <td class="num" style="color:${color}">${actual.toFixed(1)}%</td>
     </tr>
   `;
 }
 
-function renderSheetSection(sheet: ProgressSheet, currencyCode: string, ratios: Map<string, number>): string {
+function renderSheetSection(sheet: ProgressSheet, ratios: Map<string, number>): string {
   const metrics = statsFor(sheet.items, ratios);
   const itemsHtml = sheet.items.length
-    ? sheet.items.map((item, idx) => renderItemRow(item, currencyCode, idx + 1, ratios.get(item.id) || 0)).join("")
-    : `<tr><td colspan="8" style="text-align:center; color:#64748b; padding:14px">No items recorded.</td></tr>`;
+    ? sheet.items.map((item, idx) => renderItemRow(item, idx + 1)).join("")
+    : `<tr><td colspan="4" style="text-align:center; color:#64748b; padding:14px">No items recorded.</td></tr>`;
 
   return `
     <div style="margin-top:18px; page-break-inside: avoid;">
       <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px">
         <h2 style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#0f172a">${escapeHtml(sheet.name)}</h2>
         <span style="font-size:9px; color:#64748b; letter-spacing:0.8px; text-transform:uppercase">
-          ${metrics.totalItems} items · Planned ${fmtPercent(metrics.planned)} · Actual ${fmtPercent(metrics.actual)} · Earned ${escapeHtml(currencyCode)} ${escapeHtml(formatNumber(metrics.earned, 2))}
+          ${metrics.completed}/${metrics.totalItems} complete · ${fmtPercent(metrics.actual)}
         </span>
       </div>
       <table class="export-table">
@@ -184,12 +165,8 @@ function renderSheetSection(sheet: ProgressSheet, currencyCode: string, ratios: 
           <tr>
             <th style="width:56px">Bill No.</th>
             <th>Description</th>
-            <th class="num" style="width:64px">Weight</th>
-            <th class="num" style="width:64px">Planned</th>
-            <th class="num" style="width:64px">Actual</th>
-            <th class="num" style="width:60px">Δ</th>
-            <th class="num" style="width:104px">Earned</th>
-            <th style="width:120px">Progress</th>
+            <th style="width:240px">Progress</th>
+            <th class="num" style="width:56px">%</th>
           </tr>
         </thead>
         <tbody>${itemsHtml}</tbody>
@@ -199,15 +176,14 @@ function renderSheetSection(sheet: ProgressSheet, currencyCode: string, ratios: 
 }
 
 export function exportProgressAsPdf(report: ProgressReport, project: Project | null): void {
-  const currencyCode = project?.currency || "USD";
   const ratios = computeRatios(report);
   const sections = report.sheets.length
-    ? report.sheets.map((sheet) => renderSheetSection(sheet, currencyCode, ratios)).join("")
+    ? report.sheets.map((sheet) => renderSheetSection(sheet, ratios)).join("")
     : `<p style="color:#64748b">No progress sections defined yet.</p>`;
   const html = `
     <div class="export-shell">
       ${renderHeader({ report, project })}
-      ${renderSummaryCards(report, currencyCode)}
+      ${renderOverallProgress(report)}
       ${sections}
       ${renderFooter(report)}
     </div>
@@ -223,7 +199,6 @@ export async function exportProgressAsExcel(
   report: ProgressReport,
   project: Project | null,
 ): Promise<void> {
-  const currencyCode = project?.currency || "USD";
   const ratios = computeRatios(report);
   const totals = statsFor(report.sheets.flatMap((sheet) => sheet.items), ratios);
   const filename = `${safeFilename(report.name)}.xlsx`;
@@ -232,36 +207,17 @@ export async function exportProgressAsExcel(
     const wb = XLSX.utils.book_new();
 
     // ── Summary sheet ─────────────────────────────
-    const summaryHeader = [
-      "Section",
-      "Items",
-      "Weight",
-      "Planned %",
-      "Actual %",
-      "Variance %",
-      `Earned (${currencyCode})`,
-    ];
+    const summaryHeader = ["Section", "Items", "Complete", "Progress %"];
     const summaryRows: (string | number)[][] = report.sheets.map((sheet) => {
       const m = statsFor(sheet.items, ratios);
-      return [
-        sheet.name,
-        m.totalItems,
-        Number(m.weight.toFixed(4)),
-        Number(m.planned.toFixed(2)),
-        Number(m.actual.toFixed(2)),
-        Number(m.variance.toFixed(2)),
-        Number(m.earned.toFixed(2)),
-      ];
+      return [sheet.name, m.totalItems, m.completed, Number(m.actual.toFixed(2))];
     });
 
     summaryRows.push([
       "TOTAL",
       totals.totalItems,
-      Number(totals.weight.toFixed(4)),
-      Number(totals.planned.toFixed(2)),
+      totals.completed,
       Number(totals.actual.toFixed(2)),
-      Number(totals.variance.toFixed(2)),
-      Number(totals.earned.toFixed(2)),
     ]);
 
     const summaryAoa = [
@@ -274,14 +230,12 @@ export async function exportProgressAsExcel(
       ...summaryRows,
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa);
-    wsSummary["!cols"] = [
-      { wch: 28 }, { wch: 8 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 18 },
-    ];
+    wsSummary["!cols"] = [{ wch: 36 }, { wch: 8 }, { wch: 10 }, { wch: 12 }];
     wsSummary["!merges"] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
     ];
     XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
@@ -301,36 +255,15 @@ export async function exportProgressAsExcel(
     };
 
     report.sheets.forEach((sheet) => {
-      // Columns: A Bill No. · B Description · C BOQ Amount · D Weight ·
-      //          E Planned % · F Actual % · G Variance % · H Earned
-      const header = [
-        "Bill No.",
-        "Description",
-        `BOQ Amount (${currencyCode})`,
-        "Weight",
-        "Planned %",
-        "Actual %",
-        "Variance %",
-        `Earned (${currencyCode})`,
-      ];
+      // Columns: A Bill No. · B Description · C Progress %
+      const header = ["Bill No.", "Description", "Progress %"];
 
       const items = sheet.items;
-      const dataStartRow = 6 + 1; // after intro (rows 1-5) and header at row 6; 1-indexed for Excel
-      const rows = items.map((item, idx) => {
-        const rowIdx = dataStartRow + idx; // 1-based Excel row
-        return [
-          item.billNo || "",
-          item.description || "",
-          toNumber(item.boqAmount),
-          Number((ratios.get(item.id) || 0).toFixed(4)),
-          toNumber(item.plannedPercent),
-          toNumber(item.actualPercent),
-          // Variance % column (G): actual - planned
-          { f: `F${rowIdx}-E${rowIdx}` },
-          // Earned column (H): boqAmount * actual / 100 (live calc)
-          { f: `C${rowIdx}*F${rowIdx}/100` },
-        ];
-      });
+      const rows: (string | number)[][] = items.map((item) => [
+        item.billNo || "",
+        item.description || "",
+        toNumber(item.actualPercent),
+      ]);
 
       const intro = [
         [`Section — ${sheet.name}`],
@@ -340,35 +273,19 @@ export async function exportProgressAsExcel(
         [],
       ];
 
-      const dataAoa: (string | number | { f: string })[][] = [
-        ...intro,
-        header as (string | number | { f: string })[],
-        ...rows,
-      ];
+      const dataAoa: (string | number)[][] = [...intro, header, ...rows];
 
-      // Totals row with formulas (sum of value columns)
-      const lastDataRow = dataStartRow + items.length - 1;
-      const totalsRow: (string | number | { f: string })[] = [
-        "TOTAL",
-        "",
-        items.length ? { f: `SUM(C${dataStartRow}:C${lastDataRow})` } : 0,
-        items.length ? { f: `SUM(D${dataStartRow}:D${lastDataRow})` } : 0,
-        "",
-        "",
-        "",
-        items.length ? { f: `SUM(H${dataStartRow}:H${lastDataRow})` } : 0,
-      ];
-      dataAoa.push(totalsRow);
+      // Section roll-up as computed in the app (weight-aware), not a plain average
+      const sectionActual = statsFor(items, ratios).actual;
+      dataAoa.push(["SECTION PROGRESS", "", Number(sectionActual.toFixed(2))]);
 
       const ws = XLSX.utils.aoa_to_sheet(dataAoa);
-      ws["!cols"] = [
-        { wch: 10 }, { wch: 44 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 10 }, { wch: 11 }, { wch: 16 },
-      ];
+      ws["!cols"] = [{ wch: 10 }, { wch: 56 }, { wch: 12 }];
       ws["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 7 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } },
       ];
       XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(sheet.name, "Section"));
     });
