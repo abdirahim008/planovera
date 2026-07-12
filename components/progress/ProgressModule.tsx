@@ -223,13 +223,17 @@ function ProgressActivityRow({
   const actual = clampPercent(toNumber(item.actualPercent));
   const planned = toNumber(item.plannedPercent);
   return (
-    <div className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-bg-hover">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] text-txt">{item.description || "Untitled activity"}</div>
-        {item.billNo && <div className="font-mono text-[10px] text-txt-dim">{item.billNo}</div>}
+    <div className="flex items-center gap-3 px-3 py-1.5 transition-colors hover:bg-bg-hover">
+      {/* ID/# in its own narrow column at the far left */}
+      <span className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums text-txt-dim">
+        {item.billNo}
+      </span>
+      {/* Description — a bounded column that truncates rather than sprawling */}
+      <div className="min-w-0 flex-1 truncate text-[13px] text-txt lg:max-w-[540px]">
+        {item.description || "Untitled activity"}
       </div>
       {showWeights && (
-        <div className="flex w-[88px] shrink-0 items-center justify-end gap-1">
+        <div className="ml-auto flex w-[88px] shrink-0 items-center justify-end gap-1">
           <WeightInput value={ratio} onCommit={onWeightCommit} />
           <Lock
             size={11}
@@ -238,7 +242,7 @@ function ProgressActivityRow({
           />
         </div>
       )}
-      <div className="flex w-[150px] items-center gap-2 sm:w-[230px]">
+      <div className={`flex w-[150px] items-center gap-2 sm:w-[230px] ${showWeights ? "" : "ml-auto"}`}>
         <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
           <div
             className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
@@ -293,14 +297,14 @@ function ProgressSection({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-hover"
+        className="flex w-full items-center gap-3 bg-bg-hover px-3 py-2.5 text-left transition-colors hover:bg-[#e6e9ef]"
       >
         {expanded ? (
           <ChevronDown size={16} className="shrink-0 text-txt-dim" />
         ) : (
           <ChevronRight size={16} className="shrink-0 text-txt-dim" />
         )}
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">{sheet.name}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-bold uppercase tracking-[0.04em] text-txt">{sheet.name}</span>
         <span className="hidden text-[11px] text-txt-dim sm:inline">
           {stats.completed}/{sheet.items.length}
         </span>
