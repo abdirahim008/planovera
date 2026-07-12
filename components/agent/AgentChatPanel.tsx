@@ -217,7 +217,18 @@ export default function AgentChatPanel() {
           .select("*")
           .single());
       }
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (/row-level security/i.test(error.message)) {
+          // The database rejected the row — almost always because this account
+          // isn't linked to an active organization workspace, or the projects
+          // insert policy predates the "personal project" rule
+          // (supabase/apply-project-insert-rls.sql realigns it).
+          throw new Error(
+            "I couldn't save the project because your account isn't linked to an active workspace yet. Ask your organization admin to add you as an active member, then try again — or create it from the Projects screen.",
+          );
+        }
+        throw new Error(error.message);
+      }
       st.createNewProject(mapProjectRecord(data as ProjectRecord));
       push(
         "assistant",

@@ -2823,11 +2823,24 @@ drop policy if exists "Users manage own projects" on public.projects;
 drop policy if exists "projects_owner_select" on public.projects;
 drop policy if exists "construction_projects_owner_select" on public.projects;
 drop policy if exists "construction_projects_member_select" on public.projects;
+-- Check the row's own columns directly rather than calling can_access_project(id),
+-- which re-queries the projects table for this row. That self-reference makes the
+-- new row invisible to the policy during INSERT ... RETURNING (the shape every
+-- insert().select() produces), so Postgres raised 42501 on every project create.
+-- These conditions are identical in access semantics to can_access_project.
 create policy "construction_projects_member_select"
 on public.projects
 for select
 to authenticated
-using (public.can_access_project(id));
+using (
+  public.is_admin()
+  or owner_id = auth.uid()
+  or (organization_id is not null and public.is_organization_member(organization_id))
+  or exists (
+    select 1 from public.project_members pm
+    where pm.project_id = projects.id and pm.user_id = auth.uid()
+  )
+);
 
 drop policy if exists "projects_owner_insert" on public.projects;
 drop policy if exists "construction_projects_owner_insert" on public.projects;
