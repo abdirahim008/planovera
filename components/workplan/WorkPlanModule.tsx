@@ -656,6 +656,23 @@ function WorkPlanTable({
   );
 }
 
+// ─── Gantt status palette ─────────────────────────────────────────
+// Borrowed from professional Excel programme-of-works formatting:
+// each bar is tinted by status so the schedule reads at a glance.
+const GANTT_STATUS_COLORS: Record<WorkPlanActivity["status"], string> = {
+  completed: "#3f8f7f", // teal
+  "in-progress": "#e0912e", // orange
+  pending: "#274c77", // navy — "scheduled"
+  delayed: "#c0392b", // red
+};
+const GANTT_MILESTONE_COLOR = "#e0912e"; // orange diamond
+const GANTT_LEGEND: { label: string; color: string }[] = [
+  { label: "Completed", color: GANTT_STATUS_COLORS.completed },
+  { label: "In progress", color: GANTT_STATUS_COLORS["in-progress"] },
+  { label: "Scheduled", color: GANTT_STATUS_COLORS.pending },
+  { label: "Delayed", color: GANTT_STATUS_COLORS.delayed },
+];
+
 // ─── Work Plan Gantt View ─────────────────────────────────────────
 function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSummaryMode }) {
   const { workPlanSheets, activeWorkPlanSheetIndex } = useAppStore();
@@ -816,7 +833,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                     <>
                       <div className="flex min-h-[32px] items-center gap-2 border-r border-border px-4 py-1">
                         <span className="w-5 shrink-0 text-right text-[10px] font-mono text-txt-dim">{rowNumber}</span>
-                        <div className="truncate text-sm font-medium text-txt">{activity.description || "Untitled activity"}</div>
+                        <div className={`truncate text-sm text-txt ${activity.isMilestone ? "font-bold" : "font-medium"}`}>{activity.description || "Untitled activity"}</div>
                       </div>
                       <div className="flex min-h-[32px] items-center gap-1 border-r border-border px-3 py-1 text-[10px] text-txt-dim whitespace-nowrap">
                         <span>{activity.startDate || "—"}</span>
@@ -846,12 +863,22 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                     ))}
                     {isSection && summaryMode !== "sections" ? (
                       <div className="absolute left-4 right-4 top-1/2 h-px bg-border" />
+                    ) : activity.isMilestone && start ? (
+                      <div
+                        className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] shadow-sm"
+                        style={{ left: `${leftPercent(start)}%`, background: GANTT_MILESTONE_COLOR }}
+                        title={`Milestone${activity.startDate ? ` — ${activity.startDate}` : ""}`}
+                      />
                     ) : start && end ? (
                       <div
-                        className={`absolute top-1/2 h-4 -translate-y-1/2 rounded-full bg-accent shadow-lg shadow-black/10 ${
+                        className={`absolute top-1/2 h-4 -translate-y-1/2 rounded-full shadow-lg shadow-black/10 ${
                           overdue ? "ring-2 ring-err/40" : ""
                         }`}
-                        style={{ left: `${leftPercent(start)}%`, width: `${widthPercent(start, end)}%` }}
+                        style={{
+                          left: `${leftPercent(start)}%`,
+                          width: `${widthPercent(start, end)}%`,
+                          background: GANTT_STATUS_COLORS[activity.status] || GANTT_STATUS_COLORS.pending,
+                        }}
                       />
                     ) : (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-txt-dim">Add a start date</div>
@@ -864,8 +891,19 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 border-t border-border bg-bg-raised/40 px-4 py-3 text-[11px] text-txt-muted">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border bg-bg-raised/40 px-4 py-3 text-[11px] text-txt-muted">
         <span className="inline-flex items-center gap-1.5 font-semibold text-txt"><CalendarRange size={13} className="text-accent" /> {datedActivities.length} activities</span>
+        <span className="text-txt-dim">Legend:</span>
+        {GANTT_LEGEND.map((entry) => (
+          <span key={entry.label} className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-4 rounded-full" style={{ background: entry.color }} />
+            {entry.label}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rotate-45 rounded-[2px]" style={{ background: GANTT_MILESTONE_COLOR }} />
+          Milestone
+        </span>
         <span className="ml-auto text-txt-dim">Edit dates and durations from the table view.</span>
       </div>
     </div>
