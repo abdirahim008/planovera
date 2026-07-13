@@ -119,9 +119,9 @@ function renderTableBody(activities: WorkPlanActivity[]): string {
       return `
         <tr>
           <td>${seq}</td>
-          <td>${escapeHtml(activity.description || "—")}</td>
-          <td class="num">${escapeHtml(activity.duration || "—")}</td>
-          <td>${escapeHtml(formatIso(activity.startDate) || "—")}</td>
+          <td>${activity.isMilestone ? `<span style="color:#e0912e">◆</span> ` : ""}${escapeHtml(activity.description || "—")}</td>
+          <td class="num">${activity.isMilestone ? "—" : escapeHtml(activity.duration || "—")}</td>
+          <td>${activity.isMilestone ? "—" : escapeHtml(formatIso(activity.startDate) || "—")}</td>
           <td>${escapeHtml(formatIso(activity.endDate) || "—")}</td>
           <td>
             <span class="pill ${statusPill[activity.status]}">${escapeHtml(statusLabels[activity.status])}</span>
@@ -187,7 +187,9 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
       const acts = sheet.activities || [];
       const dated = acts
         .filter((a) => !isSection(a))
-        .map((a) => ({ activity: a, start: parseDate(a.startDate), end: activityEnd(a) }))
+        // Milestones are deadline-only: treat the deadline as both start and end
+        // so they participate in the timeline range calculation.
+        .map((a) => ({ activity: a, start: parseDate(a.startDate) || (a.isMilestone ? activityEnd(a) : null), end: activityEnd(a) }))
         .filter((d): d is { activity: WorkPlanActivity; start: Date; end: Date } => Boolean(d.start && d.end));
 
       if (!dated.length) {
@@ -241,7 +243,12 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
           const end = activityEnd(activity);
           const progress = activityProgress(activity);
           const overdue = end && end < new Date() && activity.status !== "completed";
-          const barCell = start && end ? `
+          const barCell = activity.isMilestone && end ? `
+            <div style="position:relative; height:18px;">
+              ${todayPosition !== null ? `<div style="position:absolute; top:0; bottom:0; left:${todayPosition.toFixed(2)}%; width:1px; background:#f59e0b;"></div>` : ""}
+              <div style="position:absolute; top:50%; left:${leftPct(end).toFixed(2)}%; width:8px; height:8px; transform:translate(-50%,-50%) rotate(45deg); background:#e0912e; border-radius:1.5px;"></div>
+            </div>
+          ` : start && end ? `
             <div style="position:relative; height:18px;">
               ${todayPosition !== null ? `<div style="position:absolute; top:0; bottom:0; left:${todayPosition.toFixed(2)}%; width:1px; background:#f59e0b;"></div>` : ""}
               <div style="position:absolute; top:50%; transform:translateY(-50%); height:8px; border-radius:4px; background:${statusBarColor[activity.status]}22; border:0.6px solid ${statusBarColor[activity.status]}; left:${leftPct(start).toFixed(2)}%; width:${widthPct(start, end).toFixed(2)}%; ${overdue ? "box-shadow:0 0 0 1px #dc2626;" : ""}">
@@ -256,7 +263,7 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
                   <span style="color:#64748b; font-size:9px; min-width:14px; text-align:right">${seq}</span>
                   <div style="min-width:0">
                     <div style="font-weight:600; font-size:10px; color:#0f172a">${escapeHtml(activity.description || "Untitled")}</div>
-                    <div style="font-size:8.5px; color:#64748b; margin-top:1px">${escapeHtml(formatIso(activity.startDate) || "—")} → ${escapeHtml(formatIso(activity.endDate) || "—")}</div>
+                    <div style="font-size:8.5px; color:#64748b; margin-top:1px">${activity.isMilestone ? `Deadline · ${escapeHtml(formatIso(activity.endDate) || "—")}` : `${escapeHtml(formatIso(activity.startDate) || "—")} → ${escapeHtml(formatIso(activity.endDate) || "—")}`}</div>
                   </div>
                 </div>
               </td>

@@ -163,10 +163,18 @@ export function cascadeSchedule(activities: WorkPlanActivity[]): WorkPlanActivit
         if (end && (!latestEnd || end > latestEnd)) latestEnd = end;
       }
       if (latestEnd) {
-        const start = shiftISO(latestEnd, 1);
-        const days = parseInt(activity.duration, 10);
-        activity.startDate = start;
-        activity.endDate = Number.isFinite(days) && days > 0 ? shiftISO(start, days - 1) : "";
+        if (activity.isMilestone) {
+          // Milestones are point-in-time deadlines: no start/duration, the
+          // deadline itself shifts to the day after the latest predecessor.
+          activity.startDate = "";
+          activity.duration = "";
+          activity.endDate = shiftISO(latestEnd, 1);
+        } else {
+          const start = shiftISO(latestEnd, 1);
+          const days = parseInt(activity.duration, 10);
+          activity.startDate = start;
+          activity.endDate = Number.isFinite(days) && days > 0 ? shiftISO(start, days - 1) : "";
+        }
       }
     }
 
