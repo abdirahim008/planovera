@@ -243,27 +243,42 @@ function ProgressActivityRow({
         </div>
       )}
       <div className={`flex w-[150px] items-center gap-2 sm:w-[230px] lg:w-auto lg:flex-1 ${showWeights ? "" : "ml-auto"}`}>
-        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
-          <div
-            className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
-            style={{ width: `${actual}%` }}
-          />
-        </div>
         {editMode ? (
-          <div className="flex items-center gap-1">
-            <input
-              value={item.actualPercent}
-              onChange={(e) => onChange(e.target.value)}
-              inputMode="decimal"
-              placeholder="0"
-              className="w-14 rounded-md border border-border bg-bg-input px-2 py-1 text-right font-mono text-xs text-txt outline-none focus:border-accent"
-            />
-            <span className="text-xs text-txt-dim">%</span>
-          </div>
+          <>
+            <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
+              <div
+                className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
+                style={{ width: `${actual}%` }}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                value={item.actualPercent}
+                onChange={(e) => onChange(e.target.value)}
+                inputMode="decimal"
+                placeholder="0"
+                className="w-14 rounded-md border border-border bg-bg-input px-2 py-1 text-right font-mono text-xs text-txt outline-none focus:border-accent"
+              />
+              <span className="text-xs text-txt-dim">%</span>
+            </div>
+          </>
         ) : (
-          <span className="w-11 text-right font-mono text-xs font-semibold tabular-nums text-txt">
-            {actual.toFixed(0)}%
-          </span>
+          /* View mode: the % label rides the tip of the fill (clamped so "100%"
+             never overflows the track) instead of a fixed right-aligned column. */
+          <div className="relative h-4 min-w-0 flex-1">
+            <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-bg">
+              <div
+                className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
+                style={{ width: `${actual}%` }}
+              />
+            </div>
+            <span
+              className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap pl-1.5 font-mono text-xs font-semibold tabular-nums text-txt"
+              style={{ left: `min(${actual}%, calc(100% - 42px))` }}
+            >
+              {actual.toFixed(0)}%
+            </span>
+          </div>
         )}
       </div>
     </div>
