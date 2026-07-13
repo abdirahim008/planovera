@@ -112,13 +112,16 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
         className="ctx-item w-full"
         disabled={item.disabled}
         style={{ opacity: item.disabled ? 0.35 : 1, cursor: item.disabled ? "default" : "pointer" }}
+        onClick={() => !item.disabled && setOpen((prev) => !prev)}
       >
         {item.icon && <span className="opacity-60 flex-shrink-0">{item.icon}</span>}
         <span className="flex-1 text-left">{item.label}</span>
         <ChevronRightIcon />
       </button>
       {open && !item.disabled && (
-        <div className="ctx-menu absolute left-full top-0 z-[10000] -ml-1">
+        // Inline position beats .ctx-menu's `position: fixed`, which would
+        // otherwise anchor left-full/top-0 to the viewport (flyout off-screen).
+        <div className="ctx-menu left-full top-0 z-[10000] -ml-1" style={{ position: "absolute" }}>
           {item.submenu!.map((sub, j) =>
             sub.divider ? (
               <div key={j} className="ctx-divider" />
