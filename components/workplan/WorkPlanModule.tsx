@@ -840,7 +840,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                     <>
                       <div className="flex min-h-[32px] items-center gap-2 border-r border-border px-4 py-1">
                         <span className="w-5 shrink-0 text-right text-[10px] font-mono text-txt-dim">{rowNumber}</span>
-                        <div className={`truncate text-sm text-txt ${activity.isMilestone ? "font-bold" : "font-medium"}`}>{activity.description || "Untitled activity"}</div>
+                        <div className="truncate text-sm font-normal text-txt">{activity.description || "Untitled activity"}</div>
                       </div>
                       <div className="flex min-h-[32px] items-center gap-1 border-r border-border px-3 py-1 text-[10px] text-txt-dim whitespace-nowrap">
                         <span>{activity.startDate || "—"}</span>
