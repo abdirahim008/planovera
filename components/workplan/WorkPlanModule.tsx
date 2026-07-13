@@ -27,6 +27,7 @@ import {
   Circle,
   CircleDot,
   Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { isWorkPlanRowAchieved } from "@/lib/work-plan-milestones";
 import {
@@ -492,6 +493,12 @@ function WorkPlanTable({
           icon: <CheckCircle2 size={14} />,
           active: primaryAct?.status === "completed",
           action: () => primaryAct && updateActivity(primaryAct.id, "status", "completed"),
+        },
+        {
+          label: "Delayed",
+          icon: <AlertTriangle size={14} />,
+          active: primaryAct?.status === "delayed",
+          action: () => primaryAct && updateActivity(primaryAct.id, "status", "delayed"),
         },
       ],
     },
