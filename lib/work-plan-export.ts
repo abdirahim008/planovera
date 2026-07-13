@@ -25,11 +25,13 @@ const statusPill: Record<WorkPlanActivity["status"], string> = {
   delayed: "err",
 };
 
+// Gantt/status palette: completed=green, ongoing=orange, not started=red;
+// delayed ("Critical") uses a darker red so it stays distinct from pending.
 const statusBarColor: Record<WorkPlanActivity["status"], string> = {
-  pending: "#94a3b8",
-  "in-progress": "#3b82f6",
+  pending: "#dc2626",
+  "in-progress": "#ea580c",
   completed: "#16a34a",
-  delayed: "#dc2626",
+  delayed: "#991b1b",
 };
 
 function parseDate(value: string): Date | null {
@@ -265,7 +267,7 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
         .join("");
 
       const headerTicks = cols
-        .map((c) => `<div style="flex:1; padding:4px 6px; border-right:0.4px solid #e2e8f0; font-size:9px; font-weight:600; color:#475569; letter-spacing:0.6px; text-transform:uppercase;">${escapeHtml(c.label)}</div>`)
+        .map((c) => `<div style="flex:1; padding:4px 6px; border-right:0.4px solid rgba(255,255,255,0.25); font-size:9px; font-weight:600; color:#ffffff; letter-spacing:0.6px; text-transform:uppercase;">${escapeHtml(c.label)}</div>`)
         .join("");
 
       return `
@@ -294,9 +296,9 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
   const legend = `
     <div class="legend" style="margin-top:10px">
       <span><span class="swatch" style="background:#16a34a"></span>Completed</span>
-      <span><span class="swatch" style="background:#3b82f6"></span>In Progress</span>
-      <span><span class="swatch" style="background:#dc2626"></span>Critical</span>
-      <span><span class="swatch" style="background:#94a3b8"></span>Pending</span>
+      <span><span class="swatch" style="background:#ea580c"></span>In Progress</span>
+      <span><span class="swatch" style="background:#dc2626"></span>Pending</span>
+      <span><span class="swatch" style="background:#991b1b"></span>Critical</span>
       <span style="margin-left:auto"><span class="swatch" style="background:#f59e0b"></span>Today</span>
     </div>
   `;
