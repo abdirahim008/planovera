@@ -263,10 +263,11 @@ function ProgressActivityRow({
             </div>
           </>
         ) : (
-          /* View mode: the % label rides the tip of the fill (clamped so "100%"
-             never overflows the track) instead of a fixed right-aligned column. */
+          /* View mode: the % label rides the tip of the fill. The track stops
+             46px short of the right edge so even a 100% fill leaves room for
+             the label to sit fully past the bar without overlapping it. */
           <div className="relative h-4 min-w-0 flex-1">
-            <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-bg">
+            <div className="absolute left-0 right-[46px] top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-bg">
               <div
                 className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
                 style={{ width: `${actual}%` }}
@@ -274,7 +275,7 @@ function ProgressActivityRow({
             </div>
             <span
               className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap pl-1.5 font-mono text-xs font-semibold tabular-nums text-txt"
-              style={{ left: `min(${actual}%, calc(100% - 42px))` }}
+              style={{ left: `calc((100% - 46px) * ${actual / 100})` }}
             >
               {actual.toFixed(0)}%
             </span>
