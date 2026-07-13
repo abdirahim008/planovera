@@ -134,14 +134,21 @@ function renderItemRow(item: ProgressItem, idx: number): string {
   const planned = toNumber(item.plannedPercent);
   const actual = toNumber(item.actualPercent);
   const color = progressTone(actual, planned);
+  const clamped = clampPercent(actual);
+  // Mirrors the on-screen rows: the % label rides the tip of the fill, and the
+  // track stops 44px short of the cell edge so a 100% bar never overlaps it.
   return `
     <tr>
       <td>${escapeHtml(item.billNo || String(idx))}</td>
       <td>${escapeHtml(item.description || "")}</td>
-      <td style="min-width:220px">
-        <div class="progress-bar"><span style="width:${clampPercent(actual)}%; background:${color}"></span></div>
+      <td style="min-width:280px">
+        <div style="position:relative; height:12px">
+          <div class="progress-bar" style="position:absolute; left:0; right:44px; top:50%; transform:translateY(-50%)">
+            <span style="width:${clamped}%; background:${color}"></span>
+          </div>
+          <span style="position:absolute; top:50%; transform:translateY(-50%); left:calc((100% - 44px) * ${clamped / 100}); padding-left:5px; font-size:9px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; color:${color}">${actual.toFixed(1)}%</span>
+        </div>
       </td>
-      <td class="num" style="color:${color}">${actual.toFixed(1)}%</td>
     </tr>
   `;
 }
@@ -150,7 +157,7 @@ function renderSheetSection(sheet: ProgressSheet, ratios: Map<string, number>): 
   const metrics = statsFor(sheet.items, ratios);
   const itemsHtml = sheet.items.length
     ? sheet.items.map((item, idx) => renderItemRow(item, idx + 1)).join("")
-    : `<tr><td colspan="4" style="text-align:center; color:#64748b; padding:14px">No items recorded.</td></tr>`;
+    : `<tr><td colspan="3" style="text-align:center; color:#64748b; padding:14px">No items recorded.</td></tr>`;
 
   // No page-break-inside:avoid on the wrapper — long sections flow across pages
   // (rows stay intact and the table header repeats via the base print CSS).
@@ -168,8 +175,7 @@ function renderSheetSection(sheet: ProgressSheet, ratios: Map<string, number>): 
           <tr>
             <th style="width:56px">Bill No.</th>
             <th>Description</th>
-            <th style="width:240px">Progress</th>
-            <th class="num" style="width:56px">%</th>
+            <th style="width:280px">Progress</th>
           </tr>
         </thead>
         <tbody>${itemsHtml}</tbody>
