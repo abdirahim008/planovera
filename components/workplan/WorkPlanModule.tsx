@@ -298,6 +298,7 @@ function WorkPlanTable({
     activeWorkPlanSheetIndex,
     updateActivity,
     toggleActivityMilestone,
+    markActivityMilestone,
     deleteActivity,
     pasteWorkPlanRows,
     clearWorkPlanRange,
@@ -331,6 +332,26 @@ function WorkPlanTable({
   const [lastSelectedRowId, setLastSelectedRowId] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<WorkPlanActivity[]>([]);
+  // "Mark as Milestone" flow: propose a deadline before converting the row.
+  const [milestoneDialog, setMilestoneDialog] = useState<{ id: string; description: string; deadline: string } | null>(null);
+
+  // Proposed deadline: current end date, else start date, else the day after
+  // the latest predecessor finishes, else today.
+  const proposeDeadline = (act: WorkPlanActivity): string => {
+    if (act.endDate) return act.endDate;
+    if (act.startDate) return act.startDate;
+    let latest = "";
+    for (const pid of act.predecessorIds ?? []) {
+      const pred = activities.find((a) => a.id === pid);
+      if (pred?.endDate && pred.endDate > latest) latest = pred.endDate;
+    }
+    if (latest) {
+      const d = new Date(latest);
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0, 10);
+    }
+    return new Date().toISOString().slice(0, 10);
+  };
 
   const [selection, setSelection] = useState<{
     start: { r: number; c: string };
@@ -468,7 +489,19 @@ function WorkPlanTable({
     {
       label: primaryAct?.isMilestone ? "Remove Milestone" : "Mark as Milestone",
       icon: <Flag size={14} />,
-      action: () => primaryAct && toggleActivityMilestone(primaryAct.id),
+      action: () => {
+        if (!primaryAct) return;
+        if (primaryAct.isMilestone) {
+          toggleActivityMilestone(primaryAct.id);
+        } else {
+          // Milestones are deadline-only: confirm the deadline before converting.
+          setMilestoneDialog({
+            id: primaryAct.id,
+            description: primaryAct.description,
+            deadline: proposeDeadline(primaryAct),
+          });
+        }
+      },
       disabled: readOnly || selectedRowIds.length !== 1 || !primaryAct,
     },
     {
@@ -610,13 +643,21 @@ function WorkPlanTable({
                 </td>
                 <td className={`text-center transition-colors ${isInSelection(i, "duration") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "duration")} onMouseEnter={() => handleMouseEnter(i, "duration")}>
-                  {readOnly || isSection ? <span className="text-xs font-mono text-txt">{act.duration || "—"}</span>
+                  {readOnly || isSection || act.isMilestone ? (
+                    <span className="text-xs font-mono text-txt" title={act.isMilestone ? "Milestones are deadline-only — no duration" : undefined}>
+                      {act.isMilestone ? "—" : act.duration || "—"}
+                    </span>
+                  )
                     : <input type="number" className="data-cell-input text-center font-mono text-xs" value={act.duration}
                         onChange={(e) => updateActivity(act.id, "duration", e.target.value)} onPaste={(e) => handlePaste(i, "duration", e)} placeholder="—" />}
                 </td>
                 <td className={`text-center transition-colors ${isInSelection(i, "startDate") ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                     onMouseDown={() => handleMouseDown(i, "startDate")} onMouseEnter={() => handleMouseEnter(i, "startDate")}>
-                  {readOnly || isSection ? <span className="text-xs text-txt">{act.startDate || "—"}</span>
+                  {readOnly || isSection || act.isMilestone ? (
+                    <span className="text-xs text-txt" title={act.isMilestone ? "Milestones are deadline-only — no start date" : undefined}>
+                      {act.isMilestone ? "—" : act.startDate || "—"}
+                    </span>
+                  )
                     : hasPreds ? (
                       <span
                         className="inline-flex items-center gap-1 text-xs text-txt"
@@ -629,7 +670,24 @@ function WorkPlanTable({
                     : <input type="date" className="data-cell-input [color-scheme:light] text-center text-xs" value={act.startDate}
                         onChange={(e) => updateActivity(act.id, "startDate", e.target.value)} onPaste={(e) => handlePaste(i, "startDate", e)} />}
                 </td>
-                <td className="text-center text-xs font-mono text-txt-muted">{act.endDate || "—"}</td>
+                <td className="text-center text-xs font-mono text-txt-muted">
+                  {act.isMilestone && !readOnly && !isSection ? (
+                    hasPreds ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs text-txt"
+                        title="Deadline follows the latest predecessor — clear the Predecessors cell to set it manually"
+                      >
+                        <Link2 size={11} className="shrink-0 text-accent" aria-hidden="true" />
+                        {act.endDate || "—"}
+                      </span>
+                    ) : (
+                      <input type="date" className="data-cell-input [color-scheme:light] text-center text-xs" value={act.endDate}
+                        onChange={(e) => updateActivity(act.id, "endDate", e.target.value)} aria-label="Milestone deadline" />
+                    )
+                  ) : (
+                    act.endDate || "—"
+                  )}
+                </td>
                 <td className="text-center">
                   {isSection ? (
                     <span className="text-xs text-txt-muted">—</span>
@@ -659,6 +717,37 @@ function WorkPlanTable({
         </table>
       </div>
       {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={contextItems} onClose={() => setCtxMenu(null)} />}
+      {milestoneDialog && (
+        <Modal open onClose={() => setMilestoneDialog(null)} title="Milestone deadline" width={400}>
+          <p className="mb-3 text-[13px] leading-relaxed text-txt-muted">
+            A milestone is a point-in-time deadline — its duration and start date will be cleared.
+            Confirm the deadline for{" "}
+            <span className="font-semibold text-txt">{milestoneDialog.description || "this activity"}</span>.
+          </p>
+          <input
+            type="date"
+            className="w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent [color-scheme:light]"
+            value={milestoneDialog.deadline}
+            onChange={(e) => setMilestoneDialog({ ...milestoneDialog, deadline: e.target.value })}
+            aria-label="Milestone deadline"
+          />
+          <div className="mt-4 flex gap-2">
+            <Button variant="ghost" onClick={() => setMilestoneDialog(null)} className="flex-1 justify-center">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!milestoneDialog.deadline) return;
+                markActivityMilestone(milestoneDialog.id, milestoneDialog.deadline);
+                setMilestoneDialog(null);
+              }}
+              className="flex-1 justify-center"
+            >
+              Set Milestone
+            </Button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
@@ -843,9 +932,15 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                         <div className="truncate text-sm font-normal text-txt">{activity.description || "Untitled activity"}</div>
                       </div>
                       <div className="flex min-h-[32px] items-center gap-1 border-r border-border px-3 py-1 text-[10px] text-txt-dim whitespace-nowrap">
-                        <span>{activity.startDate || "—"}</span>
-                        <span className="opacity-60">→</span>
-                        <span>{activity.endDate || "auto"}</span>
+                        {activity.isMilestone ? (
+                          <span>Deadline · {activity.endDate || "—"}</span>
+                        ) : (
+                          <>
+                            <span>{activity.startDate || "—"}</span>
+                            <span className="opacity-60">→</span>
+                            <span>{activity.endDate || "auto"}</span>
+                          </>
+                        )}
                         {overdue && <span className="ml-1 font-bold text-err">!</span>}
                       </div>
                     </>
@@ -870,11 +965,11 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                     ))}
                     {isSection && summaryMode !== "sections" ? (
                       <div className="absolute left-4 right-4 top-1/2 h-px bg-border" />
-                    ) : activity.isMilestone && start ? (
+                    ) : activity.isMilestone && (end || start) ? (
                       <div
                         className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] shadow-sm"
-                        style={{ left: `${leftPercent(start)}%`, background: GANTT_MILESTONE_COLOR }}
-                        title={`Milestone${activity.startDate ? ` — ${activity.startDate}` : ""}`}
+                        style={{ left: `${leftPercent((end || start) as Date)}%`, background: GANTT_MILESTONE_COLOR }}
+                        title={`Milestone — deadline ${activity.endDate || activity.startDate || ""}`}
                       />
                     ) : start && end ? (
                       <div

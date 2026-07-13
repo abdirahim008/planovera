@@ -2148,6 +2148,8 @@ interface AppState {
   /** Set an activity's finish-to-start predecessors (UUIDs) and reflow the schedule. */
   setActivityPredecessors: (id: string, predecessorIds: string[]) => void;
   toggleActivityMilestone: (id: string) => void;
+  /** Convert an activity into a deadline-only milestone: clears duration/start, sets endDate, reflows the schedule. */
+  markActivityMilestone: (id: string, deadline: string) => void;
   deleteActivity: (id: string) => void;
   deleteActivities: (ids: string[]) => void;
   insertActivityAt: (anchorId: string, position: "above" | "below") => void;
@@ -4408,6 +4410,20 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           workPlanSheets: mapActiveWPSheet(s.workPlanSheets, s.activeWorkPlanSheetIndex, (acts) =>
             acts.map((a) => (a.id === id ? { ...a, isMilestone: !a.isMilestone } : a))
+          ),
+        })),
+
+      markActivityMilestone: (id, deadline) =>
+        set((s) => ({
+          workPlanSheets: mapActiveWPSheet(s.workPlanSheets, s.activeWorkPlanSheetIndex, (acts) =>
+            recalcWorkPlanSections(
+              cascadeSchedule(
+                acts.map((a) =>
+                  // Milestones are point-in-time deadlines — only endDate remains.
+                  a.id === id ? { ...a, isMilestone: true, duration: "", startDate: "", endDate: deadline } : a,
+                ),
+              ),
+            ),
           ),
         })),
 
