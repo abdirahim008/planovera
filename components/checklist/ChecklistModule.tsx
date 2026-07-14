@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CheckCircle2,
   ClipboardCheck,
@@ -118,7 +119,9 @@ export default function ChecklistModule() {
   const [filter, setFilter] = useState<ChecklistFilter>("all");
   const [deleteTarget, setDeleteTarget] = useState<ChecklistItem | null>(null);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
-  const [openActionItemId, setOpenActionItemId] = useState<string | null>(null);
+  // Kebab menu: portaled to the body with fixed coordinates so it floats
+  // above the table instead of being clipped inside its scroll container.
+  const [openAction, setOpenAction] = useState<{ id: string; x: number; y: number } | null>(null);
   const [columnPreferencesLoaded, setColumnPreferencesLoaded] = useState(false);
   const [visibleFields, setVisibleFields] = useState<ChecklistOptionalField[]>([]);
 
@@ -219,73 +222,99 @@ export default function ChecklistModule() {
     (isFieldVisible("verifiedBy") ? 1 : 0) +
     (isFieldVisible("notes") ? 1 : 0);
 
+  const MENU_WIDTH = 208; // w-52
+  const MENU_HEIGHT = 200; // ~5 rows — used to flip above when near the bottom edge
+
   const renderRowActions = (item: ChecklistItem) => {
-    const isOpen = openActionItemId === item.id;
+    const isOpen = openAction?.id === item.id;
     return (
-      <div className="relative flex justify-end">
+      <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => setOpenActionItemId((current) => (current === item.id ? null : item.id))}
+          onClick={(e) => {
+            if (isOpen) {
+              setOpenAction(null);
+              return;
+            }
+            // Anchor the portaled menu to the button: right-aligned, below it
+            // (or above when it would spill past the bottom of the viewport).
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = Math.max(8, rect.right - MENU_WIDTH);
+            const y =
+              rect.bottom + 4 + MENU_HEIGHT > window.innerHeight
+                ? Math.max(8, rect.top - 4 - MENU_HEIGHT)
+                : rect.bottom + 4;
+            setOpenAction({ id: item.id, x, y });
+          }}
           className="data-row-action"
           aria-label={`Actions for ${item.title}`}
           aria-expanded={isOpen}
         >
           <MoreVertical size={14} />
         </button>
-        {isOpen ? (
-          <div className="absolute right-0 top-9 z-40 w-52 overflow-hidden rounded-2xl border border-border bg-bg-surface py-1 text-left shadow-[0_18px_55px_rgba(0,0,0,0.45)]">
-            <button
-              type="button"
-              onClick={() => {
-                markSubmitted(item);
-                setOpenActionItemId(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
-            >
-              <CheckCircle2 size={14} /> Mark submitted
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                markVerified(item);
-                setOpenActionItemId(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-ok transition hover:bg-ok/10"
-            >
-              <ShieldCheck size={14} /> Mark verified
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                updateChecklistItem(item.id, { status: "rejected" });
-                setOpenActionItemId(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-err"
-            >
-              <XCircle size={14} /> Reject
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                duplicateChecklistItem(item.id);
-                setOpenActionItemId(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
-            >
-              <Copy size={14} /> Duplicate
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDeleteTarget(item);
-                setOpenActionItemId(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-err transition hover:bg-err/10"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
-          </div>
-        ) : null}
+        {isOpen && openAction
+          ? createPortal(
+              <>
+                <div className="fixed inset-0 z-[9998]" onMouseDown={() => setOpenAction(null)} />
+                <div
+                  className="fixed z-[9999] w-52 overflow-hidden rounded-2xl border border-border bg-bg-surface py-1 text-left shadow-[0_18px_55px_rgba(0,0,0,0.45)]"
+                  style={{ left: openAction.x, top: openAction.y }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      markSubmitted(item);
+                      setOpenAction(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
+                  >
+                    <CheckCircle2 size={14} /> Mark submitted
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      markVerified(item);
+                      setOpenAction(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-ok transition hover:bg-ok/10"
+                  >
+                    <ShieldCheck size={14} /> Mark verified
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateChecklistItem(item.id, { status: "rejected" });
+                      setOpenAction(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-err"
+                  >
+                    <XCircle size={14} /> Reject
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      duplicateChecklistItem(item.id);
+                      setOpenAction(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-txt-muted transition hover:bg-bg-hover hover:text-txt"
+                  >
+                    <Copy size={14} /> Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteTarget(item);
+                      setOpenAction(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-err transition hover:bg-err/10"
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                </div>
+              </>,
+              document.body,
+            )
+          : null}
       </div>
     );
   };
