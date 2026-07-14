@@ -229,6 +229,27 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
       const widthPct = (s: Date, e: Date) =>
         Math.max(0.8, Math.min(100, (((e.getTime() - s.getTime()) / DAY_MS + 1) / totalDays) * 100));
 
+      // Sub-ticks mirror the app Gantt: monthly columns get weekly gridlines
+      // (day-of-month labels); multi-month columns get month gridlines (short
+      // month labels) so bars can be read against the months.
+      const subTicks: Array<{ date: Date; label: string }> = [];
+      if (monthStep === 1) {
+        for (let tick = timelineStart.getTime() + 7 * DAY_MS; tick < timelineEnd.getTime(); tick += 7 * DAY_MS) {
+          const tickDate = new Date(tick);
+          subTicks.push({ date: tickDate, label: String(tickDate.getDate()) });
+        }
+      } else {
+        for (let cursor = addMonths(timelineStart, 1), step = 1; cursor < timelineEnd; cursor = addMonths(cursor, 1), step += 1) {
+          if (step % monthStep === 0) continue; // column boundaries already have borders
+          subTicks.push({ date: new Date(cursor), label: cursor.toLocaleDateString(undefined, { month: "short" }) });
+        }
+      }
+      // Vertical gridlines through every row: column boundaries + sub-ticks.
+      const rowGridLines = [
+        ...cols.slice(1).map((c) => `<div style="position:absolute; top:0; bottom:0; left:${leftPct(c.date).toFixed(2)}%; width:1px; background:#e2e8f0;"></div>`),
+        ...subTicks.map((t) => `<div style="position:absolute; top:0; bottom:0; left:${leftPct(t.date).toFixed(2)}%; width:1px; background:#f1f5f9;"></div>`),
+      ].join("");
+
       const rows = acts
         .map((activity, idx) => {
           if (isSection(activity)) {
@@ -245,11 +266,13 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
           const overdue = end && end < new Date() && activity.status !== "completed";
           const barCell = activity.isMilestone && end ? `
             <div style="position:relative; height:18px;">
+              ${rowGridLines}
               ${todayPosition !== null ? `<div style="position:absolute; top:0; bottom:0; left:${todayPosition.toFixed(2)}%; width:1px; background:#f59e0b;"></div>` : ""}
               <div style="position:absolute; top:50%; left:${leftPct(end).toFixed(2)}%; width:8px; height:8px; transform:translate(-50%,-50%) rotate(45deg); background:#e0912e; border-radius:1.5px;"></div>
             </div>
           ` : start && end ? `
             <div style="position:relative; height:18px;">
+              ${rowGridLines}
               ${todayPosition !== null ? `<div style="position:absolute; top:0; bottom:0; left:${todayPosition.toFixed(2)}%; width:1px; background:#f59e0b;"></div>` : ""}
               <div style="position:absolute; top:50%; transform:translateY(-50%); height:8px; border-radius:4px; background:${statusBarColor[activity.status]}22; border:0.6px solid ${statusBarColor[activity.status]}; left:${leftPct(start).toFixed(2)}%; width:${widthPct(start, end).toFixed(2)}%; ${overdue ? "box-shadow:0 0 0 1px #dc2626;" : ""}">
                 ${progress > 0 ? `<div style="height:100%; background:${statusBarColor[activity.status]}; border-radius:4px; width:${progress}%"></div>` : ""}
@@ -274,7 +297,11 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
         .join("");
 
       const headerTicks = cols
-        .map((c) => `<div style="flex:1; padding:4px 6px; border-right:0.4px solid rgba(255,255,255,0.25); font-size:9px; font-weight:600; color:#ffffff; letter-spacing:0.6px; text-transform:uppercase;">${escapeHtml(c.label)}</div>`)
+        .map((c) => `<div style="flex:1; padding:3px 6px 12px; border-right:0.4px solid rgba(255,255,255,0.25); font-size:9px; font-weight:600; color:#ffffff; letter-spacing:0.6px; text-transform:uppercase;">${escapeHtml(c.label)}</div>`)
+        .join("");
+      // Sub-tick labels sit along the bottom edge of the dark header band.
+      const headerSubLabels = subTicks
+        .map((t) => `<span style="position:absolute; bottom:1px; left:${leftPct(t.date).toFixed(2)}%; transform:translateX(-50%); font-size:6.5px; font-weight:600; color:rgba(255,255,255,0.7); text-transform:uppercase;">${escapeHtml(t.label)}</span>`)
         .join("");
 
       return `
@@ -289,7 +316,7 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
               <tr>
                 <th>Activity</th>
                 <th style="padding:0">
-                  <div style="display:flex;">${headerTicks}</div>
+                  <div style="display:flex; position:relative;">${headerTicks}${headerSubLabels}</div>
                 </th>
               </tr>
             </thead>
