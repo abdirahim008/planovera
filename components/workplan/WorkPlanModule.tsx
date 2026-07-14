@@ -853,10 +853,19 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
   const monthGridStyle = monthMode
     ? { gridTemplateColumns: `180px 150px ${timelineTrackPx}px`, minWidth: 330 + timelineTrackPx }
     : undefined;
-  const weekTicks: Date[] = [];
+  // Sub-ticks add detail inside each zoom column: Month mode gets weekly
+  // gridlines (day-of-month labels), Quarter mode gets month gridlines
+  // (short month labels) so bars can be read against the months.
+  const subTicks: Array<{ date: Date; label: string }> = [];
   if (monthMode) {
     for (let tick = timelineStart.getTime() + 7 * DAY_MS; tick < timelineEnd.getTime(); tick += 7 * DAY_MS) {
-      weekTicks.push(new Date(tick));
+      const tickDate = new Date(tick);
+      subTicks.push({ date: tickDate, label: String(tickDate.getDate()) });
+    }
+  } else if (zoom === "quarter") {
+    for (let cursor = addMonths(timelineStart, 1), step = 1; cursor < timelineEnd; cursor = addMonths(cursor, 1), step += 1) {
+      if (step % 3 === 0) continue; // quarter boundaries already have column borders
+      subTicks.push({ date: new Date(cursor), label: cursor.toLocaleDateString(undefined, { month: "short" }) });
     }
   }
   return (
@@ -909,17 +918,16 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                   {col.label}
                 </div>
               ))}
-              {monthMode &&
-                weekTicks.map((tick, index) => (
-                  <div
-                    key={`wt-${index}`}
-                    className="absolute bottom-0 -translate-x-1/2 text-center"
-                    style={{ left: `${leftPercent(tick)}%` }}
-                  >
-                    <span className="block text-[8px] font-medium leading-none text-txt-dim">{tick.getDate()}</span>
-                    <span className="mx-auto mt-0.5 block h-1 w-px bg-border" />
-                  </div>
-                ))}
+              {subTicks.map((tick, index) => (
+                <div
+                  key={`wt-${index}`}
+                  className="absolute bottom-0 -translate-x-1/2 text-center"
+                  style={{ left: `${leftPercent(tick.date)}%` }}
+                >
+                  <span className="block text-[8px] font-medium leading-none text-txt-dim">{tick.label}</span>
+                  <span className="mx-auto mt-0.5 block h-1 w-px bg-border" />
+                </div>
+              ))}
               {todayPosition !== null && (
                 <div
                   className="absolute bottom-0 top-0 w-px bg-warn"
@@ -981,14 +989,13 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                         style={{ left: `${todayPosition}%` }}
                       />
                     )}
-                    {monthMode &&
-                      weekTicks.map((tick, weekIndex) => (
-                        <div
-                          key={`${activity.id}-w${weekIndex}`}
-                          className="absolute bottom-0 top-0 w-px bg-border/25"
-                          style={{ left: `${leftPercent(tick)}%` }}
-                        />
-                      ))}
+                    {subTicks.map((tick, tickIndex) => (
+                      <div
+                        key={`${activity.id}-w${tickIndex}`}
+                        className="absolute bottom-0 top-0 w-px bg-border/25"
+                        style={{ left: `${leftPercent(tick.date)}%` }}
+                      />
+                    ))}
                     {timelineCols.map((col, colIndex) => (
                       <div
                         key={`${activity.id}-${colIndex}`}
