@@ -9,7 +9,9 @@ import {
   ExternalLink,
   FilePlus2,
   MoreVertical,
+  Pencil,
   Plus,
+  Save,
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
@@ -117,6 +119,7 @@ export default function ChecklistModule() {
     duplicateChecklistItem,
   } = useAppStore();
   const [filter, setFilter] = useState<ChecklistFilter>("all");
+  const [editMode, setEditMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ChecklistItem | null>(null);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   // Kebab menu: portaled to the body with fixed coordinates so it floats
@@ -211,6 +214,15 @@ export default function ChecklistModule() {
 
   const setSimpleColumns = () => setVisibleFields([]);
   const setDetailedColumns = () => setVisibleFields(detailedChecklistFields);
+
+  // In view mode, card fields render flat (no border/bg) so they read as plain
+  // text; in edit mode they get the usual bordered input treatment.
+  const cardInputClass = (extra = "") =>
+    `mt-2 w-full rounded-lg py-3 text-txt outline-none ${extra} ${
+      editMode
+        ? "border border-border bg-bg px-3 focus:border-accent"
+        : "border border-transparent bg-transparent px-0 cursor-default"
+    }`;
 
   const tableColumnCount =
     4 +
@@ -324,12 +336,23 @@ export default function ChecklistModule() {
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h2 className="text-lg font-semibold tracking-tight text-txt">Checklist</h2>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => addChecklistItems(starterTemplates)}>
-            <FilePlus2 size={14} /> Insert starter checklist
-          </Button>
-          <Button size="sm" variant="primary" onClick={addBlankRow}>
-            <Plus size={14} /> Add row
-          </Button>
+          {editMode ? (
+            <>
+              <Button size="sm" onClick={() => addChecklistItems(starterTemplates)}>
+                <FilePlus2 size={14} /> Insert starter checklist
+              </Button>
+              <Button size="sm" onClick={addBlankRow}>
+                <Plus size={14} /> Add row
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => setEditMode(false)}>
+                <Save size={14} /> Save
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={() => setEditMode(true)}>
+              <Pencil size={14} /> Edit
+            </Button>
+          )}
         </div>
       </div>
 
@@ -442,7 +465,7 @@ export default function ChecklistModule() {
         </div>
       </div>
 
-      <div className="space-y-4 xl:hidden">
+      <div className="space-y-4 md:hidden">
         {visibleItems.map((item) => {
           const overdue = isOverdue(item);
           const submittedWithoutLink = item.status === "submitted" && !item.documentUrl.trim();
@@ -461,7 +484,8 @@ export default function ChecklistModule() {
                   <input
                     value={item.title}
                     onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-base font-semibold text-txt outline-none focus:border-accent"
+                    readOnly={!editMode}
+                    className={cardInputClass("text-base font-semibold")}
                   />
                   {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
                     <button
@@ -484,17 +508,21 @@ export default function ChecklistModule() {
                 {isFieldVisible("category") ? (
                   <label className="block">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Category</span>
-                    <select
-                      value={item.category}
-                      onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
-                      className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
-                    >
-                      {categoryOptions.map((category) => (
-                        <option key={category} value={category}>
-                          {category}
-                        </option>
-                      ))}
-                    </select>
+                    {editMode ? (
+                      <select
+                        value={item.category}
+                        onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
+                        className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                      >
+                        {categoryOptions.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="mt-2 py-3 text-txt">{item.category}</div>
+                    )}
                   </label>
                 ) : null}
                 {isFieldVisible("responsiblePerson") ? (
@@ -504,7 +532,8 @@ export default function ChecklistModule() {
                       value={item.responsiblePerson}
                       onChange={(event) => updateChecklistItem(item.id, { responsiblePerson: event.target.value })}
                       placeholder="Responsible person"
-                      className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                      readOnly={!editMode}
+                      className={cardInputClass()}
                     />
                   </label>
                 ) : null}
@@ -514,24 +543,29 @@ export default function ChecklistModule() {
                     type="date"
                     value={item.dueDate}
                     onChange={(event) => updateChecklistItem(item.id, { dueDate: event.target.value })}
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    readOnly={!editMode}
+                    className={cardInputClass()}
                   />
                 </label>
                 <label className="block">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Status</span>
-                  <select
-                    value={item.status}
-                    onChange={(event) =>
-                      updateChecklistItem(item.id, { status: event.target.value as ChecklistStatus })
-                    }
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
-                  >
-                    {(Object.keys(statusLabels) as ChecklistStatus[]).map((status) => (
-                      <option key={status} value={status}>
-                        {statusLabels[status]}
-                      </option>
-                    ))}
-                  </select>
+                  {editMode ? (
+                    <select
+                      value={item.status}
+                      onChange={(event) =>
+                        updateChecklistItem(item.id, { status: event.target.value as ChecklistStatus })
+                      }
+                      className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    >
+                      {(Object.keys(statusLabels) as ChecklistStatus[]).map((status) => (
+                        <option key={status} value={status}>
+                          {statusLabels[status]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="mt-2 py-3">{statusBadge(item.status)}</div>
+                  )}
                 </label>
               </div>
 
@@ -543,7 +577,12 @@ export default function ChecklistModule() {
                     value={item.documentUrl}
                     onChange={(event) => updateChecklistItem(item.id, { documentUrl: event.target.value })}
                     placeholder="Paste SharePoint, Drive, OneDrive, or URL"
-                    className="min-w-0 flex-1 rounded-2xl border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    readOnly={!editMode}
+                    className={`min-w-0 flex-1 rounded-2xl py-3 text-txt outline-none ${
+                      editMode
+                        ? "border border-border bg-bg px-3 focus:border-accent"
+                        : "border border-transparent bg-transparent px-0 cursor-default"
+                    }`}
                   />
                   <button
                     type="button"
@@ -567,7 +606,8 @@ export default function ChecklistModule() {
                     type="date"
                     value={item.submittedDate}
                     onChange={(event) => updateChecklistItem(item.id, { submittedDate: event.target.value })}
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    readOnly={!editMode}
+                    className={cardInputClass()}
                   />
                 </label>
                 ) : null}
@@ -578,7 +618,8 @@ export default function ChecklistModule() {
                     type="date"
                     value={item.verifiedDate}
                     onChange={(event) => updateChecklistItem(item.id, { verifiedDate: event.target.value })}
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    readOnly={!editMode}
+                    className={cardInputClass()}
                   />
                 </label>
                 ) : null}
@@ -589,7 +630,8 @@ export default function ChecklistModule() {
                     value={item.verifiedBy}
                     onChange={(event) => updateChecklistItem(item.id, { verifiedBy: event.target.value })}
                     placeholder="Verified by"
-                    className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                    readOnly={!editMode}
+                    className={cardInputClass()}
                   />
                 </label>
                 ) : null}
@@ -603,12 +645,17 @@ export default function ChecklistModule() {
                   value={item.notes}
                   onChange={(event) => updateChecklistItem(item.id, { notes: event.target.value })}
                   placeholder="Notes"
-                  className="mt-2 h-24 w-full resize-none rounded-lg border border-border bg-bg px-3 py-3 text-txt outline-none focus:border-accent"
+                  readOnly={!editMode}
+                  className={`mt-2 h-24 w-full resize-none rounded-lg py-3 text-txt outline-none ${
+                    editMode
+                      ? "border border-border bg-bg px-3 focus:border-accent"
+                      : "border border-transparent bg-transparent px-0 cursor-default"
+                  }`}
                 />
               </label>
               ) : null}
 
-              <div className="mt-4 flex justify-end">{renderRowActions(item)}</div>
+              {editMode ? <div className="mt-4 flex justify-end">{renderRowActions(item)}</div> : null}
             </div>
           );
         })}
@@ -623,7 +670,7 @@ export default function ChecklistModule() {
         ) : null}
       </div>
 
-      <div className="data-table-shell hidden xl:block">
+      <div className="data-table-shell hidden md:block">
         <div className="overflow-x-auto">
           <table className="data-table data-table-sticky min-w-[820px]">
             <thead>
@@ -651,7 +698,8 @@ export default function ChecklistModule() {
                       <input
                         value={item.title}
                         onChange={(event) => updateChecklistItem(item.id, { title: event.target.value })}
-                        className="data-cell-input font-semibold text-txt"
+                        readOnly={!editMode}
+                        className={`data-cell-input font-semibold text-txt${editMode ? "" : " cursor-default"}`}
                       />
                       {!isFieldVisible("documentUrl") && item.documentUrl.trim() ? (
                         <button
@@ -665,17 +713,21 @@ export default function ChecklistModule() {
                     </td>
                     {isFieldVisible("category") ? (
                       <td>
-                        <select
-                          value={item.category}
-                          onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
-                          className="data-cell-select"
-                        >
-                          {categoryOptions.map((category) => (
-                            <option key={category} value={category}>
-                              {category}
-                            </option>
-                          ))}
-                        </select>
+                        {editMode ? (
+                          <select
+                            value={item.category}
+                            onChange={(event) => updateChecklistItem(item.id, { category: event.target.value })}
+                            className="data-cell-select"
+                          >
+                            {categoryOptions.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="data-cell-input cursor-default">{item.category}</span>
+                        )}
                       </td>
                     ) : null}
                     {isFieldVisible("responsiblePerson") ? (
@@ -684,7 +736,8 @@ export default function ChecklistModule() {
                           value={item.responsiblePerson}
                           onChange={(event) => updateChecklistItem(item.id, { responsiblePerson: event.target.value })}
                           placeholder="Responsible person"
-                          className="data-cell-input"
+                          readOnly={!editMode}
+                          className={`data-cell-input${editMode ? "" : " cursor-default"}`}
                         />
                       </td>
                     ) : null}
@@ -693,24 +746,29 @@ export default function ChecklistModule() {
                         type="date"
                         value={item.dueDate}
                         onChange={(event) => updateChecklistItem(item.id, { dueDate: event.target.value })}
-                        className="data-cell-input"
+                        readOnly={!editMode}
+                        className={`data-cell-input${editMode ? "" : " cursor-default"}`}
                       />
                       {overdue ? <div className="mt-1 text-xs font-semibold text-err">Overdue</div> : null}
                     </td>
                     <td>
-                      <select
-                        value={item.status}
-                        onChange={(event) =>
-                          updateChecklistItem(item.id, { status: event.target.value as ChecklistStatus })
-                        }
-                        className="data-cell-select"
-                      >
-                        {(Object.keys(statusLabels) as ChecklistStatus[]).map((status) => (
-                          <option key={status} value={status}>
-                            {statusLabels[status]}
-                          </option>
-                        ))}
-                      </select>
+                      {editMode ? (
+                        <select
+                          value={item.status}
+                          onChange={(event) =>
+                            updateChecklistItem(item.id, { status: event.target.value as ChecklistStatus })
+                          }
+                          className="data-cell-select"
+                        >
+                          {(Object.keys(statusLabels) as ChecklistStatus[]).map((status) => (
+                            <option key={status} value={status}>
+                              {statusLabels[status]}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        statusBadge(item.status)
+                      )}
                       {submittedWithoutLink ? (
                         <div className="mt-1 text-xs font-semibold text-warn">Link missing</div>
                       ) : null}
@@ -722,7 +780,8 @@ export default function ChecklistModule() {
                             value={item.documentUrl}
                             onChange={(event) => updateChecklistItem(item.id, { documentUrl: event.target.value })}
                             placeholder="Paste URL"
-                            className="data-cell-input min-w-0 flex-1"
+                            readOnly={!editMode}
+                            className={`data-cell-input min-w-0 flex-1${editMode ? "" : " cursor-default"}`}
                           />
                           <button
                             type="button"
@@ -742,7 +801,8 @@ export default function ChecklistModule() {
                           type="date"
                           value={item.submittedDate}
                           onChange={(event) => updateChecklistItem(item.id, { submittedDate: event.target.value })}
-                          className="data-cell-input"
+                          readOnly={!editMode}
+                          className={`data-cell-input${editMode ? "" : " cursor-default"}`}
                         />
                       </td>
                     ) : null}
@@ -752,7 +812,8 @@ export default function ChecklistModule() {
                           type="date"
                           value={item.verifiedDate}
                           onChange={(event) => updateChecklistItem(item.id, { verifiedDate: event.target.value })}
-                          className="data-cell-input"
+                          readOnly={!editMode}
+                          className={`data-cell-input${editMode ? "" : " cursor-default"}`}
                         />
                       </td>
                     ) : null}
@@ -762,7 +823,8 @@ export default function ChecklistModule() {
                           value={item.verifiedBy}
                           onChange={(event) => updateChecklistItem(item.id, { verifiedBy: event.target.value })}
                           placeholder="Verified by"
-                          className="data-cell-input"
+                          readOnly={!editMode}
+                          className={`data-cell-input${editMode ? "" : " cursor-default"}`}
                         />
                       </td>
                     ) : null}
@@ -773,11 +835,12 @@ export default function ChecklistModule() {
                           onChange={(event) => updateChecklistItem(item.id, { notes: event.target.value })}
                           placeholder="Notes"
                           rows={1}
-                          className="data-cell-textarea"
+                          readOnly={!editMode}
+                          className={`data-cell-textarea${editMode ? "" : " cursor-default"}`}
                         />
                       </td>
                     ) : null}
-                    <td className="data-cell-action">{renderRowActions(item)}</td>
+                    <td className="data-cell-action">{editMode ? renderRowActions(item) : null}</td>
                   </tr>
                 );
               })}
