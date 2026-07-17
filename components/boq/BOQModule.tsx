@@ -25,6 +25,7 @@ import {
   StickyNote,
   Search,
   ListPlus,
+  ArrowDownToLine,
   AlertTriangle,
   Sparkles,
 } from "lucide-react";
@@ -916,6 +917,78 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
   );
 }
 
+// ─── Import Descriptions Modal ────────────────────────────────────
+// Pull a description column (with section headers) from a saved Work Plan or
+// Progress report and append it as rows into the active BOQ sheet — the same
+// "fetch from source" flow the Progress module uses, in reverse.
+function ImportDescriptionsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { savedWorkPlans, progressReports, project, boqSheets, activeSheetIndex, importDescriptionsToActiveBOQ } = useAppStore();
+  const [selectedId, setSelectedId] = useState("");
+
+  const sources = useMemo(() => {
+    const workPlans = savedWorkPlans
+      .filter((w) => w.project_id === project?.id && w.sheets.some((sh) => sh.activities.some((a) => (a.description || "").trim())))
+      .map((w) => ({ id: w.id, name: `${w.name} (Work Plan)`, type: "workplan" as const }));
+    const reports = progressReports
+      .filter((r) => r.project_id === project?.id && r.sheets.some((sh) => sh.items.some((it) => (it.description || "").trim())))
+      .map((r) => ({ id: r.id, name: `${r.name} (Progress)`, type: "progress" as const }));
+    return [...workPlans, ...reports];
+  }, [savedWorkPlans, progressReports, project?.id]);
+
+  useEffect(() => {
+    if (open && !selectedId && sources.length) setSelectedId(sources[0].id);
+  }, [open, selectedId, sources]);
+
+  if (!open) return null;
+  const selected = sources.find((s) => s.id === selectedId);
+  const activeSheetName = boqSheets[activeSheetIndex]?.name || "the current sheet";
+
+  return (
+    <Modal open={open} onClose={onClose} title="Import descriptions" width={480}>
+      {sources.length === 0 ? (
+        <p className="text-[13px] leading-relaxed text-txt-muted">
+          No Work Plan or Progress report with descriptions was found for this project. Create one first, then import its
+          descriptions here.
+        </p>
+      ) : (
+        <>
+          <p className="mb-4 text-[13px] leading-relaxed text-txt-muted">
+            Append descriptions — section headers and items — from a Work Plan or Progress report into{" "}
+            <span className="font-semibold text-txt">{activeSheetName}</span>. Quantities and rates are left blank for you to
+            price.
+          </p>
+          <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Source</label>
+          <select
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.target.value)}
+            className="mt-2 w-full rounded-lg border border-border bg-bg-input px-3 py-2 text-sm text-txt outline-none focus:border-accent"
+          >
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <div className="mt-6 flex gap-2">
+            <Button variant="ghost" onClick={onClose} className="flex-1 justify-center">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selected) importDescriptionsToActiveBOQ({ type: selected.type, id: selected.id });
+                onClose();
+              }}
+              className="flex-1 justify-center"
+            >
+              <ArrowDownToLine size={14} /> Import
+            </Button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 // ─── Library Browser Modal ────────────────────────────────────────
 function LibraryBrowser({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { boqLibrary, boqSheets, loadBOQFromLibrary, appendBOQFromLibrary } = useAppStore();
@@ -1705,6 +1778,7 @@ export default function BOQModule() {
   const [mode, setMode] = useState<"list" | "view" | "edit">(activeBOQId ? "view" : "list");
   const [showLibrary, setShowLibrary] = useState(false);
   const [showAiDraft, setShowAiDraft] = useState(false);
+  const [showImportDesc, setShowImportDesc] = useState(false);
   const [showSaveLib, setShowSaveLib] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -2151,6 +2225,9 @@ export default function BOQModule() {
               <Button size="sm" onClick={() => setShowLibrary(true)}>
                 <Library size={14} /> Library
               </Button>
+              <Button size="sm" onClick={() => setShowImportDesc(true)}>
+                <ArrowDownToLine size={14} /> Import descriptions
+              </Button>
               <Button size="sm" onClick={() => setShowSaveLib(true)}>
                 <Copy size={14} /> Save to Library
               </Button>
@@ -2225,6 +2302,7 @@ export default function BOQModule() {
       </div>
 
       <LibraryBrowser open={showLibrary} onClose={() => setShowLibrary(false)} />
+      <ImportDescriptionsModal open={showImportDesc} onClose={() => setShowImportDesc(false)} />
       <AiDraftModal open={showAiDraft} onClose={() => setShowAiDraft(false)} />
       {sheetCtxMenu && activeSheetContext && (
         <ContextMenu
