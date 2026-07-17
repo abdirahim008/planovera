@@ -1989,6 +1989,8 @@ interface AppState {
   updateSheetSummaryLabel: (idx: number, label: string) => void;
   loadBOQFromLibrary: (sheets: BOQSheet[]) => void;
   appendBOQFromLibrary: (sheets: BOQSheet[], itemName?: string) => void;
+  /** Append description rows (section headers + items) from a saved Work Plan or Progress report into the active BOQ sheet. Pricing columns are left blank. */
+  importDescriptionsToActiveBOQ: (source: { type: "workplan" | "progress"; id: string }) => void;
   generateSummarySheet: () => void;
   pasteBOQRows: (sheetIndex: number, startRowIndex: number, startColKey: string, rawData: string) => void;
   clearBOQRange: (sheetIndex: number, r1: number, r2: number, c1: string, c2: string) => void;
@@ -2868,6 +2870,42 @@ export const useAppStore = create<AppState>()(
           }));
           const combined = [...s.boqSheets, ...incoming].map((sheet, index) => ({ ...sheet, sort_order: index }));
           return { boqSheets: combined, activeSheetIndex: s.boqSheets.length };
+        }),
+
+      importDescriptionsToActiveBOQ: (source) =>
+        set((s) => {
+          if (!s.boqSheets.length) return s;
+          const newRows: BOQRow[] = [];
+          if (source.type === "workplan") {
+            const wp = s.savedWorkPlans.find((w) => w.id === source.id);
+            if (!wp) return s;
+            for (const sheet of wp.sheets) {
+              for (const activity of sheet.activities) {
+                const desc = (activity.description || "").trim();
+                if (!desc) continue;
+                if ((activity.rowType || "activity") === "section") newRows.push(headerRow(desc));
+                else newRows.push({ ...emptyRow(), description: desc });
+              }
+            }
+          } else {
+            const report = s.progressReports.find((r) => r.id === source.id);
+            if (!report) return s;
+            // Each progress sheet is a section — its name becomes a header row.
+            for (const sheet of report.sheets) {
+              const sectionName = (sheet.name || "").trim();
+              if (sectionName) newRows.push(headerRow(sectionName));
+              for (const item of sheet.items) {
+                const desc = (item.description || "").trim();
+                if (desc) newRows.push({ ...emptyRow(), description: desc });
+              }
+            }
+          }
+          if (!newRows.length) return s;
+          const idx = s.activeSheetIndex;
+          const updated = s.boqSheets.map((sheet, i) =>
+            i === idx ? { ...sheet, rows: [...sheet.rows, ...newRows] } : sheet,
+          );
+          return { boqSheets: updated.map((sheet) => ({ ...sheet, rows: recalcRows(sheet.rows, updated) })) };
         }),
       generateSummarySheet: () =>
         set((s) => {
