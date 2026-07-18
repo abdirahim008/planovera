@@ -1,5 +1,6 @@
 import type {
   ActionPoint,
+  ChecklistItem,
   ConstructionWorkspacePayload,
   CorrespondenceRecord,
   GeneratedDocument,
@@ -42,6 +43,7 @@ export interface RelationalWorkspaceQueryData {
   generatedDocuments?: ProjectScopedPayloadRecord<GeneratedDocument>[];
   correspondenceRecords?: ProjectScopedPayloadRecord<CorrespondenceRecord>[];
   qualityControlRecords?: ProjectScopedPayloadRecord<QualityControlRecord>[];
+  checklistItems?: ProjectScopedPayloadRecord<ChecklistItem>[];
   attendeeGroups?: WorkspaceOwnedPayloadRecord<MeetingAttendeeGroup>[];
   meetingMinutes?: WorkspaceOwnedPayloadRecord<MeetingMinute>[];
   actionPoints?: WorkspaceOwnedPayloadRecord<ActionPoint>[];
@@ -56,6 +58,7 @@ export interface ProjectScopedSyncRows {
   generatedDocuments: ProjectScopedPayloadRecord<GeneratedDocument>[];
   correspondenceRecords: ProjectScopedPayloadRecord<CorrespondenceRecord>[];
   qualityControlRecords: ProjectScopedPayloadRecord<QualityControlRecord>[];
+  checklistItems: ProjectScopedPayloadRecord<ChecklistItem>[];
 }
 
 export interface WorkspaceOwnedSyncRows {
@@ -105,6 +108,9 @@ const correspondenceName = (record: CorrespondenceRecord) =>
 
 const qualityControlName = (record: QualityControlRecord) =>
   record.testName?.trim() || record.sampleRef?.trim() || `QC Test ${record.number}`;
+
+const checklistItemName = (item: ChecklistItem) =>
+  item.title?.trim() || "Checklist item";
 
 export const buildProjectScopedSyncRows = (
   payload: ConstructionWorkspacePayload,
@@ -200,6 +206,17 @@ export const buildProjectScopedSyncRows = (
       created_by: actorId,
       updated_by: actorId,
     })),
+  checklistItems: payload.checklistItems
+    .filter((item) => item.project_id === projectId)
+    .map((item) => ({
+      id: item.id,
+      project_id: item.project_id,
+      organization_id: organizationId,
+      name: checklistItemName(item),
+      payload: clone(item),
+      created_by: actorId,
+      updated_by: actorId,
+    })),
 });
 
 export const buildWorkspaceOwnedSyncRows = (
@@ -253,6 +270,9 @@ export const buildRelationalWorkspacePayload = (
   qualityControlRecords: sortByNewest<QualityControlRecord>(
     (data.qualityControlRecords ?? []).map((item) => clone(item.payload)),
   ),
+  checklistItems: sortByNewest<ChecklistItem>(
+    (data.checklistItems ?? []).map((item) => clone(item.payload)),
+  ),
   attendeeGroups: sortByNewest<MeetingAttendeeGroup>(
     (data.attendeeGroups ?? []).map((item) => clone(item.payload)),
   ),
@@ -295,7 +315,10 @@ export const mergeWorkspacePayloadSources = (
       snapshot.qualityControlRecords,
       relational.qualityControlRecords,
     ),
-    checklistItems: snapshot.checklistItems,
+    // Checklist items now live in their own project-scoped table; fall back to
+    // the legacy snapshot blob so items saved before this migration still load
+    // (and get written to the relational table on the next edit).
+    checklistItems: useRelational(snapshot.checklistItems, relational.checklistItems),
     siteNotes: snapshot.siteNotes,
     attendeeGroups: useRelational(snapshot.attendeeGroups, relational.attendeeGroups),
     meetingMinutes: useRelational(snapshot.meetingMinutes, relational.meetingMinutes),
