@@ -251,6 +251,7 @@ export interface PortfolioRow {
   timeElapsedPercent: number | null;
   scheduleStatus: "behind" | "on-track" | "ahead" | "no-baseline";
   delayedActivities: number;
+  startDate: string;
   endDate: string;
 }
 
@@ -331,6 +332,7 @@ function summarizeProject(state: SnapshotState, p: Project): PortfolioRow {
     timeElapsedPercent,
     scheduleStatus,
     delayedActivities,
+    startDate: p.start_date || "",
     endDate: p.end_date || "",
   };
 }
