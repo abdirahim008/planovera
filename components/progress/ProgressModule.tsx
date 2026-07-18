@@ -209,6 +209,7 @@ function ProgressActivityRow({
   item,
   editMode,
   onChange,
+  onDescriptionChange,
   showWeights,
   ratio,
   onWeightCommit,
@@ -216,6 +217,7 @@ function ProgressActivityRow({
   item: ProgressItem;
   editMode: boolean;
   onChange: (value: string) => void;
+  onDescriptionChange: (value: string) => void;
   showWeights: boolean;
   ratio: number;
   onWeightCommit: (ratio: number) => void;
@@ -228,10 +230,20 @@ function ProgressActivityRow({
       <span className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums text-txt-dim">
         {item.billNo}
       </span>
-      {/* Description — a bounded column that truncates rather than sprawling */}
-      <div className="min-w-0 flex-1 truncate text-[13px] text-txt lg:max-w-[540px]">
-        {item.description || "Untitled activity"}
-      </div>
+      {/* Description — read-only text normally; an inline input in edit mode so
+          the activity name can be corrected here without touching the work plan. */}
+      {editMode ? (
+        <input
+          value={item.description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+          placeholder="Activity description"
+          className="min-w-0 flex-1 rounded-md border border-border bg-bg-input px-2 py-1 text-[13px] text-txt outline-none focus:border-accent lg:max-w-[540px]"
+        />
+      ) : (
+        <div className="min-w-0 flex-1 truncate text-[13px] text-txt lg:max-w-[540px]">
+          {item.description || "Untitled activity"}
+        </div>
+      )}
       {showWeights && (
         <div className="ml-auto flex w-[88px] shrink-0 items-center justify-end gap-1">
           <WeightInput value={ratio} onCommit={onWeightCommit} />
@@ -295,6 +307,7 @@ function ProgressSection({
   editMode,
   showWeights,
   onItemChange,
+  onItemDescriptionChange,
   onWeightCommit,
 }: {
   sheet: ProgressSheet;
@@ -304,6 +317,7 @@ function ProgressSection({
   editMode: boolean;
   showWeights: boolean;
   onItemChange: (sheetId: string, itemId: string, value: string) => void;
+  onItemDescriptionChange: (sheetId: string, itemId: string, value: string) => void;
   onWeightCommit: (itemId: string, ratio: number) => void;
 }) {
   const stats = statsFor(sheet.items, ratios);
@@ -347,6 +361,7 @@ function ProgressSection({
                 item={item}
                 editMode={editMode}
                 onChange={(value) => onItemChange(sheet.id, item.id, value)}
+                onDescriptionChange={(value) => onItemDescriptionChange(sheet.id, item.id, value)}
                 showWeights={showWeights}
                 ratio={ratios.get(item.id) || 0}
                 onWeightCommit={(ratio) => onWeightCommit(item.id, ratio)}
@@ -881,6 +896,9 @@ export default function ProgressModule() {
                 showWeights={isEditMode && showWeights}
                 onItemChange={(sheetId, itemId, value) =>
                   updateProgressItem(activeReport.id, sheetId, itemId, "actualPercent", value)
+                }
+                onItemDescriptionChange={(sheetId, itemId, value) =>
+                  updateProgressItem(activeReport.id, sheetId, itemId, "description", value)
                 }
                 onWeightCommit={(itemId, ratio) => setProgressWeight(activeReport.id, itemId, ratio)}
               />
