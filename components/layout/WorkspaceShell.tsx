@@ -634,6 +634,7 @@ export default function WorkspaceShell() {
         { data: generatedDocumentRows, error: generatedDocumentError },
         { data: correspondenceRows, error: correspondenceError },
         { data: qualityControlRows, error: qualityControlError },
+        { data: checklistItemRows, error: checklistItemError },
         { data: attendeeGroupRows, error: attendeeGroupError },
         { data: meetingMinuteRows, error: meetingMinuteError },
         { data: actionPointRows, error: actionPointError },
@@ -689,6 +690,10 @@ export default function WorkspaceShell() {
           .order("updated_at", { ascending: false }),
         supabase
           .from("project_quality_control_records")
+          .select("*")
+          .order("updated_at", { ascending: false }),
+        supabase
+          .from("project_checklist_items")
           .select("*")
           .order("updated_at", { ascending: false }),
         supabase
@@ -751,6 +756,7 @@ export default function WorkspaceShell() {
           generatedDocuments: (generatedDocumentRows ?? []) as any,
           correspondenceRecords: (correspondenceRows ?? []) as any,
           qualityControlRecords: (qualityControlRows ?? []) as any,
+          checklistItems: (checklistItemRows ?? []) as any,
           attendeeGroups: (attendeeGroupRows ?? []) as any,
           meetingMinutes: (meetingMinuteRows ?? []) as any,
           actionPoints: (actionPointRows ?? []) as any,
@@ -787,6 +793,7 @@ export default function WorkspaceShell() {
           !generatedDocumentError &&
           !correspondenceError &&
           !qualityControlError &&
+          !checklistItemError &&
           !attendeeGroupError &&
           !meetingMinuteError &&
           !actionPointError
@@ -804,6 +811,7 @@ export default function WorkspaceShell() {
         generatedDocumentError,
         correspondenceError,
         qualityControlError,
+        checklistItemError,
         attendeeGroupError,
         meetingMinuteError,
         actionPointError,
@@ -961,6 +969,9 @@ export default function WorkspaceShell() {
               activeProjectId: project?.id ?? null,
               activeModule,
             }),
+            // Let the request outlive a page unload (e.g. refreshing right after
+            // an edit) so the last change still reaches the server.
+            keepalive: true,
           });
 
           if (!active) return;
