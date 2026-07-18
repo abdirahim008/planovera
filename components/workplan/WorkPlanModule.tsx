@@ -851,7 +851,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
   const MONTH_COL_PX = 240;
   const timelineTrackPx = timelineCols.length * MONTH_COL_PX;
   const monthGridStyle = monthMode
-    ? { gridTemplateColumns: `180px 150px ${timelineTrackPx}px`, minWidth: 330 + timelineTrackPx }
+    ? { gridTemplateColumns: `260px 150px ${timelineTrackPx}px`, minWidth: 410 + timelineTrackPx }
     : undefined;
   // Sub-ticks add detail inside each zoom column: Month mode gets weekly
   // gridlines (day-of-month labels), Quarter mode gets month gridlines
@@ -901,11 +901,11 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
 
       <div className="overflow-auto">
         <div className="min-w-[980px]" style={monthMode ? { minWidth: 330 + timelineTrackPx } : undefined}>
-          <div className="grid grid-cols-[minmax(180px,1fr)_150px_2fr] border-b border-border bg-bg/70" style={monthGridStyle}>
+          <div className="grid grid-cols-[minmax(260px,1.4fr)_150px_2fr] border-b border-border bg-bg/70" style={monthGridStyle}>
             <div className={`border-r border-border px-4 py-2 ${monthMode ? "sticky left-0 z-20 bg-bg" : ""}`}>
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Activity</div>
             </div>
-            <div className={`border-r border-border px-3 py-2 ${monthMode ? "sticky left-[180px] z-20 bg-bg" : ""}`}>
+            <div className={`border-r border-border px-3 py-2 ${monthMode ? "sticky left-[260px] z-20 bg-bg" : ""}`}>
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">Timeline</div>
             </div>
             <div className="relative flex min-h-9">
@@ -953,22 +953,22 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
               return (
                 <div
                   key={activity.id}
-                  className={`grid grid-cols-[minmax(180px,1fr)_150px_2fr] border-b border-border/70 ${
+                  className={`grid grid-cols-[minmax(260px,1.4fr)_150px_2fr] border-b border-border/70 ${
                     isSection ? "bg-bg-raised/70" : "bg-bg-surface/80 hover:bg-bg-hover"
                   }`}
                   style={monthGridStyle}
                 >
                   {isSection ? (
                     <div className={`col-span-2 flex min-h-[30px] items-center border-r border-border px-4 py-1.5 ${monthMode ? "sticky left-0 z-20 bg-bg-raised" : ""}`}>
-                      <div className="truncate text-[11px] font-bold uppercase tracking-[0.12em] text-txt">{activity.description || "Section"}</div>
+                      <div className="whitespace-normal break-words leading-snug text-[11px] font-bold uppercase tracking-[0.12em] text-txt">{activity.description || "Section"}</div>
                     </div>
                   ) : (
                     <>
                       <div className={`flex min-h-[32px] items-center gap-2 border-r border-border px-4 py-1 ${monthMode ? "sticky left-0 z-20 bg-bg-surface" : ""}`}>
                         <span className="w-5 shrink-0 text-right text-[10px] font-mono text-txt-dim">{rowNumber}</span>
-                        <div className="truncate text-sm font-normal text-txt">{activity.description || "Untitled activity"}</div>
+                        <div className="min-w-0 whitespace-normal break-words leading-snug text-sm font-normal text-txt">{activity.description || "Untitled activity"}</div>
                       </div>
-                      <div className={`flex min-h-[32px] items-center gap-1 border-r border-border px-3 py-1 text-[10px] text-txt-dim whitespace-nowrap ${monthMode ? "sticky left-[180px] z-20 bg-bg-surface" : ""}`}>
+                      <div className={`flex min-h-[32px] items-center gap-1 border-r border-border px-3 py-1 text-[10px] text-txt-dim whitespace-nowrap ${monthMode ? "sticky left-[260px] z-20 bg-bg-surface" : ""}`}>
                         {activity.isMilestone ? (
                           <span>Deadline · {activity.endDate || "—"}</span>
                         ) : (
