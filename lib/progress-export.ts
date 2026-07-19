@@ -211,6 +211,12 @@ export function exportProgressAsPdf(report: ProgressReport, project: Project | n
         .join("")
     : `<p style="color:#64748b">No progress sections defined yet.</p>`;
   const html = `
+    <style>
+      /* Progress report: drop the vertical column dividers so the description
+         flows into the progress bars — keep only horizontal row rules. Scoped
+         to this document; the shared exporters (BOQ, payment) are unaffected. */
+      table.export-table th, table.export-table td { border-left: none; border-right: none; }
+    </style>
     <div class="export-shell">
       ${renderHeader({ report, project })}
       ${renderOverallProgress(report)}
