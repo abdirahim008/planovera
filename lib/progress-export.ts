@@ -130,7 +130,15 @@ function renderOverallProgress(report: ProgressReport): string {
   `;
 }
 
-function renderItemRow(item: ProgressItem, idx: number): string {
+// Row number shown in the "#"/"Bill No." column. Non-BOQ reports (work plan,
+// item lists) get a continuous 1..N sequence so manually-added rows are numbered
+// too; BOQ reports keep their bill code, falling back to the running number when
+// a manually-added row has no code.
+function displayNo(item: ProgressItem, runningNo: number, sequential: boolean): string {
+  return sequential ? String(runningNo) : item.billNo || String(runningNo);
+}
+
+function renderItemRow(item: ProgressItem, number: number, sequential: boolean): string {
   const planned = toNumber(item.plannedPercent);
   const actual = toNumber(item.actualPercent);
   const color = progressTone(actual, planned);
@@ -139,7 +147,7 @@ function renderItemRow(item: ProgressItem, idx: number): string {
   // track stops 44px short of the cell edge so a 100% bar never overlaps it.
   return `
     <tr>
-      <td>${escapeHtml(item.billNo || String(idx))}</td>
+      <td>${escapeHtml(displayNo(item, number, sequential))}</td>
       <td>${escapeHtml(item.description || "")}</td>
       <td style="min-width:280px">
         <div style="position:relative; height:12px">
@@ -153,10 +161,15 @@ function renderItemRow(item: ProgressItem, idx: number): string {
   `;
 }
 
-function renderSheetSection(sheet: ProgressSheet, ratios: Map<string, number>): string {
+function renderSheetSection(
+  sheet: ProgressSheet,
+  ratios: Map<string, number>,
+  startNumber: number,
+  sequential: boolean,
+): string {
   const metrics = statsFor(sheet.items, ratios);
   const itemsHtml = sheet.items.length
-    ? sheet.items.map((item, idx) => renderItemRow(item, idx + 1)).join("")
+    ? sheet.items.map((item, idx) => renderItemRow(item, startNumber + idx + 1, sequential)).join("")
     : `<tr><td colspan="3" style="text-align:center; color:#64748b; padding:14px">No items recorded.</td></tr>`;
 
   // No page-break-inside:avoid on the wrapper — long sections flow across pages
@@ -186,8 +199,16 @@ function renderSheetSection(sheet: ProgressSheet, ratios: Map<string, number>): 
 
 export function exportProgressAsPdf(report: ProgressReport, project: Project | null): void {
   const ratios = computeRatios(report);
+  const sequential = report.sourceType !== "boq";
+  let runningNo = 0;
   const sections = report.sheets.length
-    ? report.sheets.map((sheet) => renderSheetSection(sheet, ratios)).join("")
+    ? report.sheets
+        .map((sheet) => {
+          const html = renderSheetSection(sheet, ratios, runningNo, sequential);
+          runningNo += sheet.items.length;
+          return html;
+        })
+        .join("")
     : `<p style="color:#64748b">No progress sections defined yet.</p>`;
   const html = `
     <div class="export-shell">
@@ -263,16 +284,19 @@ export async function exportProgressAsExcel(
       return attempt;
     };
 
+    const sequential = report.sourceType !== "boq";
+    let runningNo = 0;
     report.sheets.forEach((sheet) => {
       // Columns: A Bill No. · B Description · C Progress %
       const header = ["Bill No.", "Description", "Progress %"];
 
       const items = sheet.items;
-      const rows: (string | number)[][] = items.map((item) => [
-        item.billNo || "",
+      const rows: (string | number)[][] = items.map((item, idx) => [
+        displayNo(item, runningNo + idx + 1, sequential),
         item.description || "",
         toNumber(item.actualPercent),
       ]);
+      runningNo += items.length;
 
       const intro = [
         [`Section — ${sheet.name}`],

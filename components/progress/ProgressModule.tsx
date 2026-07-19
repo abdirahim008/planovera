@@ -215,6 +215,7 @@ function ProgressActivityRow({
   ratio,
   onWeightCommit,
   onContextMenu,
+  number,
 }: {
   item: ProgressItem;
   editMode: boolean;
@@ -224,6 +225,7 @@ function ProgressActivityRow({
   ratio: number;
   onWeightCommit: (ratio: number) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  number: string;
 }) {
   const actual = clampPercent(toNumber(item.actualPercent));
   const planned = toNumber(item.plannedPercent);
@@ -231,7 +233,7 @@ function ProgressActivityRow({
     <div className="flex items-center gap-3 px-3 py-1.5 transition-colors hover:bg-bg-hover" onContextMenu={onContextMenu}>
       {/* ID/# in its own narrow column at the far left */}
       <span className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums text-txt-dim">
-        {item.billNo}
+        {number}
       </span>
       {/* Description — read-only text normally; an inline input in edit mode so
           the activity name can be corrected here without touching the work plan. */}
@@ -315,6 +317,8 @@ function ProgressSection({
   onContextMenu,
   onRename,
   onAddRow,
+  startNumber,
+  sequential,
 }: {
   sheet: ProgressSheet;
   ratios: Map<string, number>;
@@ -328,6 +332,8 @@ function ProgressSection({
   onContextMenu: (e: React.MouseEvent, sheetId: string, itemId?: string) => void;
   onRename: (sheetId: string, name: string) => void;
   onAddRow: (sheetId: string) => void;
+  startNumber: number;
+  sequential: boolean;
 }) {
   const stats = statsFor(sheet.items, ratios);
   const actual = clampPercent(stats.actual);
@@ -397,10 +403,11 @@ function ProgressSection({
               )}
             </div>
           ) : (
-            sheet.items.map((item) => (
+            sheet.items.map((item, idx) => (
               <ProgressActivityRow
                 key={item.id}
                 item={item}
+                number={sequential ? String(startNumber + idx + 1) : item.billNo || String(startNumber + idx + 1)}
                 editMode={editMode}
                 onChange={(value) => onItemChange(sheet.id, item.id, value)}
                 onDescriptionChange={(value) => onItemDescriptionChange(sheet.id, item.id, value)}
@@ -799,6 +806,16 @@ export default function ProgressModule() {
   const ratios = computeRatios(activeReport);
   const stats = statsFor(activeReport.sheets.flatMap((sheet) => sheet.items), ratios);
   const overallActual = clampPercent(stats.actual);
+  // Continuous 1..N row numbering across sections. BOQ reports keep their bill
+  // codes; work-plan / item-list reports are pure sequence, so manually-added
+  // rows get numbered too. sectionStartNumbers[i] is the count of items before
+  // section i.
+  const numberingIsSequential = activeReport.sourceType !== "boq";
+  const sectionStartNumbers: number[] = [];
+  activeReport.sheets.reduce((acc, sheet, i) => {
+    sectionStartNumbers[i] = acc;
+    return acc + sheet.items.length;
+  }, 0);
   const weightTotal = Array.from(ratios.values()).reduce((sum, value) => sum + value, 0);
   const allExpanded = activeReport.sheets.every((sheet) => !collapsedSections.has(sheet.id));
 
@@ -956,11 +973,13 @@ export default function ProgressModule() {
             </div>
           )}
           <div className="flex flex-col gap-2.5">
-            {activeReport.sheets.map((sheet) => (
+            {activeReport.sheets.map((sheet, i) => (
               <ProgressSection
                 key={sheet.id}
                 sheet={sheet}
                 ratios={ratios}
+                startNumber={sectionStartNumbers[i]}
+                sequential={numberingIsSequential}
                 expanded={!collapsedSections.has(sheet.id)}
                 onToggle={() => toggleSection(sheet.id)}
                 editMode={isEditMode}
