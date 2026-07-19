@@ -308,7 +308,7 @@ type ProjectSummary = {
   checklistMetrics: ChecklistMetrics;
   workPlan: WorkPlanSnapshot;
   timeline: ReturnType<typeof getTimelineProgress>;
-  progressHistory: Array<{ label: string; planned: number; actual: number; earned: number }>;
+  progressHistory: Array<{ label: string; planned: number; actual: number; earned: number; timeElapsed: number }>;
   commercialHistory: Array<{ label: string; net: number }>;
 };
 
@@ -660,10 +660,22 @@ function buildProjectSummary(
     checklistMetrics: computeChecklistMetrics(projectChecklistItems),
     workPlan: computeWorkPlanSnapshot(currentProject.id, savedWorkPlans),
     timeline: getTimelineProgress(currentProject),
-    progressHistory: projectReports.map((report) => ({
-      label: report.name,
-      ...computeProgressMetrics(report),
-    })),
+    progressHistory: projectReports.map((report) => {
+      // % of the contract schedule elapsed at this report's date. Falls back to
+      // 0 when the project has no valid start/end dates.
+      const start = currentProject.start_date ? new Date(currentProject.start_date).getTime() : NaN;
+      const end = currentProject.end_date ? new Date(currentProject.end_date).getTime() : NaN;
+      const at = report.date ? new Date(report.date).getTime() : NaN;
+      const timeElapsed =
+        Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(at)
+          ? clamp(((at - start) / (end - start)) * 100)
+          : 0;
+      return {
+        label: report.name,
+        ...computeProgressMetrics(report),
+        timeElapsed,
+      };
+    }),
     commercialHistory: certificates
       .filter((certificate) => certificate.project_id === currentProject.id)
       .sort((a, b) => a.date.localeCompare(b.date))
@@ -834,18 +846,18 @@ function MetricCard({
 }
 
 /**
- * S-curve style planned-vs-actual chart across progress reports. Both series
- * are anchored at 0 (project start) so even a single report draws a line.
+ * S-curve style time-elapsed-vs-actual chart across progress reports. Both
+ * series are anchored at 0 (project start) so even a single report draws a line.
  */
 function ProgressTrendChart({
   history,
   tone = "ok",
 }: {
-  history: Array<{ label: string; planned: number; actual: number }>;
+  history: Array<{ label: string; timeElapsed: number; actual: number }>;
   tone?: Tone;
 }) {
   const style = toneStyles[tone];
-  const planned = [0, ...history.map((entry) => clamp(entry.planned))];
+  const planned = [0, ...history.map((entry) => clamp(entry.timeElapsed))];
   const actual = [0, ...history.map((entry) => clamp(entry.actual))];
   const max = Math.max(...planned, ...actual, 10);
 
@@ -906,7 +918,7 @@ function ProgressTrendChart({
       <div className="mt-1.5 flex items-center justify-between text-[11px] text-txt-muted">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0 w-4 border-t-2 border-dashed border-accent" />
-          Planned {(latest?.planned ?? 0).toFixed(1)}%
+          Time elapsed {(latest?.timeElapsed ?? 0).toFixed(1)}%
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0 w-4 border-t-2" style={{ borderColor: style.hex }} />
@@ -1599,9 +1611,9 @@ function PortfolioDashboard({
       : 0;
   const averageFinancial =
     summaries.length > 0 ? summaries.reduce((sum, summary) => sum + summary.financial * getWeight(summary), 0) : 0;
-  const averagePlanned =
+  const averageTimeElapsed =
     summaries.length > 0
-      ? summaries.reduce((sum, summary) => sum + summary.progress.planned * getWeight(summary), 0)
+      ? summaries.reduce((sum, summary) => sum + (summary.timeline?.percent ?? 0) * getWeight(summary), 0)
       : 0;
   const averageActual =
     summaries.length > 0
@@ -1795,7 +1807,7 @@ function PortfolioDashboard({
         <div className="mb-4 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-txt">Portfolio summary</h3>
           <span className="text-[11px] text-txt-dim">
-            Planned {averagePlanned.toFixed(1)}% · Actual {averageActual.toFixed(1)}%
+            Avg time elapsed {averageTimeElapsed.toFixed(1)}% · Avg actual {averageActual.toFixed(1)}%
           </span>
         </div>
         <CompactKpiList
@@ -1891,10 +1903,14 @@ function PortfolioDashboard({
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
-                    <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-txt-dim">Planned vs actual</div>
+                    <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-txt-dim">Actual vs time elapsed</div>
                     <div className="space-y-2">
-                      <ProgressStrip label="Plan" value={summary.progress.planned} tone="accent" />
-                      <ProgressStrip label="Actual" value={summary.progress.actual} tone={summary.progress.variance >= 0 ? "ok" : "warn"} />
+                      <ProgressStrip label="Time" value={summary.timeline?.percent ?? 0} tone="accent" />
+                      <ProgressStrip
+                        label="Actual"
+                        value={summary.progress.actual}
+                        tone={summary.progress.actual >= (summary.timeline?.percent ?? 0) ? "ok" : "warn"}
+                      />
                     </div>
                   </div>
                   <div className="rounded-xl border border-border bg-bg-surface/60 p-3">
@@ -1916,7 +1932,7 @@ function PortfolioDashboard({
             <thead>
               <tr className="border-b border-border">
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim">Project</th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 220 }}>Planned vs Actual</th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 220 }}>Actual vs Time-elapsed</th>
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-txt-dim" style={{ width: 160 }}>Financial</th>
                 <th className="px-2 py-2" style={{ width: 44 }} aria-label="Actions" />
               </tr>
@@ -1930,7 +1946,7 @@ function PortfolioDashboard({
                 </tr>
               ) : (
                 summaries.map((summary) => {
-                  const ahead = summary.progress.actual >= summary.progress.planned;
+                  const ahead = summary.progress.actual >= (summary.timeline?.percent ?? 0);
                   const meta = [projectLocationLabel(summary.project), summary.project.clientName]
                     .filter(Boolean)
                     .join(" · ");
@@ -1951,7 +1967,7 @@ function PortfolioDashboard({
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-between text-[11px] font-medium text-txt-muted">
-                          <span><span className="text-txt-dim">Plan</span> {summary.progress.planned.toFixed(0)}%</span>
+                          <span><span className="text-txt-dim">Time</span> {(summary.timeline?.percent ?? 0).toFixed(0)}%</span>
                           <span className={ahead ? "text-ok" : "text-warn"}>
                             <span className="text-txt-dim">Act</span> {summary.progress.actual.toFixed(0)}%
                           </span>
@@ -1960,7 +1976,7 @@ function PortfolioDashboard({
                           <div className="h-1 overflow-hidden rounded-full bg-black/5">
                             <div
                               className="h-full bg-accent"
-                              style={{ width: `${clamp(summary.progress.planned)}%` }}
+                              style={{ width: `${clamp(summary.timeline?.percent ?? 0)}%` }}
                             />
                           </div>
                           <div className="h-1 overflow-hidden rounded-full bg-black/5">
@@ -2396,9 +2412,9 @@ function ProjectOverviewDashboard({
     {
       title: "Physical Progress",
       value: `${progress.actual.toFixed(1)}%`,
-      subtitle: `Planned ${progress.planned.toFixed(1)}% vs actual ${progress.actual.toFixed(1)}%`,
+      subtitle: `Time elapsed ${timePercent.toFixed(1)}% vs actual ${progress.actual.toFixed(1)}%`,
       icon: Activity,
-      tone: progress.variance >= 0 ? ("ok" as Tone) : ("warn" as Tone),
+      tone: timeVariance >= 0 ? ("ok" as Tone) : ("warn" as Tone),
       trend: progressHistory.map((item) => item.actual),
     },
     {
@@ -2480,7 +2496,7 @@ function ProjectOverviewDashboard({
 
           <div className="space-y-4">
             <div className="space-y-3">
-              <ProgressStrip label="Planned (time)" value={timePercent} tone="accent" />
+              <ProgressStrip label="Time elapsed" value={timePercent} tone="accent" />
               <ProgressStrip label="Actual" value={progress.actual} tone={timeVariance >= 0 ? "ok" : "warn"} />
               <ProgressStrip label="Financial (paid vs contract)" value={financial} tone="accent" />
             </div>
@@ -2488,7 +2504,7 @@ function ProjectOverviewDashboard({
             <div className="border-t border-border pt-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-txt-dim">
-                  Progress reports — planned vs actual
+                  Progress reports — actual vs time elapsed
                 </span>
                 <span className="text-[11px] text-txt-muted">
                   {progressHistory.length} report{progressHistory.length === 1 ? "" : "s"}
@@ -2501,7 +2517,7 @@ function ProjectOverviewDashboard({
                 />
               ) : (
                 <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-[12px] text-txt-muted">
-                  Create progress reports to see the planned-vs-actual trend here.
+                  Create progress reports to see the actual-vs-time-elapsed trend here.
                 </div>
               )}
             </div>

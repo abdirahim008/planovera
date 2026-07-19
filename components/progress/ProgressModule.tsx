@@ -36,11 +36,29 @@ function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
-function progressBarTone(actualPercent: number, plannedPercent?: number) {
+function progressBarTone(actualPercent: number, baselinePercent?: number) {
   if (actualPercent >= 95) return "bg-ok";
   if (actualPercent <= 1) return "bg-warn";
-  if (plannedPercent !== undefined && actualPercent + 1e-6 < plannedPercent) return "bg-err";
+  if (baselinePercent !== undefined && actualPercent + 1e-6 < baselinePercent) return "bg-err";
   return "bg-accent";
+}
+
+// Overall % of the contract schedule elapsed at a report's date, used as the
+// comparison baseline for Actual %. Anchored to today so a future-dated report
+// never reads as more than "now" of the schedule. Returns undefined when the
+// project has no valid start/end dates — callers then don't colour bars
+// red-behind, they fall back to plain actual-level colouring.
+function reportTimeElapsed(
+  report: ProgressReport,
+  project: { start_date?: string | null; end_date?: string | null } | null | undefined
+): number | undefined {
+  const start = project?.start_date ? new Date(project.start_date).getTime() : NaN;
+  const end = project?.end_date ? new Date(project.end_date).getTime() : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return undefined;
+  const today = Date.now();
+  const reportDate = report.date ? new Date(report.date).getTime() : today;
+  const ref = Math.min(Number.isFinite(reportDate) ? reportDate : today, today);
+  return clampPercent(((ref - start) / (end - start)) * 100);
 }
 
 // Per-activity weight ratio (summing to 1 across the whole report). Custom
@@ -216,6 +234,7 @@ function ProgressActivityRow({
   onWeightCommit,
   onContextMenu,
   number,
+  baseline,
 }: {
   item: ProgressItem;
   editMode: boolean;
@@ -226,9 +245,9 @@ function ProgressActivityRow({
   onWeightCommit: (ratio: number) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   number: string;
+  baseline?: number;
 }) {
   const actual = clampPercent(toNumber(item.actualPercent));
-  const planned = toNumber(item.plannedPercent);
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 transition-colors hover:bg-bg-hover" onContextMenu={onContextMenu}>
       {/* ID/# in its own narrow column at the far left */}
@@ -264,7 +283,7 @@ function ProgressActivityRow({
           <>
             <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-bg">
               <div
-                className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
+                className={`h-full rounded-full ${progressBarTone(actual, baseline)}`}
                 style={{ width: `${actual}%` }}
               />
             </div>
@@ -286,7 +305,7 @@ function ProgressActivityRow({
           <div className="relative h-4 min-w-0 flex-1">
             <div className="absolute left-0 right-[46px] top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-bg">
               <div
-                className={`h-full rounded-full ${progressBarTone(actual, planned)}`}
+                className={`h-full rounded-full ${progressBarTone(actual, baseline)}`}
                 style={{ width: `${actual}%` }}
               />
             </div>
@@ -319,6 +338,7 @@ function ProgressSection({
   onAddRow,
   startNumber,
   sequential,
+  baseline,
 }: {
   sheet: ProgressSheet;
   ratios: Map<string, number>;
@@ -334,6 +354,7 @@ function ProgressSection({
   onAddRow: (sheetId: string) => void;
   startNumber: number;
   sequential: boolean;
+  baseline?: number;
 }) {
   const stats = statsFor(sheet.items, ratios);
   const actual = clampPercent(stats.actual);
@@ -375,7 +396,7 @@ function ProgressSection({
         </span>
         <div className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-bg sm:block">
           <div
-            className={`h-full rounded-full ${progressBarTone(actual, stats.planned)}`}
+            className={`h-full rounded-full ${progressBarTone(actual, baseline)}`}
             style={{ width: `${actual}%` }}
           />
         </div>
@@ -415,6 +436,7 @@ function ProgressSection({
                 ratio={ratios.get(item.id) || 0}
                 onWeightCommit={(ratio) => onWeightCommit(item.id, ratio)}
                 onContextMenu={editMode ? (e) => onContextMenu(e, sheet.id, item.id) : undefined}
+                baseline={baseline}
               />
             ))
           )}
@@ -563,18 +585,21 @@ export default function ProgressModule() {
       .sort((a, b) => b.date.localeCompare(a.date))[0];
     const latestAny = [...projectReports].sort((a, b) => b.date.localeCompare(a.date))[0];
     const report = latestApproved || latestAny;
-    return report ? reportStats(report) : null;
-  }, [projectReports]);
+    if (!report) return null;
+    return { ...reportStats(report), timeElapsed: reportTimeElapsed(report, project) };
+  }, [projectReports, project]);
 
   if (!activeReport) {
+    const summaryTimeElapsed = summaryStats?.timeElapsed ?? 0;
+    const summaryVariance = summaryStats ? summaryStats.actual - summaryTimeElapsed : 0;
     const summaryCards = summaryStats
       ? [
-          { label: "Planned", value: `${summaryStats.planned.toFixed(1)}%`, tone: "warn" as const },
+          { label: "Time elapsed", value: `${summaryTimeElapsed.toFixed(1)}%`, tone: "warn" as const },
           { label: "Actual", value: `${summaryStats.actual.toFixed(1)}%`, tone: "accent" as const },
           {
             label: "Variance",
-            value: `${summaryStats.variance >= 0 ? "+" : ""}${summaryStats.variance.toFixed(1)}%`,
-            tone: (summaryStats.variance >= 0 ? "ok" : "err") as "ok" | "err",
+            value: `${summaryVariance >= 0 ? "+" : ""}${summaryVariance.toFixed(1)}%`,
+            tone: (summaryVariance >= 0 ? "ok" : "err") as "ok" | "err",
           },
         ]
       : [];
@@ -635,6 +660,7 @@ export default function ProgressModule() {
             {projectReports.map((report, idx) => {
               const stats = reportStats(report);
               const actual = clampPercent(stats.actual);
+              const baseline = reportTimeElapsed(report, project);
               return (
                 <div
                   key={report.id}
@@ -669,7 +695,7 @@ export default function ProgressModule() {
                     <div className="flex items-center gap-3">
                       <div className="hidden h-2 w-28 overflow-hidden rounded-full bg-bg sm:block">
                         <div
-                          className={`h-full rounded-full ${progressBarTone(actual, stats.planned)}`}
+                          className={`h-full rounded-full ${progressBarTone(actual, baseline)}`}
                           style={{ width: `${actual}%` }}
                         />
                       </div>
@@ -806,6 +832,11 @@ export default function ProgressModule() {
   const ratios = computeRatios(activeReport);
   const stats = statsFor(activeReport.sheets.flatMap((sheet) => sheet.items), ratios);
   const overallActual = clampPercent(stats.actual);
+  // % of the contract schedule elapsed at this report's date — the baseline the
+  // Actual bar is compared against (red when behind). undefined when the project
+  // has no valid start/end dates, so bars are never spuriously red.
+  const timeElapsedBaseline = reportTimeElapsed(activeReport, project);
+  const overallVariance = overallActual - (timeElapsedBaseline ?? 0);
   // Continuous 1..N row numbering across sections. BOQ reports keep their bill
   // codes; work-plan / item-list reports are pure sequence, so manually-added
   // rows get numbered too. sectionStartNumbers[i] is the count of items before
@@ -906,17 +937,17 @@ export default function ProgressModule() {
         </div>
         <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-bg">
           <div
-            className={`h-full rounded-full transition-all ${progressBarTone(overallActual, stats.planned)}`}
+            className={`h-full rounded-full transition-all ${progressBarTone(overallActual, timeElapsedBaseline)}`}
             style={{ width: `${overallActual}%` }}
           />
         </div>
-        {stats.planned > 0 && (
+        {timeElapsedBaseline !== undefined && (
           <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-txt-muted">
             <span>
-              Planned <strong className="text-txt">{stats.planned.toFixed(1)}%</strong>
+              Time elapsed <strong className="text-txt">{timeElapsedBaseline.toFixed(1)}%</strong>
             </span>
-            <span className={stats.variance >= 0 ? "text-ok" : "text-err"}>
-              Variance {stats.variance >= 0 ? "+" : ""}{stats.variance.toFixed(1)}%
+            <span className={overallVariance >= 0 ? "text-ok" : "text-err"}>
+              Variance {overallVariance >= 0 ? "+" : ""}{overallVariance.toFixed(1)}%
             </span>
           </div>
         )}
@@ -978,6 +1009,7 @@ export default function ProgressModule() {
                 key={sheet.id}
                 sheet={sheet}
                 ratios={ratios}
+                baseline={timeElapsedBaseline}
                 startNumber={sectionStartNumbers[i]}
                 sequential={numberingIsSequential}
                 expanded={!collapsedSections.has(sheet.id)}
