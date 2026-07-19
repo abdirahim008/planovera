@@ -2031,6 +2031,13 @@ interface AppState {
   ) => void;
   updateProgressReport: (reportId: string, updates: Partial<ProgressReport>) => void;
   updateProgressItem: (reportId: string, sheetId: string, itemId: string, key: keyof ProgressItem, value: string) => void;
+  /** Manual row/section editing so a progress report can be harmonized with the
+   *  work plan (add/delete activities and section headers). */
+  addProgressItem: (reportId: string, sheetId: string, targetItemId?: string | null, position?: "above" | "below") => void;
+  deleteProgressItem: (reportId: string, sheetId: string, itemId: string) => void;
+  addProgressSection: (reportId: string, afterSheetId?: string | null, name?: string) => void;
+  deleteProgressSection: (reportId: string, sheetId: string) => void;
+  renameProgressSection: (reportId: string, sheetId: string, name: string) => void;
   /** Set one activity's weight ratio (0–1); locks it and rebalances the other
    *  unlocked activities so the whole-report pool keeps totalling 1. */
   setProgressWeight: (reportId: string, itemId: string, ratio: number) => void;
@@ -3518,6 +3525,89 @@ export const useAppStore = create<AppState>()(
               updatedAt: new Date().toISOString(),
             };
           }),
+        })),
+      addProgressItem: (reportId, sheetId, targetItemId, position = "below") =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const nextSheets = report.sheets.map((sheet) => {
+              if (sheet.id !== sheetId) return sheet;
+              const items = [...sheet.items];
+              const blank: ProgressItem = {
+                id: uuid(), billNo: "", description: "", unit: "",
+                boqQty: "0.00", boqRate: "0.00", boqAmount: "0.00",
+                previousQty: "0.00", currentQty: "", totalQty: "",
+                earnedAmount: "0.00", weightPercent: "",
+                plannedPercent: "", actualPercent: "", variancePercent: "",
+                status: "not-started", remarks: "",
+              };
+              const idx = targetItemId ? items.findIndex((it) => it.id === targetItemId) : -1;
+              const insertAt = idx < 0 ? items.length : position === "above" ? idx : idx + 1;
+              items.splice(insertAt, 0, blank);
+              return { ...sheet, items };
+            });
+            return {
+              ...report,
+              sheets: recalcProgressSheets(nextSheets, report.inputMode || "percent", report.weightMode),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+      deleteProgressItem: (reportId, sheetId, itemId) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const nextSheets = report.sheets.map((sheet) =>
+              sheet.id !== sheetId
+                ? sheet
+                : { ...sheet, items: sheet.items.filter((it) => it.id !== itemId) },
+            );
+            return {
+              ...report,
+              sheets: recalcProgressSheets(nextSheets, report.inputMode || "percent", report.weightMode),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+      addProgressSection: (reportId, afterSheetId, name) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const sheets = [...report.sheets];
+            const newSheet: ProgressSheet = { id: uuid(), name: name?.trim() || "New section", items: [] };
+            const idx = afterSheetId ? sheets.findIndex((sh) => sh.id === afterSheetId) : -1;
+            const insertAt = idx < 0 ? sheets.length : idx + 1;
+            sheets.splice(insertAt, 0, newSheet);
+            return {
+              ...report,
+              sheets: recalcProgressSheets(sheets, report.inputMode || "percent", report.weightMode),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+      deleteProgressSection: (reportId, sheetId) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const sheets = report.sheets.filter((sh) => sh.id !== sheetId);
+            return {
+              ...report,
+              sheets: recalcProgressSheets(sheets, report.inputMode || "percent", report.weightMode),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+      renameProgressSection: (reportId, sheetId, name) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) =>
+            report.id !== reportId
+              ? report
+              : {
+                  ...report,
+                  sheets: report.sheets.map((sh) => (sh.id !== sheetId ? sh : { ...sh, name })),
+                  updatedAt: new Date().toISOString(),
+                },
+          ),
         })),
       setProgressWeight: (reportId, itemId, ratio) =>
         set((s) => ({
