@@ -60,6 +60,14 @@ function isSection(activity: WorkPlanActivity): boolean {
   return (activity.rowType || "activity") === "section";
 }
 
+function isSubSection(activity: WorkPlanActivity): boolean {
+  return isSection(activity) && activity.level === 2;
+}
+
+// Inline override that renders a level-2 sub-section subordinate to its parent
+// section in print: indented and lighter weight, normal case.
+const SUB_SECTION_CELL_STYLE = ' style="padding-left:22px; font-weight:500; text-transform:none; letter-spacing:normal;"';
+
 function formatIso(value: string | undefined | null): string {
   if (!value) return "";
   const d = new Date(`${value}T00:00:00`);
@@ -112,7 +120,7 @@ function renderTableBody(activities: WorkPlanActivity[]): string {
   return activities
     .map((activity, idx) => {
       if (isSection(activity)) {
-        return `<tr class="section-row"><td colspan="6">${escapeHtml(activity.description || "Section")}</td></tr>`;
+        return `<tr class="section-row"><td colspan="6"${isSubSection(activity) ? SUB_SECTION_CELL_STYLE : ""}>${escapeHtml(activity.description || "Section")}</td></tr>`;
       }
       const seq = activities.slice(0, idx).filter((a) => !isSection(a)).length + 1;
       const progress = activityProgress(activity);
@@ -255,7 +263,7 @@ function exportWorkPlanGanttHtml(workPlan: SavedWorkPlan, project: Project | nul
           if (isSection(activity)) {
             return `
               <tr class="section-row">
-                <td colspan="2">${escapeHtml(activity.description || "Section")}</td>
+                <td colspan="2"${isSubSection(activity) ? SUB_SECTION_CELL_STYLE : ""}>${escapeHtml(activity.description || "Section")}</td>
               </tr>
             `;
           }
@@ -412,7 +420,8 @@ export async function exportWorkPlanAsExcel(
           section ? "" : seq,
           sheet.name,
           section ? "Section" : "Activity",
-          activity.description || "",
+          // Indent sub-section titles so the hierarchy survives into the sheet.
+          isSubSection(activity) ? `  ${activity.description || ""}` : activity.description || "",
           section ? "" : (Number(activity.duration) || ""),
           activity.startDate || "",
           activity.endDate || "",
