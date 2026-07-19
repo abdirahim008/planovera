@@ -482,8 +482,20 @@ function WorkPlanTable({
     {
       label: primaryIsSection ? "Convert to Activity Row" : "Make Section Header",
       icon: <Layers size={14} />,
+      // "Make Section Header" clears any sub-section level (rowType update resets level).
       action: () => primaryAct && updateActivity(primaryAct.id, "rowType", primaryIsSection ? "activity" : "section"),
       disabled: readOnly || isSectionSummary || selectedRowIds.length !== 1 || !primaryAct,
+    },
+    {
+      label: "Make Sub-section Header",
+      icon: <Layers size={14} />,
+      // Sets rowType "section" (resetting level) then flags it level 2.
+      action: () => {
+        if (!primaryAct) return;
+        updateActivity(primaryAct.id, "rowType", "section");
+        updateActivity(primaryAct.id, "level", "2");
+      },
+      disabled: readOnly || isSectionSummary || selectedRowIds.length !== 1 || !primaryAct || (primaryIsSection && primaryAct?.level === 2),
     },
     { divider: true },
     {
@@ -610,6 +622,7 @@ function WorkPlanTable({
             {visibleActivities.map((act, i) => {
               const rowType = act.rowType || "activity";
               const isSection = rowType === "section";
+              const isSubSection = isSection && act.level === 2;
               const activityOrdinal =
                 1 + activities.slice(0, i).filter((a) => (a.rowType || "activity") !== "section").length;
               const hasPreds = !isSection && (act.predecessorIds?.length ?? 0) > 0;
@@ -634,10 +647,10 @@ function WorkPlanTable({
                         <Flag size={13} className="mt-0.5 shrink-0 text-accent" aria-label="Milestone (not yet achieved)" />
                       )
                     ) : null}
-                    <div className="min-w-0 flex-1">
-                      {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
-                        : <textarea className={`data-cell-textarea ${isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
-                            rows={2} onChange={(e) => updateActivity(act.id, "description", e.target.value)} onPaste={(e) => handlePaste(i, "description", e)} placeholder={isSection ? "Section title" : "Activity description"} />}
+                    <div className="min-w-0 flex-1" style={isSubSection ? { paddingLeft: "1.25rem" } : undefined}>
+                      {readOnly ? <span className={`block whitespace-pre-wrap break-words text-[13px] leading-5 ${isSubSection ? "font-medium text-txt-muted" : isSection ? "font-semibold text-txt" : "text-txt"}`}>{act.description || "—"}</span>
+                        : <textarea className={`data-cell-textarea ${isSubSection ? "font-medium text-txt-muted" : isSection ? "font-semibold text-txt" : "text-txt"}`} value={act.description}
+                            rows={2} onChange={(e) => updateActivity(act.id, "description", e.target.value)} onPaste={(e) => handlePaste(i, "description", e)} placeholder={isSubSection ? "Sub-section title" : isSection ? "Section title" : "Activity description"} />}
                     </div>
                   </div>
                 </td>
@@ -944,6 +957,7 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
           <div className="relative">
             {ganttActivities.map((activity, index) => {
               const isSection = (activity.rowType || "activity") === "section";
+              const isSubSection = isSection && activity.level === 2;
               const start = parseDate(activity.startDate);
               const end = getActivityEndDate(activity);
               const overdue = end && end < new Date() && activity.status !== "completed";
@@ -959,8 +973,8 @@ function WorkPlanGanttView({ summaryMode = "all" }: { summaryMode?: WorkPlanSumm
                   style={monthGridStyle}
                 >
                   {isSection ? (
-                    <div className={`col-span-2 flex min-h-[30px] items-center border-r border-border px-4 py-1.5 ${monthMode ? "sticky left-0 z-20 bg-bg-raised" : ""}`}>
-                      <div className="whitespace-normal break-words leading-snug text-[11px] font-bold uppercase tracking-[0.12em] text-txt">{activity.description || "Section"}</div>
+                    <div className={`col-span-2 flex min-h-[30px] items-center border-r border-border px-4 py-1.5 ${monthMode ? "sticky left-0 z-20 bg-bg-raised" : ""}`} style={isSubSection ? { paddingLeft: "1.75rem" } : undefined}>
+                      <div className={`whitespace-normal break-words leading-snug ${isSubSection ? "text-[11px] font-semibold normal-case tracking-normal text-txt-muted" : "text-[11px] font-bold uppercase tracking-[0.12em] text-txt"}`}>{activity.description || "Section"}</div>
                     </div>
                   ) : (
                     <>

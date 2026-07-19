@@ -368,11 +368,19 @@ const recalcWorkPlanSections = (activities: WorkPlanActivity[]): WorkPlanActivit
     .map((a, idx) => (a.rowType === "section" ? idx : -1))
     .filter((idx) => idx !== -1);
 
+  // Section nesting level: absent = 1 (top-level), 2 = sub-section. A level-L
+  // section rolls up following activities until the next section with level <= L,
+  // so a level-1 section's span continues THROUGH its level-2 sub-sections
+  // (including their activities), while a level-2 section ends at the next
+  // section of any level.
+  const sectionLevel = (a: WorkPlanActivity) => (a.level === 2 ? 2 : 1);
+
   headerIdxs.forEach((hIdx) => {
     const start = hIdx + 1;
+    const level = sectionLevel(next[hIdx]);
     let end = next.length;
     for (let i = start; i < next.length; i++) {
-      if (next[i].rowType === "section") {
+      if (next[i].rowType === "section" && sectionLevel(next[i]) <= level) {
         end = i;
         break;
       }
@@ -2038,6 +2046,11 @@ interface AppState {
   addProgressSection: (reportId: string, afterSheetId?: string | null, name?: string) => void;
   deleteProgressSection: (reportId: string, sheetId: string) => void;
   renameProgressSection: (reportId: string, sheetId: string, name: string) => void;
+  /** Reorder: swap a row with its neighbour within its section, or a whole
+   *  section with the adjacent one. Pure position swaps — nothing derived
+   *  changes, so no recalc is needed. */
+  moveProgressItem: (reportId: string, sheetId: string, itemId: string, dir: "up" | "down") => void;
+  moveProgressSection: (reportId: string, sheetId: string, dir: "up" | "down") => void;
   /** Set one activity's weight ratio (0–1); locks it and rebalances the other
    *  unlocked activities so the whole-report pool keeps totalling 1. */
   setProgressWeight: (reportId: string, itemId: string, ratio: number) => void;
@@ -2890,17 +2903,38 @@ export const useAppStore = create<AppState>()(
               for (const activity of sheet.activities) {
                 const desc = (activity.description || "").trim();
                 if (!desc) continue;
-                if ((activity.rowType || "activity") === "section") newRows.push(headerRow(desc));
-                else newRows.push({ ...emptyRow(), description: desc });
+                if ((activity.rowType || "activity") === "section") {
+                  // Preserve the section nesting: a level-2 sub-section becomes a
+                  // level-2 BOQ header.
+                  newRows.push(activity.level === 2 ? { ...headerRow(desc), level: 2 } : headerRow(desc));
+                } else newRows.push({ ...emptyRow(), description: desc });
               }
             }
           } else {
             const report = s.progressReports.find((r) => r.id === source.id);
             if (!report) return s;
             // Each progress sheet is a section — its name becomes a header row.
+            // Composite names produced from sub-sections ("PARENT · Sub") split
+            // back into a level-1 header (only when the parent changes) plus a
+            // level-2 header for the remainder.
+            let lastParent: string | null = null;
             for (const sheet of report.sheets) {
               const sectionName = (sheet.name || "").trim();
-              if (sectionName) newRows.push(headerRow(sectionName));
+              if (sectionName) {
+                const sepIdx = sectionName.indexOf(" · ");
+                if (sepIdx !== -1) {
+                  const parent = sectionName.slice(0, sepIdx).trim();
+                  const child = sectionName.slice(sepIdx + 3).trim();
+                  if (parent && parent !== lastParent) {
+                    newRows.push(headerRow(parent));
+                    lastParent = parent;
+                  }
+                  newRows.push({ ...headerRow(child || sectionName), level: 2 });
+                } else {
+                  newRows.push(headerRow(sectionName));
+                  lastParent = sectionName;
+                }
+              }
               for (const item of sheet.items) {
                 const desc = (item.description || "").trim();
                 if (desc) newRows.push({ ...emptyRow(), description: desc });
@@ -3362,6 +3396,9 @@ export const useAppStore = create<AppState>()(
             const out: ProgressSheet[] = [];
             for (const boqSheet of selectedBOQ.sheets) {
               let groupName = boqSheet.name;
+              // Track the current level-1 section so a level-2 sub-section header
+              // lands in a composite progress group "PARENT · Sub-section".
+              let parentName = boqSheet.name;
               let groupItems: ProgressItem[] = [];
               const flush = () => {
                 if (groupItems.length) out.push({ id: uuid(), name: groupName, items: groupItems });
@@ -3370,7 +3407,13 @@ export const useAppStore = create<AppState>()(
               for (const row of boqSheet.rows) {
                 if (row.type === "header") {
                   flush();
-                  groupName = row.description?.trim() || boqSheet.name;
+                  const desc = row.description?.trim() || boqSheet.name;
+                  if (row.level === 2) {
+                    groupName = `${parentName} · ${desc}`;
+                  } else {
+                    parentName = desc;
+                    groupName = desc;
+                  }
                   continue;
                 }
                 if (row.type !== "item" || !row.description) continue;
@@ -3428,6 +3471,8 @@ export const useAppStore = create<AppState>()(
             const out: ProgressSheet[] = [];
             for (const wpSheet of selectedPlan.sheets) {
               let groupName = wpSheet.name;
+              // Level-1 section context for composite sub-section group names.
+              let parentName = wpSheet.name;
               let groupItems: ProgressItem[] = [];
               let rowNo = 0;
               const flush = () => {
@@ -3437,7 +3482,13 @@ export const useAppStore = create<AppState>()(
               for (const a of wpSheet.activities) {
                 if ((a.rowType || "activity") === "section") {
                   flush();
-                  groupName = a.description?.trim() || wpSheet.name;
+                  const desc = a.description?.trim() || wpSheet.name;
+                  if (a.level === 2) {
+                    groupName = `${parentName} · ${desc}`;
+                  } else {
+                    parentName = desc;
+                    groupName = desc;
+                  }
                   continue;
                 }
                 if (!a.description) continue;
@@ -3608,6 +3659,34 @@ export const useAppStore = create<AppState>()(
                   updatedAt: new Date().toISOString(),
                 },
           ),
+        })),
+      moveProgressItem: (reportId, sheetId, itemId, dir) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const sheets = report.sheets.map((sheet) => {
+              if (sheet.id !== sheetId) return sheet;
+              const idx = sheet.items.findIndex((it) => it.id === itemId);
+              const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+              if (idx === -1 || swapIdx < 0 || swapIdx >= sheet.items.length) return sheet;
+              const items = [...sheet.items];
+              [items[idx], items[swapIdx]] = [items[swapIdx], items[idx]];
+              return { ...sheet, items };
+            });
+            return { ...report, sheets, updatedAt: new Date().toISOString() };
+          }),
+        })),
+      moveProgressSection: (reportId, sheetId, dir) =>
+        set((s) => ({
+          progressReports: s.progressReports.map((report) => {
+            if (report.id !== reportId) return report;
+            const idx = report.sheets.findIndex((sh) => sh.id === sheetId);
+            const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+            if (idx === -1 || swapIdx < 0 || swapIdx >= report.sheets.length) return report;
+            const sheets = [...report.sheets];
+            [sheets[idx], sheets[swapIdx]] = [sheets[swapIdx], sheets[idx]];
+            return { ...report, sheets, updatedAt: new Date().toISOString() };
+          }),
         })),
       setProgressWeight: (reportId, itemId, ratio) =>
         set((s) => ({
@@ -4501,11 +4580,17 @@ export const useAppStore = create<AppState>()(
               }
               if (key === "rowType") {
                 const nextType = (value === "section" ? "section" : "activity") as NonNullable<WorkPlanActivity["rowType"]>;
-                const base: WorkPlanActivity = { ...a, rowType: nextType };
+                // Changing row type resets the sub-section level; "Make Sub-section
+                // Header" sets level back to 2 with a follow-up "level" update.
+                const base: WorkPlanActivity = { ...a, rowType: nextType, level: undefined };
                 if (nextType === "section") {
                   return { ...base, duration: "", startDate: "", endDate: "" };
                 }
                 return base;
+              }
+              if (key === "level") {
+                // Only meaningful on section rows; `2` marks a sub-section.
+                return { ...a, level: value === "2" ? 2 : undefined };
               }
               const upd = { ...a, [key]: value };
               if ((key === "startDate" || key === "duration") && upd.startDate && upd.duration) {
@@ -4516,7 +4601,7 @@ export const useAppStore = create<AppState>()(
             // Date/duration edits ripple through the dependency graph so linked
             // activities (predecessors column) reschedule automatically.
             const rippled =
-              key === "startDate" || key === "duration" || key === "endDate" || key === "rowType"
+              key === "startDate" || key === "duration" || key === "endDate" || key === "rowType" || key === "level"
                 ? cascadeSchedule(mapped)
                 : mapped;
             return recalcWorkPlanSections(rippled);

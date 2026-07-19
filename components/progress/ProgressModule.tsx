@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -524,6 +526,8 @@ export default function ProgressModule() {
     addProgressSection,
     deleteProgressSection,
     renameProgressSection,
+    moveProgressItem,
+    moveProgressSection,
     setProgressWeight,
     resetProgressWeights,
     deleteProgressReport,
@@ -866,18 +870,27 @@ export default function ProgressModule() {
   const buildCtxItems = (ctx: { sheetId: string; itemId?: string }): ContextMenuItem[] => {
     const reportId = activeReport.id;
     if (ctx.itemId) {
+      const sheet = activeReport.sheets.find((sh) => sh.id === ctx.sheetId);
+      const itemIdx = sheet ? sheet.items.findIndex((it) => it.id === ctx.itemId) : -1;
       return [
         { label: "Add row above", icon: <Plus size={14} />, action: () => addProgressItem(reportId, ctx.sheetId, ctx.itemId, "above") },
         { label: "Add row below", icon: <Plus size={14} />, action: () => addProgressItem(reportId, ctx.sheetId, ctx.itemId, "below") },
+        { divider: true },
+        { label: "Move up", icon: <ArrowUp size={14} />, action: () => moveProgressItem(reportId, ctx.sheetId, ctx.itemId!, "up"), disabled: itemIdx <= 0 },
+        { label: "Move down", icon: <ArrowDown size={14} />, action: () => moveProgressItem(reportId, ctx.sheetId, ctx.itemId!, "down"), disabled: !sheet || itemIdx === -1 || itemIdx >= sheet.items.length - 1 },
         { divider: true },
         { label: "Add section below", icon: <Plus size={14} />, action: () => addProgressSection(reportId, ctx.sheetId) },
         { divider: true },
         { label: "Delete row", icon: <Trash2 size={14} />, danger: true, action: () => deleteProgressItem(reportId, ctx.sheetId, ctx.itemId!) },
       ];
     }
+    const sheetIdx = activeReport.sheets.findIndex((sh) => sh.id === ctx.sheetId);
     return [
       { label: "Add row", icon: <Plus size={14} />, action: () => addProgressItem(reportId, ctx.sheetId) },
       { label: "Add section below", icon: <Plus size={14} />, action: () => addProgressSection(reportId, ctx.sheetId) },
+      { divider: true },
+      { label: "Move section up", icon: <ArrowUp size={14} />, action: () => moveProgressSection(reportId, ctx.sheetId, "up"), disabled: sheetIdx <= 0 },
+      { label: "Move section down", icon: <ArrowDown size={14} />, action: () => moveProgressSection(reportId, ctx.sheetId, "down"), disabled: sheetIdx === -1 || sheetIdx >= activeReport.sheets.length - 1 },
       { divider: true },
       { label: "Delete section", icon: <Trash2 size={14} />, danger: true, action: () => deleteProgressSection(reportId, ctx.sheetId) },
     ];

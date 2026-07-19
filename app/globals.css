@@ -183,6 +183,21 @@ body {
   box-shadow: inset 4px 0 0 #94a3b8;
 }
 
+/* Sub-section header — a level-2 header nested under a level-1 section.
+   Rendered subordinate: lighter background, semibold rather than heavy,
+   normal case, and a softer accent bar. */
+.boq-table-shell tr.row-subheader td,
+.boq-table-shell tr.row-subheader .row-gutter {
+  background: #eef1f5 !important;
+  color: #3a434f !important;
+  font-weight: 600;
+  text-transform: none;
+}
+.boq-table-shell tr.row-subheader td:first-child,
+.boq-table-shell tr.row-subheader .row-gutter {
+  box-shadow: inset 4px 0 0 #c2cad4;
+}
+
 .boq-table-shell tr.row-notes td,
 .boq-table-shell tr.row-notes .row-gutter {
   background: #eef4fb !important;
