@@ -107,6 +107,9 @@ export interface BOQRow {
   qty: string;
   rate: string;
   amount: string;
+  /** Only meaningful when `type === "header"`. `2` marks a sub-section header
+   *  nested under the previous level-1 header; absent = top-level section. */
+  level?: number;
 }
 
 export interface PaymentCertSheet {
@@ -199,6 +202,9 @@ export interface WorkPlanActivity {
   project_id: string;
   /** "section" rows act as BOQ-style section headers and roll up dates from following activities */
   rowType?: "activity" | "section";
+  /** Only meaningful when `rowType === "section"`. `2` = sub-section header
+   *  nested under the previous level-1 section; absent = top-level section. */
+  level?: number;
   description: string;
   duration: string;
   startDate: string;

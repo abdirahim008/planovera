@@ -467,7 +467,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     setRows(newRows);
   };
 
-  const convertRowTo = (type: BOQRow["type"]) => {
+  const convertRowTo = (type: BOQRow["type"], level?: number) => {
     if (selectedRowIds.size === 0) return;
     // Guard the single-grand-total rule defensively: ignore a request that would
     // add a second grand total when one already exists elsewhere in the BOQ.
@@ -485,7 +485,9 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     setRows(
       rows.map((r) => {
         if (!selectedRowIds.has(r.id)) return r;
-        if (type === "header") return { ...r, type: "header", unit: "", qty: "", rate: "", amount: "" };
+        // Sub-section headers carry level 2; a plain header clears level so a
+        // sub-header can be promoted back to a top-level section.
+        if (type === "header") return { ...r, type: "header", level: level === 2 ? 2 : undefined, unit: "", qty: "", rate: "", amount: "" };
         if (type === "subtotal") return { ...r, type: "subtotal", description: r.description || "Sub Total", unit: "", qty: "", rate: "" };
         if (type === "sheettotal") return { ...r, type: "sheettotal", description: r.description || "Sheet Total", unit: "", qty: "", rate: "" };
         if (type === "grandtotal") return { ...r, type: "grandtotal", description: r.description || "Grand Total", unit: "", qty: "", rate: "" };
@@ -553,7 +555,8 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     { divider: true },
     ...(hasSelection
       ? [
-          { label: "Convert to Section Header", icon: <Heading size={14} />, action: () => convertRowTo("header"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "header") },
+          { label: "Convert to Section Header", icon: <Heading size={14} />, action: () => convertRowTo("header"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "header" && selectedRow?.level !== 2) },
+          { label: "Convert to Sub-section Header", icon: <Heading size={14} />, action: () => convertRowTo("header", 2), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "header" && selectedRow?.level === 2) },
           { label: "Convert to Notes", icon: <StickyNote size={14} />, action: () => convertRowTo("notes"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "notes") },
           { label: "Convert to Specification", icon: <StickyNote size={14} />, action: () => convertRowTo("specification"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "specification") },
           { label: "Convert to Sub Total", icon: <Sigma size={14} />, action: () => convertRowTo("subtotal"), disabled: readOnly || (selectedRowIds.size === 1 && selectedRow?.type === "subtotal") },
@@ -612,7 +615,7 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
     : [];
 
   const getRowClass = (row: BOQRow) => {
-    if (row.type === "header") return "row-header";
+    if (row.type === "header") return row.level === 2 ? "row-header row-subheader" : "row-header";
     if (row.type === "notes") return "row-notes";
     if (row.type === "specification") return "row-specification";
     if (row.type === "subtotal") return "row-subtotal";
@@ -792,7 +795,10 @@ function BOQSheetTable({ readOnly = false }: { readOnly?: boolean }) {
                           />
                         )
                       ) : (
-                        <span className={`block ${col.key === "description" ? "whitespace-pre-wrap break-words leading-snug min-w-[140px] sm:min-w-[280px]" : "truncate"}`}>
+                        <span
+                          className={`block ${col.key === "description" ? "whitespace-pre-wrap break-words leading-snug min-w-[140px] sm:min-w-[280px]" : "truncate"}`}
+                          style={col.key === "description" && row.type === "header" && row.level === 2 ? { paddingLeft: "1.25rem" } : undefined}
+                        >
                           {formatBOQCellDisplay(row, col.key, boqSheets)}
                         </span>
                       )}
