@@ -22,6 +22,7 @@ import type { ProgressItem, ProgressReport, ProgressSheet } from "@/lib/supabase
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
+import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import CompactKpiList from "@/components/ui/CompactKpiList";
 import { exportProgressAsExcel, exportProgressAsPdf } from "@/lib/progress-export";
 
@@ -213,6 +214,7 @@ function ProgressActivityRow({
   showWeights,
   ratio,
   onWeightCommit,
+  onContextMenu,
 }: {
   item: ProgressItem;
   editMode: boolean;
@@ -221,11 +223,12 @@ function ProgressActivityRow({
   showWeights: boolean;
   ratio: number;
   onWeightCommit: (ratio: number) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const actual = clampPercent(toNumber(item.actualPercent));
   const planned = toNumber(item.plannedPercent);
   return (
-    <div className="flex items-center gap-3 px-3 py-1.5 transition-colors hover:bg-bg-hover">
+    <div className="flex items-center gap-3 px-3 py-1.5 transition-colors hover:bg-bg-hover" onContextMenu={onContextMenu}>
       {/* ID/# in its own narrow column at the far left */}
       <span className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums text-txt-dim">
         {item.billNo}
@@ -309,6 +312,9 @@ function ProgressSection({
   onItemChange,
   onItemDescriptionChange,
   onWeightCommit,
+  onContextMenu,
+  onRename,
+  onAddRow,
 }: {
   sheet: ProgressSheet;
   ratios: Map<string, number>;
@@ -319,22 +325,45 @@ function ProgressSection({
   onItemChange: (sheetId: string, itemId: string, value: string) => void;
   onItemDescriptionChange: (sheetId: string, itemId: string, value: string) => void;
   onWeightCommit: (itemId: string, ratio: number) => void;
+  onContextMenu: (e: React.MouseEvent, sheetId: string, itemId?: string) => void;
+  onRename: (sheetId: string, name: string) => void;
+  onAddRow: (sheetId: string) => void;
 }) {
   const stats = statsFor(sheet.items, ratios);
   const actual = clampPercent(stats.actual);
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-bg-surface">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 bg-bg-hover px-3 py-2.5 text-left transition-colors hover:bg-[#e6e9ef]"
+      {/* Header: right-click for add/delete section & rows. In edit mode the
+          title becomes an inline input so sections can be renamed to match the
+          work plan; the chevron stays a separate toggle. */}
+      <div
+        className="flex w-full items-center gap-3 bg-bg-hover px-3 py-2.5"
+        onContextMenu={editMode ? (e) => onContextMenu(e, sheet.id) : undefined}
       >
-        {expanded ? (
-          <ChevronDown size={16} className="shrink-0 text-txt-dim" />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="shrink-0 text-txt-dim"
+          aria-label={expanded ? "Collapse section" : "Expand section"}
+        >
+          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        {editMode ? (
+          <input
+            value={sheet.name}
+            onChange={(e) => onRename(sheet.id, e.target.value)}
+            placeholder="Section name"
+            className="min-w-0 flex-1 rounded-md border border-border bg-bg-input px-2 py-1 text-sm font-bold uppercase tracking-[0.04em] text-txt outline-none focus:border-accent"
+          />
         ) : (
-          <ChevronRight size={16} className="shrink-0 text-txt-dim" />
+          <button
+            type="button"
+            onClick={onToggle}
+            className="min-w-0 flex-1 truncate text-left text-sm font-bold uppercase tracking-[0.04em] text-txt"
+          >
+            {sheet.name}
+          </button>
         )}
-        <span className="min-w-0 flex-1 truncate text-sm font-bold uppercase tracking-[0.04em] text-txt">{sheet.name}</span>
         <span className="hidden text-[11px] text-txt-dim sm:inline">
           {stats.completed}/{sheet.items.length}
         </span>
@@ -347,12 +376,25 @@ function ProgressSection({
         <span className="w-11 text-right font-mono text-xs font-semibold tabular-nums text-txt">
           {actual.toFixed(0)}%
         </span>
-      </button>
+      </div>
       {expanded && (
         <div className="divide-y divide-border/60 border-t border-border">
           {sheet.items.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[13px] text-txt-muted">
-              No activities in this section.
+            <div
+              className="px-3 py-4 text-center text-[13px] text-txt-muted"
+              onContextMenu={editMode ? (e) => onContextMenu(e, sheet.id) : undefined}
+            >
+              {editMode ? (
+                <button
+                  type="button"
+                  onClick={() => onAddRow(sheet.id)}
+                  className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-3 py-1.5 text-txt-muted transition hover:border-accent hover:text-txt"
+                >
+                  <Plus size={14} /> Add row
+                </button>
+              ) : (
+                "No activities in this section."
+              )}
             </div>
           ) : (
             sheet.items.map((item) => (
@@ -365,6 +407,7 @@ function ProgressSection({
                 showWeights={showWeights}
                 ratio={ratios.get(item.id) || 0}
                 onWeightCommit={(ratio) => onWeightCommit(item.id, ratio)}
+                onContextMenu={editMode ? (e) => onContextMenu(e, sheet.id, item.id) : undefined}
               />
             ))
           )}
@@ -447,6 +490,11 @@ export default function ProgressModule() {
     progressReports,
     createProgressReport,
     updateProgressItem,
+    addProgressItem,
+    deleteProgressItem,
+    addProgressSection,
+    deleteProgressSection,
+    renameProgressSection,
     setProgressWeight,
     resetProgressWeights,
     deleteProgressReport,
@@ -454,6 +502,7 @@ export default function ProgressModule() {
   } = useAppStore();
 
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sheetId: string; itemId?: string } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -764,6 +813,28 @@ export default function ProgressModule() {
   const toggleAllSections = () =>
     setCollapsedSections(allExpanded ? new Set(activeReport.sheets.map((sheet) => sheet.id)) : new Set());
 
+  // Right-click menu on a row (itemId set) or a section header (itemId absent),
+  // so a report can be harmonized with the work plan by hand.
+  const buildCtxItems = (ctx: { sheetId: string; itemId?: string }): ContextMenuItem[] => {
+    const reportId = activeReport.id;
+    if (ctx.itemId) {
+      return [
+        { label: "Add row above", icon: <Plus size={14} />, action: () => addProgressItem(reportId, ctx.sheetId, ctx.itemId, "above") },
+        { label: "Add row below", icon: <Plus size={14} />, action: () => addProgressItem(reportId, ctx.sheetId, ctx.itemId, "below") },
+        { divider: true },
+        { label: "Add section below", icon: <Plus size={14} />, action: () => addProgressSection(reportId, ctx.sheetId) },
+        { divider: true },
+        { label: "Delete row", icon: <Trash2 size={14} />, danger: true, action: () => deleteProgressItem(reportId, ctx.sheetId, ctx.itemId!) },
+      ];
+    }
+    return [
+      { label: "Add row", icon: <Plus size={14} />, action: () => addProgressItem(reportId, ctx.sheetId) },
+      { label: "Add section below", icon: <Plus size={14} />, action: () => addProgressSection(reportId, ctx.sheetId) },
+      { divider: true },
+      { label: "Delete section", icon: <Trash2 size={14} />, danger: true, action: () => deleteProgressSection(reportId, ctx.sheetId) },
+    ];
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -901,10 +972,34 @@ export default function ProgressModule() {
                   updateProgressItem(activeReport.id, sheetId, itemId, "description", value)
                 }
                 onWeightCommit={(itemId, ratio) => setProgressWeight(activeReport.id, itemId, ratio)}
+                onContextMenu={(e, sheetId, itemId) => {
+                  e.preventDefault();
+                  setCtxMenu({ x: e.clientX, y: e.clientY, sheetId, itemId });
+                }}
+                onRename={(sheetId, name) => renameProgressSection(activeReport.id, sheetId, name)}
+                onAddRow={(sheetId) => addProgressItem(activeReport.id, sheetId)}
               />
             ))}
+            {isEditMode && (
+              <button
+                type="button"
+                onClick={() => addProgressSection(activeReport.id, activeReport.sheets.at(-1)?.id ?? null)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-2.5 text-[13px] font-medium text-txt-muted transition hover:border-accent hover:text-txt"
+              >
+                <Plus size={15} /> Add section
+              </button>
+            )}
           </div>
         </>
+      )}
+
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={buildCtxItems(ctxMenu)}
+          onClose={() => setCtxMenu(null)}
+        />
       )}
 
       {showSettings && <ProgressSettingsModal open={showSettings} report={activeReport} onClose={() => setShowSettings(false)} />}
