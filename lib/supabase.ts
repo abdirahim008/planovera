@@ -478,6 +478,9 @@ export interface GeneratedDocument {
   coverImageDataUrl?: string;
   footerNote?: string;
   content: string;
+  /** Inline body images (compressed data URLs). Referenced from `content` via
+   *  `[image:id]` token lines; unreferenced entries are pruned on edit-commit. */
+  bodyImages?: Array<{ id: string; dataUrl: string; caption?: string }>;
   linkedProgressReportId?: string;
   linkedCertificateId?: string;
   linkedSiteNoteId?: string;
