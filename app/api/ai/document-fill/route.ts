@@ -31,6 +31,10 @@ const TEMPLATE_FIELDS: Record<string, Record<string, string>> = {
     content:
       "The letter body: the instruction to the contractor, the works affected, and any time/cost implication note. Plain text paragraphs only.",
   },
+  "official-letter": {
+    content:
+      "The letter body: the reference/background, the particulars of the matter, and the action requested from the recipient. Formal business tone. Plain text paragraphs only (no letterhead, salutation or signature block).",
+  },
   "payment-certificate-summary": {
     content:
       "A short cover note summarising the commercial position of the certificate for the approving authority. Plain text.",

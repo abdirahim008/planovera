@@ -54,6 +54,7 @@ import { isTemplateVisibleForProject, labelsForType } from "@/lib/project-labels
 const templateLabels: Record<DocumentTemplateType, string> = {
   "commencement-letter": "Commencement Letter",
   "instruction-letter": "Instruction Letter",
+  "official-letter": "Official Letter",
   "progress-report": "Progress Report",
   "payment-certificate-summary": "Payment Certificate Summary",
   "completion-certificate": "Completion Certificate",
@@ -76,6 +77,8 @@ function templateLabelFor(
       return labels.commencementLetter;
     case "instruction-letter":
       return labels.instructionLetter;
+    case "official-letter":
+      return labels.officialLetter;
     case "progress-report":
       return labels.progressReport;
     case "payment-certificate-summary":
@@ -360,6 +363,21 @@ function buildDocumentContent({
     // "commencement-letter" intentionally has no buildDocumentContent case — the
     // FIDIC commencement order is rendered by buildCommencementLetterPrintHtml
     // with its own structured body and never reads doc.content.
+    case "official-letter":
+      // Deliberately generic: a formal letter skeleton the user rewrites for
+      // whatever they're sending — requests, notifications, clarifications,
+      // cost breakdowns (the body supports "|" tables and inserted images).
+      return `Introduction
+We write with reference to ${contractTitle} regarding the matter set out below.
+
+Particulars
+Describe the background and details here — facts, amounts, or requirements. Use the Insert table button (or "|" rows) for a cost or quantity breakdown, and Insert image for photos or supporting records.
+
+Request
+State clearly what you are requesting from the recipient, and by when.
+
+Closing
+We would appreciate your confirmation, and remain available to discuss at your convenience.`;
     case "instruction-letter":
       return `Purpose
 This instruction relates to ${contractTitle} at ${location}.

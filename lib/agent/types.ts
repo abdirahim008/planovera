@@ -8,6 +8,7 @@ import type { BOQSheet, WorkPlanSheet, DocumentTemplateType } from "@/lib/supaba
 export const AGENT_DOC_TEMPLATES: DocumentTemplateType[] = [
   "commencement-letter",
   "instruction-letter",
+  "official-letter",
   "progress-report",
   "payment-certificate-summary",
   "completion-certificate",
