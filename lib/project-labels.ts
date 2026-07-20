@@ -50,6 +50,8 @@ export interface ProjectLabelSet {
     milestoneInvoice: string;
     /** Title for "status-report" — universal lightweight one-page status update */
     statusReport: string;
+    /** Title for "official-letter" — general-purpose formal letter, universal */
+    officialLetter: string;
   };
   /** Generic role / actor names that read differently in non-construction contexts */
   roles: {
@@ -88,6 +90,7 @@ const CONSTRUCTION_LABELS: ProjectLabelSet = {
     progressReport: "Progress Report",
     milestoneInvoice: "Tax Invoice",
     statusReport: "Status Report",
+    officialLetter: "Official Letter",
   },
   roles: {
     issuer: "Engineer",
@@ -122,6 +125,7 @@ const NON_CONSTRUCTION_LABELS: ProjectLabelSet = {
     progressReport: "Progress Report",
     milestoneInvoice: "Milestone Invoice",
     statusReport: "Status Report",
+    officialLetter: "Official Letter",
   },
   roles: {
     issuer: "Lead",
@@ -161,6 +165,7 @@ export function isTemplateVisibleForProject(
   templateType:
     | "commencement-letter"
     | "instruction-letter"
+    | "official-letter"
     | "progress-report"
     | "payment-certificate-summary"
     | "completion-certificate"
