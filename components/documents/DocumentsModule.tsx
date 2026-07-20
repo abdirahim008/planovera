@@ -4332,6 +4332,18 @@ function InlineEdit({
  */
 const TABLE_STARTER = "\n| Item | Description | Amount |\n| 1 | | |\n| 2 | | |\n";
 
+// Tab-separated clipboard (Excel / Sheets) → pipe-table rows; null when the
+// clipboard isn't tabular so the caller falls through to a normal paste.
+function excelClipboardToPipeRows(text: string): string | null {
+  if (!text || !text.includes("\t") || !/\r?\n/.test(text.trim())) return null;
+  return text
+    .replace(/\r/g, "")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => `| ${line.split("\t").map((cell) => cell.trim()).join(" | ")} |`)
+    .join("\n");
+}
+
 function EditableBody({
   content,
   onCommit,
@@ -4375,15 +4387,9 @@ function EditableBody({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const text = e.clipboardData.getData("text/plain");
-    if (text && text.includes("\t") && /\r?\n/.test(text.trim())) {
+    const pipeRows = excelClipboardToPipeRows(e.clipboardData.getData("text/plain"));
+    if (pipeRows) {
       e.preventDefault();
-      const pipeRows = text
-        .replace(/\r/g, "")
-        .split("\n")
-        .filter((line) => line.length > 0)
-        .map((line) => `| ${line.split("\t").map((cell) => cell.trim()).join(" | ")} |`)
-        .join("\n");
       insertAtCursor(pipeRows);
     }
   };
@@ -4461,6 +4467,100 @@ function EditableBody({
         }}
         rows={Math.max(10, draft.split("\n").length + 2)}
         className="w-full resize-y rounded-sm bg-sky-50/50 font-serif text-[15px] leading-8 text-slate-700 outline-none ring-1 ring-sky-200"
+      />
+    </div>
+  );
+}
+
+/**
+ * Body editor for the side edit panel: same plain-text conventions and
+ * affordances as the canvas editor (Insert table / Insert image, Excel paste →
+ * pipe rows) but committing per keystroke like the panel's other fields.
+ * Unreferenced body images are pruned on blur, mirroring the canvas commit.
+ */
+function PanelBodyEditor({
+  content,
+  bodyImages,
+  onUpdate,
+}: {
+  content: string;
+  bodyImages: GeneratedDocument["bodyImages"];
+  onUpdate: (updates: Partial<GeneratedDocument>) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertAtCursor = (snippet: string, extraImages?: Array<{ id: string; dataUrl: string }>) => {
+    const el = textareaRef.current;
+    // Read the live value from the node — the async image path can land after
+    // further typing, and the controlled value in this closure would be stale.
+    const base = el ? el.value : content;
+    const pos = el ? el.selectionStart : base.length;
+    const next = base.slice(0, pos) + snippet + base.slice(pos);
+    onUpdate(
+      extraImages?.length
+        ? { content: next, bodyImages: [...(bodyImages || []), ...extraImages] }
+        : { content: next },
+    );
+    requestAnimationFrame(() => {
+      const node = textareaRef.current;
+      if (node) {
+        const caret = pos + snippet.length;
+        node.focus();
+        node.setSelectionRange(caret, caret);
+      }
+    });
+  };
+
+  const toolButton =
+    "cursor-pointer rounded-lg border border-border bg-bg-input px-2.5 py-1.5 text-[11px] font-medium text-txt-muted transition hover:border-accent/40 hover:text-txt";
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center gap-2">
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => insertAtCursor(TABLE_STARTER)} className={toolButton}>
+          Insert table
+        </button>
+        <label className={toolButton}>
+          Insert image
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              const dataUrl = await readFileAsDataUrl(file);
+              const id = uuid();
+              insertAtCursor(`\n[image:${id}]\n`, [{ id, dataUrl }]);
+            }}
+          />
+        </label>
+      </div>
+      <p className="mb-1.5 text-[11px] text-txt-dim">
+        Tables: &ldquo;| cell | cell |&rdquo; rows — paste straight from Excel. Blank line = new paragraph, &ldquo;- &rdquo; = bullet, short
+        line = bold heading.
+      </p>
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => onUpdate({ content: e.target.value })}
+        onPaste={(e) => {
+          const pipeRows = excelClipboardToPipeRows(e.clipboardData.getData("text/plain"));
+          if (pipeRows) {
+            e.preventDefault();
+            insertAtCursor(pipeRows);
+          }
+        }}
+        onBlur={() => {
+          if (!bodyImages?.length) return;
+          const referenced = new Set(
+            Array.from(content.matchAll(/\[image:([a-z0-9-]+)\]/gi)).map((m) => m[1].toLowerCase()),
+          );
+          const kept = bodyImages.filter((img) => referenced.has(img.id.toLowerCase()));
+          if (kept.length !== bodyImages.length) onUpdate({ bodyImages: kept });
+        }}
+        className="min-h-[360px] w-full resize-y rounded-xl border border-border bg-bg-input px-4 py-3 text-sm text-txt outline-none transition-colors focus:border-accent"
       />
     </div>
   );
@@ -6748,10 +6848,10 @@ export default function DocumentsModule() {
             />
             <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-txt-dim">Document Content</label>
             {isEditMode ? (
-              <textarea
-                value={activeDocument.content}
-                onChange={(e) => updateGeneratedDocument(activeDocument.id, { content: e.target.value })}
-                className="min-h-[360px] w-full resize-y rounded-xl border border-border bg-bg-input px-4 py-3 text-sm text-txt outline-none transition-colors focus:border-accent"
+              <PanelBodyEditor
+                content={activeDocument.content}
+                bodyImages={activeDocument.bodyImages}
+                onUpdate={(updates) => updateGeneratedDocument(activeDocument.id, updates)}
               />
             ) : (
               <div className="rounded-xl border border-border bg-bg-input/40 p-4 text-sm text-txt-muted">
