@@ -641,11 +641,45 @@ function parsePipeTable(lines: string[]): string[][] {
   return rows;
 }
 
-function parseContentBlocks(content: string) {
+/** The raw, trimmed source of each body block (blank line = new block). The
+ *  index of every entry lines up 1:1 with `parseContentBlocks`, so an editor can
+ *  splice a single block back into `content` without disturbing the others. */
+function splitContentBlocks(content: string): string[] {
   return content
     .split(/\n\s*\n/)
     .map((block) => block.trim())
-    .filter(Boolean)
+    .filter(Boolean);
+}
+
+/** Grid of cells → pipe rows (optionally under a section heading line). Any "|"
+ *  or newline inside a cell is neutralised so the row format stays parseable. */
+function serializePipeTable(rows: string[][], title = ""): string {
+  const body = rows
+    .map((row) => `| ${row.map((cell) => cell.replace(/\|/g, "/").replace(/\s*\n\s*/g, " ").trim()).join(" | ")} |`)
+    .join("\n");
+  const trimmedTitle = title.trim();
+  return trimmedTitle ? `${trimmedTitle}\n${body}` : body;
+}
+
+/** Replace the table at `blockIndex` with a freshly serialised grid, leaving
+ *  every other block byte-for-byte intact. */
+function replaceTableBlock(content: string, blockIndex: number, rows: string[][], title: string): string {
+  const sources = splitContentBlocks(content);
+  if (blockIndex < 0 || blockIndex >= sources.length) return content;
+  sources[blockIndex] = serializePipeTable(rows, title);
+  return sources.join("\n\n");
+}
+
+/** Drop the block at `blockIndex` entirely (used to delete a table). */
+function removeContentBlock(content: string, blockIndex: number): string {
+  const sources = splitContentBlocks(content);
+  if (blockIndex < 0 || blockIndex >= sources.length) return content;
+  sources.splice(blockIndex, 1);
+  return sources.join("\n\n");
+}
+
+function parseContentBlocks(content: string) {
+  return splitContentBlocks(content)
     .map((block) => {
       const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
 
@@ -1760,7 +1794,13 @@ function documentPrintStyles(accentPrimary?: string, accentSecondary?: string) {
     }
 
     /* ── Inline body tables + images (authored in the plain-text body) ─────── */
-    .doc-body-table { margin: 12px 0; }
+    .doc-body-table { margin: 12px 0; table-layout: auto; }
+    /* Cells wrap to as many lines as the text needs; only numeric cells stay on
+       one line. Long unbroken tokens break rather than overflow the column. */
+    .doc-body-table th,
+    .doc-body-table td { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .doc-body-table td.num,
+    .doc-body-table th.num { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
     .doc-body-image {
       margin: 16px auto;
       text-align: center;
@@ -4330,7 +4370,19 @@ function InlineEdit({
  * a plain-text editor (same convention the templates use — blank line between
  * paragraphs, "- " bullets, short label lines become section titles).
  */
-const TABLE_STARTER = "\n| Item | Description | Amount |\n| 1 | | |\n| 2 | | |\n";
+const TABLE_TEMPLATE = "| Item | Description | Amount |\n| 1 | | |\n| 2 | | |";
+
+/**
+ * Wrap a block snippet so a blank line separates it from the surrounding text —
+ * the boundary `parseContentBlocks` needs to read it as its own block. Only the
+ * missing newlines are added, so inserting into empty space stays clean and
+ * inserting mid-paragraph no longer fuses the table into the prose.
+ */
+function blockInsertion(before: string, after: string, snippet: string): string {
+  const lead = !before || /\n\n$/.test(before) ? "" : /\n$/.test(before) ? "\n" : "\n\n";
+  const trail = !after || /^\n\n/.test(after) ? "" : /^\n/.test(after) ? "\n" : "\n\n";
+  return lead + snippet + trail;
+}
 
 // Tab-separated clipboard (Excel / Sheets) → pipe-table rows; null when the
 // clipboard isn't tabular so the caller falls through to a normal paste.
@@ -4342,6 +4394,225 @@ function excelClipboardToPipeRows(text: string): string | null {
     .filter((line) => line.length > 0)
     .map((line) => `| ${line.split("\t").map((cell) => cell.trim()).join(" | ")} |`)
     .join("\n");
+}
+
+/**
+ * One editable table cell. The contentEditable is seeded exactly once on mount
+ * (structural edits remount it via a `key`), so React re-renders never fight the
+ * caret. Long text wraps to as many lines as it needs and the cell grows with
+ * it — the whole point of the "multi-line cell" request.
+ */
+function TableCell({
+  text,
+  numeric,
+  placeholder = "",
+  onCommit,
+}: {
+  text: string;
+  numeric: boolean;
+  placeholder?: string;
+  onCommit: (value: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.innerText = text;
+    // Seed once — see the note above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      data-placeholder={placeholder}
+      onKeyDown={(e) => {
+        // Cells are single logical values; Enter commits rather than injecting a
+        // hard break the pipe format can't hold. Overflow still wraps visually.
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      onBlur={(e) => onCommit(e.currentTarget.innerText.replace(/ /g, " ").replace(/\s*\n\s*/g, " ").trim())}
+      className={`cursor-text whitespace-pre-wrap break-words rounded-[3px] px-0.5 outline-none transition-colors focus:bg-sky-50 focus:ring-1 focus:ring-sky-300 empty:before:font-normal empty:before:text-slate-300 empty:before:content-[attr(data-placeholder)] ${
+        numeric ? "text-right tabular-nums" : "text-left"
+      }`}
+    />
+  );
+}
+
+/**
+ * WYSIWYG body table. At rest it looks exactly like the exported table; hovering
+ * reveals add/delete affordances and clicking a cell edits it in place. Pipe text
+ * stays the source of truth (so Excel paste, AI fill and export keep working) —
+ * every edit is serialised straight back into the block via `onChange`.
+ */
+function InlineTableEditor({
+  rows: initialRows,
+  title: initialTitle,
+  onChange,
+  onRemove,
+}: {
+  rows: string[][];
+  title: string;
+  onChange: (rows: string[][], title: string) => void;
+  onRemove: () => void;
+}) {
+  const seed = () => (initialRows.length ? initialRows.map((row) => [...row]) : [[""]]);
+  const [rows, setRows] = useState<string[][]>(seed);
+  const [title, setTitle] = useState(initialTitle);
+  const [version, setVersion] = useState(0); // bumped to remount cells after structural edits
+  const lastCommittedRef = useRef(serializePipeTable(seed(), initialTitle));
+
+  // Re-seed when the body changes underneath us (undo/redo, AI fill), but ignore
+  // the echo of our own commit so active typing isn't interrupted.
+  const incoming = serializePipeTable(initialRows.length ? initialRows : [[""]], initialTitle);
+  useEffect(() => {
+    if (incoming !== lastCommittedRef.current) {
+      setRows(initialRows.length ? initialRows.map((row) => [...row]) : [[""]]);
+      setTitle(initialTitle);
+      setVersion((v) => v + 1);
+      lastCommittedRef.current = incoming;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming]);
+
+  const colCount = rows.reduce((max, row) => Math.max(max, row.length), 1);
+  const pad = (row: string[]) => Array.from({ length: colCount }, (_, i) => row[i] ?? "");
+  const normalised = () => rows.map(pad);
+
+  const commit = (nextRows: string[][], nextTitle: string) => {
+    lastCommittedRef.current = serializePipeTable(nextRows, nextTitle);
+    onChange(nextRows, nextTitle);
+  };
+
+  const setCell = (rowIndex: number, colIndex: number, value: string) => {
+    const next = normalised();
+    if (next[rowIndex]?.[colIndex] === value) return; // blur with no change — skip the churn
+    next[rowIndex][colIndex] = value;
+    setRows(next);
+    commit(next, title);
+  };
+
+  const structural = (mutate: (grid: string[][]) => string[][]) => {
+    const next = mutate(normalised());
+    setRows(next);
+    setVersion((v) => v + 1); // remount cells so they re-seed from the new grid
+    commit(next, title);
+  };
+
+  const addRow = () => structural((grid) => [...grid, Array.from({ length: colCount }, () => "")]);
+  const addColumn = () => structural((grid) => grid.map((row) => [...row, ""]));
+  const deleteRow = (rowIndex: number) =>
+    structural((grid) => (grid.length > 1 ? grid.filter((_, i) => i !== rowIndex) : grid));
+  const deleteColumn = (colIndex: number) =>
+    structural((grid) => (colCount > 1 ? grid.map((row) => row.filter((_, i) => i !== colIndex)) : grid));
+
+  const commitTitle = (value: string) => {
+    if (value === title) return;
+    setTitle(value);
+    commit(rows, value);
+  };
+
+  const [header, ...body] = rows.map(pad);
+  const chip =
+    "pointer-events-auto rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-500 shadow-sm transition-colors hover:border-sky-300 hover:text-sky-700";
+  const nub =
+    "absolute z-10 flex h-5 w-5 items-center justify-center rounded-full border border-rose-500 bg-rose-500 text-[13px] font-bold leading-none text-white shadow-sm transition-colors hover:border-rose-700 hover:bg-rose-700";
+
+  return (
+    <div className="group/tbl relative mb-1 mt-11" onClick={(e) => e.stopPropagation()}>
+      <div className="absolute -top-9 right-0 z-20 flex gap-1">
+        <button type="button" onClick={addRow} className={chip}>
+          + Row
+        </button>
+        <button type="button" onClick={addColumn} className={chip}>
+          + Column
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className={`${chip} hover:border-rose-300 hover:text-rose-600`}
+          title="Delete table"
+        >
+          Delete
+        </button>
+      </div>
+
+      {initialTitle ? (
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={(e) => commitTitle(e.target.value)}
+          placeholder="Section title"
+          className="mb-1.5 block w-full border-0 bg-transparent px-0 text-[12px] font-bold uppercase tracking-[0.16em] text-sky-700 outline-none placeholder:font-normal placeholder:text-slate-300 focus:bg-sky-50"
+        />
+      ) : null}
+
+      <table className="w-full border-collapse text-[12.5px] text-slate-800">
+        <thead>
+          <tr>
+            {header.map((cell, c) => (
+              <th
+                key={`h-${version}-${c}`}
+                className={`group/col relative border-b-[1.5px] border-slate-900 px-1.5 pb-1.5 pt-2.5 align-bottom text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${
+                  isNumericCell(cell) ? "text-right" : "text-left"
+                }`}
+              >
+                {colCount > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => deleteColumn(c)}
+                    title="Delete column"
+                    className={`${nub} -top-2 left-1/2 -translate-x-1/2`}
+                  >
+                    ×
+                  </button>
+                ) : null}
+                <TableCell
+                  key={`hc-${version}-${c}`}
+                  text={cell}
+                  numeric={isNumericCell(cell)}
+                  placeholder="Column"
+                  onCommit={(v) => setCell(0, c, v)}
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={`r-${version}-${ri}`} className="group/row">
+              {row.map((cell, c) => (
+                <td
+                  key={`c-${version}-${ri}-${c}`}
+                  className="relative border-b border-slate-200 px-1.5 py-1.5 align-top"
+                >
+                  {c === 0 && body.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => deleteRow(ri + 1)}
+                      title="Delete row"
+                      className={`${nub} -left-5 top-1/2 -translate-y-1/2`}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                  <TableCell
+                    key={`cc-${version}-${ri}-${c}`}
+                    text={cell}
+                    numeric={isNumericCell(cell)}
+                    onCommit={(v) => setCell(ri + 1, c, v)}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function EditableBody({
@@ -4377,6 +4648,12 @@ function EditableBody({
         node.setSelectionRange(caret, caret);
       }
     });
+  };
+
+  const insertTable = () => {
+    const el = textareaRef.current;
+    const pos = el ? el.selectionStart : draft.length;
+    insertAtCursor(blockInsertion(draft.slice(0, pos), draft.slice(pos), TABLE_TEMPLATE));
   };
 
   const handleImageFile = async (file: File) => {
@@ -4429,7 +4706,7 @@ function EditableBody({
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => insertAtCursor(TABLE_STARTER)}
+          onClick={insertTable}
           className="rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
         >
           Insert table
@@ -4511,13 +4788,20 @@ function PanelBodyEditor({
     });
   };
 
+  const insertTable = () => {
+    const el = textareaRef.current;
+    const base = el ? el.value : content;
+    const pos = el ? el.selectionStart : base.length;
+    insertAtCursor(blockInsertion(base.slice(0, pos), base.slice(pos), TABLE_TEMPLATE));
+  };
+
   const toolButton =
     "cursor-pointer rounded-lg border border-border bg-bg-input px-2.5 py-1.5 text-[11px] font-medium text-txt-muted transition hover:border-accent/40 hover:text-txt";
 
   return (
     <div>
       <div className="mb-1.5 flex items-center gap-2">
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => insertAtCursor(TABLE_STARTER)} className={toolButton}>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={insertTable} className={toolButton}>
           Insert table
         </button>
         <label className={toolButton}>
@@ -5024,12 +5308,27 @@ function DocumentPreview({
               <div className="space-y-5">
                 {parseContentBlocks(mergedDoc.content).map((block, index) => {
               if (block.type === "table" || block.type === "section-table") {
+                const tableTitle = block.type === "section-table" ? block.title : "";
+                // Editable canvas → in-place grid editor; read-only preview → static table.
+                if (onUpdateDoc) {
+                  return (
+                    <InlineTableEditor
+                      key={index}
+                      rows={block.rows}
+                      title={tableTitle}
+                      onChange={(nextRows, nextTitle) =>
+                        onUpdateDoc({ content: replaceTableBlock(mergedDoc.content, index, nextRows, nextTitle) })
+                      }
+                      onRemove={() => onUpdateDoc({ content: removeContentBlock(mergedDoc.content, index) })}
+                    />
+                  );
+                }
                 const [header, ...rows] = block.rows;
                 return (
                   <section key={index}>
-                    {block.type === "section-table" && block.title ? (
+                    {tableTitle ? (
                       <h3 className="mb-1.5 text-[12px] font-bold uppercase tracking-[0.16em] text-sky-700 font-sans">
-                        {block.title}
+                        {tableTitle}
                       </h3>
                     ) : null}
                     <table className="w-full border-collapse text-[12.5px] text-slate-800">
@@ -5056,7 +5355,7 @@ function DocumentPreview({
                               <td
                                 key={cellIndex}
                                 className={`border-b border-slate-200 px-1.5 py-2 align-top ${
-                                  isNumericCell(cell) ? "text-right tabular-nums whitespace-nowrap" : "text-left"
+                                  isNumericCell(cell) ? "text-right tabular-nums whitespace-nowrap" : "text-left break-words"
                                 }`}
                               >
                                 {cell}
