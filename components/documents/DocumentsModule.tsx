@@ -601,6 +601,28 @@ function readFileAsDataUrl(file: File) {
   return compressImageFile(file);
 }
 
+/** A cell of only digits / commas / dots / % / currency-ish tokens — right-aligned in tables. */
+function isNumericCell(value: string) {
+  const t = value.trim();
+  if (!t || !/\d/.test(t)) return false;
+  return /^[\d.,%$€£()+\-\s]+$/.test(t);
+}
+
+/** Split "| a | b |" pipe rows into trimmed cell grids, dropping the outer empties
+ *  and skipping a markdown separator row ("|---|:--:|") if it sits as the second line. */
+function parsePipeTable(lines: string[]): string[][] {
+  const rows = lines.map((line) => {
+    const cells = line.split("|").map((cell) => cell.trim());
+    if (cells.length && cells[0] === "") cells.shift();
+    if (cells.length && cells[cells.length - 1] === "") cells.pop();
+    return cells;
+  });
+  if (rows.length > 1 && rows[1].length && rows[1].every((cell) => /^:?-+:?$/.test(cell))) {
+    rows.splice(1, 1);
+  }
+  return rows;
+}
+
 function parseContentBlocks(content: string) {
   return content
     .split(/\n\s*\n/)
@@ -608,6 +630,25 @@ function parseContentBlocks(content: string) {
     .filter(Boolean)
     .map((block) => {
       const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+
+      // Inline image token: a lone "[image:<id>]" line, with any following lines as caption.
+      const imageMatch = lines[0].match(/^\[image:([a-z0-9-]+)\]$/i);
+      if (imageMatch) {
+        return { type: "image" as const, imageId: imageMatch[1], caption: lines.slice(1).join(" ") };
+      }
+
+      // Pipe tables: every line starts with "|" → table; a short heading line
+      // followed by all-pipe lines → titled section-table.
+      const allPipes = lines.every((line) => line.startsWith("|"));
+      const headingWithTable =
+        lines.length > 1 && !lines[0].startsWith("|") && lines.slice(1).every((line) => line.startsWith("|"));
+      if (allPipes) {
+        return { type: "table" as const, title: "", rows: parsePipeTable(lines) };
+      }
+      if (headingWithTable) {
+        return { type: "section-table" as const, title: lines[0], rows: parsePipeTable(lines.slice(1)) };
+      }
+
       const isBulletList = lines.every((line) => line.startsWith("- "));
       const headingWithBullets =
         lines.length > 1 && !lines[0].startsWith("- ") && lines.slice(1).every((line) => line.startsWith("- "));
@@ -650,9 +691,42 @@ function escapeHtmlMultiline(value: string) {
   return escapeHtml(value).replace(/\n/g, "<br />");
 }
 
-function blocksToHtml(content: string) {
+function pipeTableHtml(rows: string[][]) {
+  if (!rows.length) return "";
+  const [header, ...body] = rows;
+  const head = `<thead><tr>${header
+    .map((cell) => `<th${isNumericCell(cell) ? ' class="num"' : ""}>${escapeHtml(cell)}</th>`)
+    .join("")}</tr></thead>`;
+  const bodyHtml = body.length
+    ? `<tbody>${body
+        .map(
+          (row) =>
+            `<tr>${row
+              .map((cell) => `<td${isNumericCell(cell) ? ' class="num"' : ""}>${escapeHtml(cell)}</td>`)
+              .join("")}</tr>`,
+        )
+        .join("")}</tbody>`
+    : "";
+  return `<table class="report-table doc-body-table">${head}${bodyHtml}</table>`;
+}
+
+function blocksToHtml(content: string, bodyImages?: GeneratedDocument["bodyImages"]) {
   return parseContentBlocks(content)
     .map((block) => {
+      if (block.type === "table") return pipeTableHtml(block.rows);
+      if (block.type === "section-table") {
+        return `<section class="doc-section"><h3 class="doc-section-label">${escapeHtml(block.title)}</h3>${pipeTableHtml(
+          block.rows,
+        )}</section>`;
+      }
+      if (block.type === "image") {
+        const img = bodyImages?.find((entry) => entry.id === block.imageId);
+        if (!img) return "";
+        const caption = block.caption || img.caption || "";
+        return `<figure class="doc-body-image"><img src="${escapeHtml(img.dataUrl)}" alt="${escapeHtml(
+          caption,
+        )}" />${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}</figure>`;
+      }
       if (block.type === "heading") return `<h3 class="doc-section-title">${escapeHtml(block.title)}</h3>`;
       if (block.type === "bullets") {
         return `<ul class="doc-list">${block.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
@@ -1665,6 +1739,27 @@ function documentPrintStyles(accentPrimary?: string, accentSecondary?: string) {
       border: none;
       border-top: 1.5px solid #0f172a;
       color: #0f172a;
+    }
+
+    /* ── Inline body tables + images (authored in the plain-text body) ─────── */
+    .doc-body-table { margin: 12px 0; }
+    .doc-body-image {
+      margin: 16px auto;
+      text-align: center;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .doc-body-image img {
+      max-width: 80%;
+      max-height: 90mm;
+      object-fit: contain;
+      border: 1px solid #e5e7eb;
+    }
+    .doc-body-image figcaption {
+      margin-top: 6px;
+      font-size: 10.5px;
+      font-style: italic;
+      color: #64748b;
     }
 
     /* ── Item-level progress: bar layout ──────────────────────────────── */
@@ -2774,7 +2869,7 @@ function renderProgressReportBody(
   {
     const summary = doc.executiveSummary?.trim()
       ? richNarrativeToHtml(doc.executiveSummary)
-      : blocksToHtml(doc.content);
+      : blocksToHtml(doc.content, doc.bodyImages);
     if (summary) {
       blocks.push(`
         <section class="report-section">
@@ -3043,7 +3138,7 @@ function renderBodyHtml(
           ? `<div class="certificate-panel"><div class="doc-section-title">Commercial Snapshot</div><p class="doc-paragraph">Net certified amount for the linked certificate is ${escapeHtml(project?.currency || "USD")} ${escapeHtml(currency(certValue))}.</p></div>`
           : ""
       }
-      ${blocksToHtml(doc.content)}
+      ${blocksToHtml(doc.content, doc.bodyImages)}
       ${doc.templateType === "site-visit-report" ? siteVisitObservationHtml(doc.siteVisitObservationHtml) : ""}
       ${doc.templateType === "site-visit-report" ? siteVisitPhotosHtml(doc.siteVisitPhotos) : ""}
     `;
@@ -3052,12 +3147,12 @@ function renderBodyHtml(
   if (doc.layoutStyle === "certificate") {
     return `
       <div class="certificate-body-copy">
-        ${blocksToHtml(doc.content)}
+        ${blocksToHtml(doc.content, doc.bodyImages)}
       </div>
     `;
   }
 
-  return blocksToHtml(doc.content);
+  return blocksToHtml(doc.content, doc.bodyImages);
 }
 
 function formatCommencementDate(input?: string | null) {
@@ -4217,18 +4312,64 @@ function InlineEdit({
  * a plain-text editor (same convention the templates use — blank line between
  * paragraphs, "- " bullets, short label lines become section titles).
  */
+const TABLE_STARTER = "\n| Item | Description | Amount |\n| 1 | | |\n| 2 | | |\n";
+
 function EditableBody({
   content,
   onCommit,
   children,
 }: {
   content: string;
-  onCommit?: (value: string) => void;
+  onCommit?: (value: string, stagedImages: Array<{ id: string; dataUrl: string }>) => void;
   children: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const [staged, setStaged] = useState<Array<{ id: string; dataUrl: string }>>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  // Opening the file picker blurs the textarea; skip that one blur so we don't
+  // commit and tear down the editor before the user has chosen an image.
+  const skipBlurRef = useRef(false);
+
   if (!onCommit) return <>{children}</>;
+
+  const insertAtCursor = (snippet: string) => {
+    const el = textareaRef.current;
+    const pos = el ? el.selectionStart : draft.length;
+    const next = draft.slice(0, pos) + snippet + draft.slice(pos);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      const node = textareaRef.current;
+      if (node) {
+        const caret = pos + snippet.length;
+        node.focus();
+        node.setSelectionRange(caret, caret);
+      }
+    });
+  };
+
+  const handleImageFile = async (file: File) => {
+    const dataUrl = await readFileAsDataUrl(file); // compresses on the way in
+    const id = uuid();
+    setStaged((prev) => [...prev, { id, dataUrl }]);
+    insertAtCursor(`\n[image:${id}]\n`);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = e.clipboardData.getData("text/plain");
+    if (text && text.includes("\t") && /\r?\n/.test(text.trim())) {
+      e.preventDefault();
+      const pipeRows = text
+        .replace(/\r/g, "")
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .map((line) => `| ${line.split("\t").map((cell) => cell.trim()).join(" | ")} |`)
+        .join("\n");
+      insertAtCursor(pipeRows);
+    }
+  };
+
   if (!editing) {
     return (
       <div
@@ -4236,6 +4377,7 @@ function EditableBody({
         title="Click to edit the body"
         onClick={() => {
           setDraft(content);
+          setStaged([]);
           setEditing(true);
         }}
       >
@@ -4247,17 +4389,62 @@ function EditableBody({
     );
   }
   return (
-    <textarea
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        setEditing(false);
-        if (draft !== content) onCommit(draft);
-      }}
-      rows={Math.max(10, draft.split("\n").length + 2)}
-      className="w-full resize-y rounded-sm bg-sky-50/50 font-serif text-[15px] leading-8 text-slate-700 outline-none ring-1 ring-sky-200"
-    />
+    <div>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleImageFile(file);
+          e.target.value = "";
+        }}
+      />
+      <div className="mb-1.5 flex items-center gap-2">
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => insertAtCursor(TABLE_STARTER)}
+          className="rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+        >
+          Insert table
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            skipBlurRef.current = true;
+            imageInputRef.current?.click();
+          }}
+          className="rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+        >
+          Insert image
+        </button>
+      </div>
+      <p className="mb-1.5 text-[11px] text-slate-400">
+        Tables: &ldquo;| cell | cell |&rdquo; rows — paste straight from Excel. Blank line = new paragraph, &ldquo;- &rdquo; =
+        bullet.
+      </p>
+      <textarea
+        ref={textareaRef}
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onPaste={handlePaste}
+        onBlur={() => {
+          if (skipBlurRef.current) {
+            skipBlurRef.current = false;
+            return;
+          }
+          setEditing(false);
+          if (draft !== content || staged.length) onCommit(draft, staged);
+          setStaged([]);
+        }}
+        rows={Math.max(10, draft.split("\n").length + 2)}
+        className="w-full resize-y rounded-sm bg-sky-50/50 font-serif text-[15px] leading-8 text-slate-700 outline-none ring-1 ring-sky-200"
+      />
+    </div>
   );
 }
 
@@ -4698,10 +4885,92 @@ function DocumentPreview({
           <div className={isLetter ? "mt-6 font-serif" : "mt-8 border-t border-slate-200 pt-7"}>
             <EditableBody
               content={mergedDoc.content}
-              onCommit={onUpdateDoc ? (v) => onUpdateDoc({ content: v }) : undefined}
+              onCommit={
+                onUpdateDoc
+                  ? (value, stagedImages) => {
+                      const merged = [...(mergedDoc.bodyImages || [])];
+                      for (const img of stagedImages) {
+                        if (!merged.some((entry) => entry.id === img.id)) merged.push(img);
+                      }
+                      // Prune entries whose [image:id] token no longer appears in the body.
+                      const referenced = new Set<string>();
+                      const re = /\[image:([a-z0-9-]+)\]/gi;
+                      let match: RegExpExecArray | null;
+                      while ((match = re.exec(value))) referenced.add(match[1].toLowerCase());
+                      const bodyImages = merged.filter((img) => referenced.has(img.id.toLowerCase()));
+                      onUpdateDoc({ content: value, bodyImages });
+                    }
+                  : undefined
+              }
             >
               <div className="space-y-5">
                 {parseContentBlocks(mergedDoc.content).map((block, index) => {
+              if (block.type === "table" || block.type === "section-table") {
+                const [header, ...rows] = block.rows;
+                return (
+                  <section key={index}>
+                    {block.type === "section-table" && block.title ? (
+                      <h3 className="mb-1.5 text-[12px] font-bold uppercase tracking-[0.16em] text-sky-700 font-sans">
+                        {block.title}
+                      </h3>
+                    ) : null}
+                    <table className="w-full border-collapse text-[12.5px] text-slate-800">
+                      {header ? (
+                        <thead>
+                          <tr>
+                            {header.map((cell, cellIndex) => (
+                              <th
+                                key={cellIndex}
+                                className={`border-b-[1.5px] border-slate-900 px-1.5 pb-1.5 pt-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${
+                                  isNumericCell(cell) ? "text-right" : "text-left"
+                                }`}
+                              >
+                                {cell}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                      ) : null}
+                      <tbody>
+                        {rows.map((row, rowIndex) => (
+                          <tr key={rowIndex}>
+                            {row.map((cell, cellIndex) => (
+                              <td
+                                key={cellIndex}
+                                className={`border-b border-slate-200 px-1.5 py-2 align-top ${
+                                  isNumericCell(cell) ? "text-right tabular-nums whitespace-nowrap" : "text-left"
+                                }`}
+                              >
+                                {cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </section>
+                );
+              }
+
+              if (block.type === "image") {
+                const img = mergedDoc.bodyImages?.find((entry) => entry.id === block.imageId);
+                if (!img) return null;
+                const caption = block.caption || img.caption || "";
+                return (
+                  <figure key={index} className="my-4 text-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.dataUrl}
+                      alt={caption}
+                      className="mx-auto max-h-80 max-w-[80%] border border-slate-200 object-contain"
+                    />
+                    {caption ? (
+                      <figcaption className="mt-1.5 text-[11px] italic text-slate-500">{caption}</figcaption>
+                    ) : null}
+                  </figure>
+                );
+              }
+
               if (block.type === "heading") {
                 return (
                   <h3 key={index} className="text-[13px] uppercase tracking-[0.18em] text-sky-700 font-bold font-sans">
