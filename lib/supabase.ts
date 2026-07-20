@@ -333,6 +333,10 @@ export interface ProgressReport {
 export type DocumentTemplateType =
   | "commencement-letter"
   | "instruction-letter"
+  // General-purpose formal letter on the issuer's letterhead — for writing to
+  // clients, employers, contractors, suppliers or authorities about anything
+  // the specific letter types don't cover.
+  | "official-letter"
   | "progress-report"
   | "payment-certificate-summary"
   | "completion-certificate"

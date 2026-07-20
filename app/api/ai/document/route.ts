@@ -17,6 +17,8 @@ const TEMPLATE_GUIDE: Record<string, string> = {
     "A formal order/notice to the contractor to commence the works, stating the commencement date, site possession, and the obligation to proceed with due diligence.",
   "instruction-letter":
     "A site instruction to the contractor: the purpose, the specific instruction/works affected, and any time or cost implication note.",
+  "official-letter":
+    "A general-purpose formal business letter to any recipient (client, employer, contractor, supplier, authority): the reference/background, the particulars of the matter, and the action requested. Formal, courteous tone.",
   "progress-report":
     "A concise project progress narrative: period under review, overall status, key activities completed, and next-period focus.",
   "payment-certificate-summary":
